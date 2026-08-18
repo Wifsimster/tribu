@@ -15,7 +15,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import type { DataTexture } from 'three'
-import { AGES } from '../game/content'
+import { AGES, DAY_START } from '../game/content'
 import { ISLAND_RADIUS } from './island'
 import { PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
 
@@ -38,13 +38,8 @@ const BASE_ZOOM = 34
 const FILL_WIDTH = 0.76
 const FILL_HEIGHT = 0.5
 
-/** Une journée complète en secondes de jeu. Assez courte pour qu'une session
- *  voie un coucher de soleil, assez longue pour ne pas clignoter. */
-export const DAY_SECONDS = 240
 /** Le jeu démarre en milieu de matinée : l'azimut du soleil y coïncide avec
  *  SUN_DIR, la direction cuite dans l'ombre de contact de la texture d'eau. */
-export const DAY_START = 0.32
-
 const SUN_AZ0 = Math.atan2(SUN_DIR.x, SUN_DIR.z) - DAY_START * Math.PI * 2
 const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')

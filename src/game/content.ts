@@ -82,6 +82,11 @@ export const AGES: AgeDef[] = [
   },
 ]
 
+/** Une journée complète en secondes de jeu, et l'heure de la première aube.
+ *  Vivent ici parce que la nuit est une règle du jeu, pas un habillage. */
+export const DAY_SECONDS = 240
+export const DAY_START = 0.32
+
 export type Effect =
   | { kind: 'gatherRate'; resource: ResourceId; mult: number }
   | { kind: 'unlockResource'; resource: ResourceId }
@@ -89,6 +94,8 @@ export type Effect =
   | { kind: 'carry'; add: number }
   | { kind: 'expeditionSpeed'; mult: number }
   | { kind: 'building'; building: string }
+  /** Part du rendement conservée en pleine nuit (la meilleure source l'emporte). */
+  | { kind: 'nightFloor'; value: number }
 
 export interface TechDef {
   id: string
@@ -122,7 +129,17 @@ export const TECHS: TechDef[] = [
     effects: [
       { kind: 'gatherRate', resource: 'food', mult: 1.5 },
       { kind: 'insightRate', add: 0.05 },
+      { kind: 'nightFloor', value: 0.55 },
     ],
+  },
+  {
+    id: 'lamp',
+    name: 'Lampe à graisse',
+    age: 0,
+    cost: 55,
+    requires: ['fire'],
+    fact: "À Lascaux, plus d'une centaine de lampes de pierre brûlaient de la graisse animale avec des mèches de genévrier : les peintres travaillaient sous terre, en pleine nuit.",
+    effects: [{ kind: 'nightFloor', value: 0.85 }],
   },
   {
     id: 'shelter',

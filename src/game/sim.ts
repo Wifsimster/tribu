@@ -1,5 +1,7 @@
 import {
   AGES,
+  DAY_SECONDS,
+  DAY_START,
   RESOURCES,
   TECHS,
   TECH_BY_ID,
@@ -25,6 +27,8 @@ export type GameEvent =
       tale: string | null
     }
   | { type: 'caravanLeave' }
+  | { type: 'nightfall'; floor: number }
+  | { type: 'daybreak' }
 
 type Listener = (e: GameEvent) => void
 
@@ -58,6 +62,22 @@ const CARAVAN_VISIT = 26
 const CARAVAN_OFFLINE_MAX = 3
 
 const MERCHANTS = ['de Chypre', "d'Anatolie", 'du Levant', 'des Cyclades', "d'Égypte"]
+
+/** Sans aucune lumière, la nuit ne laisse que 30 % du rendement. Le feu puis la
+ *  lampe à graisse relèvent ce plancher via l'effet `nightFloor`. */
+const NIGHT_BASE_FLOOR = 0.3
+
+function smoothstep01(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+/** Part de jour, même formule que le rendu : les deux doivent tomber d'accord
+ *  sur l'heure qu'il est. */
+export function daylightAt(totalPlaySeconds: number): number {
+  const u = (DAY_START + totalPlaySeconds / DAY_SECONDS) % 1
+  return smoothstep01(-0.06, 0.2, Math.sin(u * Math.PI * 2))
+}
 
 /** Le marchand paie en histoires autant qu'en métal : chaque anecdote est un
  *  fait de commerce ancien réel. */
@@ -99,6 +119,9 @@ export class Game {
   private insightAdd = 0
   private carry = 0
   private expeditionSpeed = 1
+  private nightFloor = NIGHT_BASE_FLOOR
+  private lightFactor = 1
+  private wasNight = false
 
   constructor(now: number) {
     const { save, offlineSeconds } = loadSave(now)
@@ -123,7 +146,13 @@ export class Game {
           workSeconds = 0
         }
       }
-      if (workSeconds > 0) this.produce(workSeconds)
+      if (workSeconds > 0) {
+        // Une absence couvre des cycles entiers : on produit au facteur moyen
+        // (moitié jour, moitié nuit au plancher).
+        this.lightFactor = (1 + this.nightFloor) / 2
+        this.refreshRates()
+        this.produce(workSeconds)
+      }
       // Le commerce continue sans le joueur : quelques passages de barque sont
       // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
       if (this.save.age >= CARAVAN_AGE) {
@@ -202,6 +231,7 @@ export class Game {
     this.insightAdd = 0
     this.carry = 0
     this.expeditionSpeed = 1
+    this.nightFloor = NIGHT_BASE_FLOOR
     this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
     this.buildings = new Set()
 
@@ -228,6 +258,9 @@ export class Game {
           case 'building':
             this.buildings.add(e.building)
             break
+          case 'nightFloor':
+            this.nightFloor = Math.max(this.nightFloor, e.value)
+            break
         }
       }
     }
@@ -252,12 +285,25 @@ export class Game {
         continue
       }
       const focusFactor = this.save.focus === id ? 1 : IDLE_FRACTION
-      const r = BASE_RATE[id] * this.mult[id] * focusFactor * carryBonus * encourage
+      const r =
+        BASE_RATE[id] * this.mult[id] * focusFactor * carryBonus * encourage * this.lightFactor
       this.rates[id] = r
       material += r
     }
     // Knowledge grows out of what the tribe actually does, not out of nothing.
-    this.rates.insight = (0.2 + this.insightAdd + material * 0.05) * encourage
+    this.rates.insight = (0.2 + this.insightAdd + material * 0.05) * encourage * this.lightFactor
+  }
+
+  /** La nuit ralentit la tribu : le rendement glisse entre le plancher de nuit
+   *  (selon la lumière découverte) et 1 en plein jour. */
+  private updateLight(): void {
+    const k = daylightAt(this.save.totalPlaySeconds)
+    this.lightFactor = this.nightFloor + (1 - this.nightFloor) * k
+    const night = this.wasNight ? k < 0.55 : k < 0.4 // hystérésis, comme le HUD
+    if (night !== this.wasNight) {
+      this.wasNight = night
+      this.emit(night ? { type: 'nightfall', floor: this.nightFloor } : { type: 'daybreak' })
+    }
   }
 
   private produce(seconds: number): void {
@@ -434,6 +480,8 @@ export class Game {
   tick(dt: number, now: number): void {
     if (dt <= 0) return
     this.save.totalPlaySeconds += dt
+    this.updateLight()
+    this.refreshRates()
 
     if (this.encourageLeft > 0) {
       this.encourageLeft -= dt

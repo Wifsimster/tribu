@@ -3,7 +3,8 @@ import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import type { ResourceId } from './game/content'
-import { DAY_SECONDS, DAY_START, Stage } from './render/scene'
+import { DAY_SECONDS, DAY_START } from './game/content'
+import { Stage } from './render/scene'
 import { Island } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
@@ -104,6 +105,18 @@ game.on((e) => {
     }
     case 'caravanLeave':
       caravan.depart()
+      break
+    case 'nightfall':
+      hud.toast(
+        e.floor >= 0.85
+          ? 'La nuit tombe — les lampes à graisse veillent, la tribu continue'
+          : e.floor >= 0.55
+            ? 'La nuit tombe — la tribu se serre autour du feu, le travail ralentit'
+            : 'La nuit tombe — sans lumière, la tribu ne fait presque plus rien',
+      )
+      break
+    case 'daybreak':
+      hud.toast('Le jour se lève, la tribu reprend le travail')
       break
   }
 })
