@@ -5,7 +5,7 @@ import { SAVE_KEY } from './game/state'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
-import { Island } from './render/island'
+import { Island, growthForAge } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
 import { Caravan } from './render/caravan'
@@ -16,33 +16,56 @@ import { RESOURCES } from './game/content'
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
 
-// Le jeu d'abord : l'île de chaque joueur pousse sur le seed de sa sauvegarde.
+// Le jeu d'abord : l'île de chaque joueur pousse sur le seed de sa sauvegarde,
+// et GRANDIT avec les âges — la tribu gagne du terrain sur la mer.
 const game = new Game(Date.now())
-const island = new Island(game.save.seed)
-const village = new Village(island)
-const settler = new Settler(island)
 const caravan = new Caravan()
 
-stage.scene.add(island.group, village.group, settler.group, caravan.group)
-settler.setHome(new Vector3(0, island.heightAt(0, 0), 0))
-stage.sun.target.position.set(0, 0, 0)
+let island!: Island
+let village!: Village
+let settler!: Settler
+const nodeSpots = new Map<string, Vector3[]>()
 
+function disposeWorld(): void {
+  for (const g of [island?.group, village?.group, settler?.group]) {
+    if (!g) continue
+    stage.scene.remove(g)
+    g.traverse((o) => {
+      const mesh = o as { geometry?: { dispose(): void }; material?: { dispose(): void } }
+      mesh.geometry?.dispose()
+      mesh.material?.dispose()
+    })
+  }
+}
+
+/** (Re)construit l'île à la taille de l'âge courant. Appelé au chargement et à
+ *  chaque passage d'âge : le monde s'agrandit sous la bannière. */
+function buildWorld(): void {
+  disposeWorld()
+  island = new Island(game.save.seed, growthForAge(game.save.age))
+  village = new Village(island)
+  settler = new Settler(island)
+  stage.scene.add(island.group, village.group, settler.group)
+  stage.islandRadius = island.radius
+  village.sync(game.buildings)
+  if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
+
+  nodeSpots.clear()
+  for (const mesh of island.pickables) {
+    const kind = island.kindFor(mesh)
+    if (!kind) continue
+    const spots: Vector3[] = []
+    for (let i = 0; i < mesh.count; i++) spots.push(island.instancePosition(mesh, i))
+    nodeSpots.set(kind, spots)
+  }
+}
+
+buildWorld()
+stage.scene.add(caravan.group)
+stage.sun.target.position.set(0, 0, 0)
 stage.applyAge(game.save.age)
-village.sync(game.buildings)
 // Barque déjà à quai dans la sauvegarde : elle reprend sa place sans naviguer.
 if (game.save.caravan.visiting) caravan.arrive()
-// Expédition en cours au chargement : le colon est déjà au loin.
-if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
-
-/** Where the settler goes for each resource: the nearest matching node. */
-const nodeSpots = new Map<string, Vector3[]>()
-for (const mesh of island.pickables) {
-  const kind = island.kindFor(mesh)
-  if (!kind) continue
-  const spots: Vector3[] = []
-  for (let i = 0; i < mesh.count; i++) spots.push(island.instancePosition(mesh, i))
-  nodeSpots.set(kind, spots)
-}
 
 function spotFor(resource: ResourceId): Vector3 {
   const key = resource === 'food' ? 'food' : resource === 'wood' ? 'wood' : 'stone'
@@ -68,6 +91,9 @@ game.on((e) => {
       stage.applyAge(e.age.id)
       hud.showBanner('Nouvel âge', e.age.name)
       hud.refreshTechList()
+      // La tribu gagne du terrain : l'île est reconstruite plus grande, les
+      // bâtiments repoussent avec leur animation de pose.
+      buildWorld()
       break
     case 'expeditionStart':
       settler.departExpedition(game.knows('cordage'))

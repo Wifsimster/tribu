@@ -56,6 +56,9 @@ export class Stage {
   private readonly vignette: Mesh
   private sky: DataTexture
 
+  /** Rayon de l'île courante — mis à jour quand elle grandit avec les âges. */
+  islandRadius = ISLAND_RADIUS
+
   // Orbit state, driven by the custom touch controller in controls.ts.
   azimuth = Math.PI * 0.25
   polar = Math.PI * 0.32
@@ -235,8 +238,8 @@ export class Stage {
     // Vue de biais, un disque se projette en ellipse : sa hauteur écran suit
     // l'élévation de l'oeil.
     const rise = Math.max(0.5, Math.sin(Math.PI / 2 - this.polar))
-    const halfV = ISLAND_RADIUS * rise + 2.2
-    return Math.max(halfV / (FILL_HEIGHT * vTan), ISLAND_RADIUS / (FILL_WIDTH * hTan))
+    const halfV = this.islandRadius * rise + 2.2
+    return Math.max(halfV / (FILL_HEIGHT * vTan), this.islandRadius / (FILL_WIDTH * hTan))
   }
 
   updateCamera(): void {

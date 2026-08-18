@@ -74,7 +74,7 @@ function fbm(x: number, y: number, seed: number): number {
 }
 
 export const TILE = 1.35
-export const GRID = 32
+export const GRID = 34
 
 /** Griffonnage partagé de setDaylight : une teinte par frame, zéro allocation. */
 const tmpTint = new Color()
@@ -127,7 +127,7 @@ function clearRadius(x: number, z: number): number {
   return CLEAR_RADIUS + back * back * back * 3.2
 }
 
-const EDGE_BASE = 11.4
+const EDGE_BASE = 9.6
 const DEFAULT_SEED = 1337
 
 /** Soleil projeté au sol, normalisé : tout le dosage du contact (liseré,
@@ -143,13 +143,19 @@ const HULL_BINS = 256
 
 /** Silhouette lobée plutôt qu'un disque : c'est le contour qui fait lire
  *  l'île comme un objet posé, pas comme un morceau de terrain. */
-function shoreEdge(theta: number, seed: number): number {
+function shoreEdge(theta: number, seed: number, growth = 1): number {
   return (
-    EDGE_BASE +
-    1.45 * Math.sin(3 * theta + 0.9) +
-    0.75 * Math.sin(5 * theta - 1.7) +
-    0.8 * valueNoise(Math.cos(theta) * 2.4 + 8, Math.sin(theta) * 2.4 + 8, seed)
+    (EDGE_BASE +
+      1.45 * Math.sin(3 * theta + 0.9) +
+      0.75 * Math.sin(5 * theta - 1.7) +
+      0.8 * valueNoise(Math.cos(theta) * 2.4 + 8, Math.sin(theta) * 2.4 + 8, seed)) * growth
   )
+}
+
+/** L'île grandit avec les âges : la tribu gagne du terrain sur la mer, et la
+ *  place des nouveaux bâtiments avec. */
+export function growthForAge(age: number): number {
+  return 1 + Math.min(age, 3) * 0.11
 }
 
 /** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran.
@@ -226,7 +232,13 @@ export class Island {
    *  les pointes. Un anneau d'ombre constant lit comme un drop-shadow CSS. */
   private shadowProf = new Float32Array(HULL_BINS)
 
-  constructor(private readonly seed = DEFAULT_SEED) {
+  /** Rayon réel de CETTE île (dépend de la croissance) — la caméra cadre dessus. */
+  readonly radius: number
+
+  constructor(
+    private readonly seed = DEFAULT_SEED,
+    private readonly growth = 1,
+  ) {
     const rnd = mulberry32(seed)
     const half = GRID / 2
     const plaza = STEP * 4
@@ -237,7 +249,7 @@ export class Island {
         const dz = gz - half + 0.5
         const r = Math.hypot(dx, dz)
         const theta = Math.atan2(dz, dx)
-        const edge = shoreEdge(theta, seed)
+        const edge = shoreEdge(theta, seed, growth)
         if (r > edge) continue
         const inland = edge - r
         const hill = fbm(gx * 0.23, gz * 0.23, seed)
@@ -290,6 +302,13 @@ export class Island {
     this.buildRipple()
     this.buildWaterline()
     this.scatter(rnd)
+
+    // Rayon mesuré sur les tuiles réellement posées, coin le plus lointain.
+    let far = 0
+    for (const c of this.cells) {
+      far = Math.max(far, Math.hypot(Math.abs(c.x) + TILE / 2, Math.abs(c.z) + TILE / 2))
+    }
+    this.radius = far
   }
 
   /** Empreinte réellement rendue : l'enveloppe polaire des coins des tuiles du
@@ -301,7 +320,7 @@ export class Island {
     // Plancher tiré de la courbe théorique : aucun secteur ne peut rester vide,
     // même dans une échancrure que les coins de tuiles couvrent mal.
     for (let i = 0; i < HULL_BINS; i++) {
-      this.hull[i] = (shoreEdge(i * step, this.seed) - 0.7) * TILE
+      this.hull[i] = (shoreEdge(i * step, this.seed, this.growth) - 0.7) * TILE
     }
     const h = TILE / 2
     // Profondeur locale de la fondation : les falaises s'enfoncent plus loin
@@ -959,11 +978,11 @@ export class Island {
       return out
     }
 
-    this.addTrees(take(70, clustered(wooded, 3.4), () => true), rnd)
+    this.addTrees(take(Math.round(50 * this.growth * this.growth), clustered(wooded, 3.4), () => true), rnd)
     // Pierres et buissons, eux, ont le droit de border la clairière : ce sont
     // eux qui l'encadrent une fois les sapins reculés.
-    this.addRocks(take(33, clustered(free, 9), (c) => c.height > 1.2), rnd)
-    this.addBushes(take(40, clustered(free, 6), () => true), rnd)
+    this.addRocks(take(Math.round(24 * this.growth * this.growth), clustered(free, 9), (c) => c.height > 1.2), rnd)
+    this.addBushes(take(Math.round(28 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
   }
 
   private addTrees(cells: Cell[], rnd: () => number): void {
