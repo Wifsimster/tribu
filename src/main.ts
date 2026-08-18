@@ -230,8 +230,13 @@ function menuEl<T extends HTMLElement>(id: string): T {
     if (e.key === 'Escape' && menu.classList.contains('open') && hasProgress) close()
   })
 
-  showHome()
-  menu.classList.add('open')
+  // ?nomenu=1 : le harnais de capture juge le jeu, pas l'écran d'accueil.
+  if (new URLSearchParams(location.search).has('nomenu')) {
+    paused = false
+  } else {
+    showHome()
+    menu.classList.add('open')
+  }
 }
 
 let last = performance.now()
