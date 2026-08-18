@@ -27,7 +27,7 @@ export const PALETTE = {
    *  distingue des halos des rounds passés : un trait dessiné de 2 px collé à
    *  la découpe, jamais un dégradé. La référence a les deux : ce trait ET un
    *  soubassement sombre juste dessous. */
-  foamLine: new Color('#e7f2ec'),
+  foamLine: new Color('#f2f9f3'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
   sand: new Color('#dccb9c'),

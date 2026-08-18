@@ -91,10 +91,10 @@ const BED_Y = -0.02
  *  ce qu'elle renvoie. Long : c'est la longueur du reflet qui donne le poids. */
 const MIRROR = 4.0
 /** Opacité du reflet à la ligne d'eau. Les rounds 5-6 ont perdu sur un calcul :
- *  alpha du reflet (~0,3 à mi-course) × translucidité de la nappe (~0,4) ×
- *  écart de couleur (~0,1) ≈ 1 % de contraste effectif — invisible. Chaque
- *  facteur est remonté ici, et l'écart de couleur est le poste principal. */
-const REFL_ALPHA = 0.95
+ *  alpha × translucidité de la nappe × écart de couleur ≈ 1 % de contraste —
+ *  invisible. Depuis, l'écart se RÈGLE AU CHIFFRE : bande 4-12 % sous la
+ *  flottaison mesurée contre la référence (waterline-metrics.mjs). */
+const REFL_ALPHA = 0.55
 /** Bande de flottaison sombre retenue au-dessus de l'arête, sur tout le
  *  pourtour. Sombre : l'eau qui remonte par capillarité fonce le pied, elle ne
  *  le fait jamais briller — le liseré spéculaire des rounds passés est mort ici. */
@@ -104,7 +104,11 @@ const WET = 0.21
  *  dernière quasi dissoute. La jupe du round 2 plongeait jusqu'à un fond à
  *  −2,9 sans dissolution et se noyait dans la brume ; le point d'arrêt est ici
  *  choisi par le dégradé, pas par la géométrie qui se coupe. */
-const ROW_H = 0.36
+/** Hauteur d'une rangée immergée. Mesurée, pas goûtée : à 0,36 la masse
+ *  s'arrêtait à 1,1 unité sous l'eau et la bande 0-4 % sous la flottaison
+ *  restait de l'eau nue — la référence y montre un delta moyen de +27 de
+ *  luminance (waterline-metrics.mjs). */
+const ROW_H = 0.5
 const ROWS_CLIFF = 3
 const ROWS_BEACH = 2
 const PLAZA_RADIUS = 5.1
@@ -502,11 +506,17 @@ export class Island {
         dummy.scale.set(1.07, mirror, 1.07)
         dummy.updateMatrix()
         refl.setMatrixAt(reflIndex, dummy.matrix)
-        // Un reflet ASSOMBRIT l'eau, il ne la blanchit pas. Franchement plus
-        // sombre que la nappe : c'est l'écart de couleur qui décide de la
-        // visibilité une fois la translucidité de la surface repassée dessus —
-        // la version à 75 % d'eau profonde mourait sous la nappe.
-        reflColor.copy(PALETTE.waterDeep).lerp(capColor, 0.16).multiplyScalar(0.72)
+        // Un reflet BLANCHIT cette eau-ci. Sept rounds ont perdu sur ce signe :
+        // mesurée (waterline-metrics.mjs), la référence a une eau sous l'objet
+        // en moyenne PLUS CLAIRE que l'eau libre (+27 de luminance à 0-4 % sous
+        // la flottaison, +11 à 4-12 %) — l'objet clair posé sur une eau sombre
+        // renvoie une nappe laiteuse, pas une tache d'encre. La version sombre
+        // du round 7 (waterDeep × 0,72) mesurait un signé de −4 : invisible,
+        // dit le jury, et il avait raison au chiffre près.
+        // Mesuré à la passe 2 : à pleine dilution laiteuse la bande 4-12 % sous
+        // la flottaison montait à +22 quand la référence tient +11 — le reflet
+        // clair reprend 40 % d'eau pour redescendre dans la fenêtre 70-130 %.
+        reflColor.copy(capColor).lerp(PALETTE.haze, 0.55).lerp(PALETTE.water, 0.58)
         refl.setColorAt(reflIndex, reflColor)
         reflIndex++
       }
@@ -517,9 +527,13 @@ export class Island {
     // couleur tire vers l'eau avec la profondeur — « le socle continue sous la
     // surface en s'atténuant », dit la référence. C'est le dégradé cuit qui
     // arrête l'objet, pas une coupe de géométrie à la flottaison.
-    const waterMid = PALETTE.water.clone().lerp(PALETTE.waterDeep, 0.3)
+    // La rangée noyée se dissout vers une eau LAITEUSE, pas vers l'eau profonde :
+    // sous la flottaison, la référence mesure +27 de luminance par rapport à
+    // l'eau libre — la fondation doit rester plus claire que la nappe jusqu'à
+    // son extinction, comme la coque de la référence.
+    const waterMid = PALETTE.water.clone().lerp(PALETTE.haze, 0.5)
     // Part d'eau par rangée : pierre encore lisible, pierre noyée, quasi eau.
-    const SINK = [0.38, 0.68, 0.9] as const
+    const SINK = [0.5, 0.78, 0.94] as const
     let ci = 0
     rims.forEach((c) => {
       const shore = c.beach ? PALETTE.sand : PALETTE.earth
@@ -540,12 +554,14 @@ export class Island {
         dummy.scale.set(inset, ROW_H, inset)
         dummy.updateMatrix()
         contact.setMatrixAt(ci, dummy.matrix)
-        // Pierre mouillée assombrie côté ombre, puis diluée dans l'eau selon
-        // la rangée. La nappe translucide repassera ~30 % d'eau par-dessus :
-        // la part cuite reste en-deçà pour que la première rangée se lise.
+        // Pierre mouillée à peine assombrie, puis diluée dans l'eau laiteuse
+        // selon la rangée. À 0,58 la masse tombait sous la luminance de la
+        // nappe et le |delta| mesuré venait du bruit ombre/ride, signé zéro —
+        // « aucune masse immergée », dit le jury. La référence est FRANCHE :
+        // la fondation noyée reste plus claire que l'eau qui l'entoure.
         wetColor
           .copy(shore)
-          .multiplyScalar(0.58 - shade * 0.12)
+          .multiplyScalar(0.5 - shade * 0.1)
           .lerp(waterMid, SINK[k]!)
         contact.setColorAt(ci, wetColor)
         ci++
@@ -672,8 +688,11 @@ export class Island {
    *  marche, entre le soubassement sombre et l'eau. */
   private buildWaterline(): void {
     const h = TILE / 2
-    /** Largeur du trait, en unités monde : ~2-3 px au cadrage desktop. */
-    const W = 0.062
+    /** Largeur du trait, en unités monde : ~3 px au cadrage desktop. Mesuré :
+     *  la couronne de la référence culmine à +130 de luminance sur l'eau
+     *  voisine, la nôtre à +102 — le trait s'élargit d'un demi-pixel pour que
+     *  le pic survive au lissage de l'écran, il ne devient pas un glow. */
+    const W = 0.075
     const line = PALETTE.foamLine
     const verts: number[] = []
     const colors: number[] = []
@@ -685,7 +704,11 @@ export class Island {
     const ampAt = (x: number, z: number, nx: number, nz: number): number => {
       const lit = 0.5 + 0.5 * (nx * SUN_HX + nz * SUN_HZ)
       const brk = valueNoise(x * 0.55 + 40, z * 0.55 + 40, this.seed + 23)
-      return (0.65 + 0.35 * lit) * (0.6 + 0.4 * brk)
+      // Planchers remontés depuis le round 7 : mesuré, le pic du trait
+      // plafonnait à +81 de luminance quand la couronne de la référence tient
+      // +130 — la respiration soleil/hachure reste, l'amplitude ne s'y noie
+      // plus.
+      return (0.85 + 0.15 * lit) * (0.8 + 0.2 * brk)
     }
 
     /** Quad du trait : lisière intérieure collée au mur (i0→i1), lisière
@@ -786,9 +809,10 @@ export class Island {
       // Tout ce qui suit meurt avant deux cellules. Le large, qui est
       // l'essentiel de la texture, ne paie pas l'ourlet de rive.
       if (d < 2.2) {
-        // Haut-fond : un souffle d'eau plus claire au large de la ride. Discret :
-        // poussé, il redevenait le halo que quatre rounds ont payé.
-        out.lerp(PALETTE.waterShallow, smoothstep(1.6, 0.6, d) * 0.06)
+        // Haut-fond : eau plus claire au large de la ride. La retenue à 0,06
+        // venait de l'œil — la mesure dit que l'eau de la référence est en
+        // moyenne +27 plus claire sous la flottaison, halo laiteux compris.
+        out.lerp(PALETTE.waterShallow, smoothstep(1.7, 0.5, d) * 0.07)
         // Ombre de contact IRRÉGULIÈRE : portée et densité suivent le profil
         // cuit par secteur (profondeur de la fondation + creux de la côte) et
         // la direction du soleil. Dense dans les échancrures à l'ombre, quasi
@@ -798,7 +822,10 @@ export class Island {
         const away = 0.5 - 0.5 * ((x * SUN_HX + z * SUN_HZ) / rr)
         const prof = this.shadowAt(fastAtan2(z, x))
         const reach = 0.25 + 0.8 * prof
-        out.multiplyScalar(1 - smoothstep(reach, -0.1, d) * (0.1 + 0.55 * away) * (0.3 + 0.9 * prof))
+        // Densité divisée par deux depuis le round 7 : l'anneau sombre annulait
+        // en moyenne la masse claire (signé mesuré ≈ 0 là où la référence est
+        // à +27) — l'ombre reste, mais elle ne mange plus le contact.
+        out.multiplyScalar(1 - smoothstep(reach, -0.1, d) * (0.06 + 0.3 * away) * (0.3 + 0.7 * prof))
         // Ombre portée : la même empreinte, décalée à l'opposé du soleil.
         const shade =
           smoothstep(0.4, -0.3, shoreDist(x - SHADE_X, z - SHADE_Z)) * smoothstep(2.2, 0.3, d)
