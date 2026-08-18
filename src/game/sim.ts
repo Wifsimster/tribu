@@ -110,7 +110,20 @@ export class Game {
 
     if (offlineSeconds > 60) {
       const before = { ...this.save.res }
-      this.produce(offlineSeconds)
+      // Une expédition en cours se poursuit sans le joueur ; le camp ne produit
+      // qu'une fois le colon rentré.
+      let workSeconds = offlineSeconds
+      const exp = this.save.expedition
+      if (exp) {
+        if (offlineSeconds >= exp.remaining) {
+          workSeconds = offlineSeconds - exp.remaining
+          this.finishExpedition()
+        } else {
+          exp.remaining -= offlineSeconds
+          workSeconds = 0
+        }
+      }
+      if (workSeconds > 0) this.produce(workSeconds)
       // Le commerce continue sans le joueur : quelques passages de barque sont
       // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
       if (this.save.age >= CARAVAN_AGE) {
@@ -223,6 +236,12 @@ export class Game {
   }
 
   private refreshRates(): void {
+    // Parti en expédition, le colon ne travaille plus au camp : tout s'arrête.
+    // C'est le vrai prix du voyage — le butin doit valoir le temps perdu.
+    if (this.save.expedition) {
+      for (const id of Object.keys(RESOURCES) as ResourceId[]) this.rates[id] = 0
+      return
+    }
     const encourage = this.encourageLeft > 0 ? ENCOURAGE_MULT : 1
     const carryBonus = 1 + this.carry * 0.02
     let material = 0
@@ -306,13 +325,16 @@ export class Game {
     this.save.res.food = this.amount('food') - EXPEDITION_FOOD_COST
     const total = this.expeditionDuration()
     this.save.expedition = { remaining: total, total }
+    this.refreshRates()
     this.emit({ type: 'expeditionStart' })
     return true
   }
 
   private finishExpedition(): void {
     const loot: Partial<Record<ResourceId, number>> = {}
-    const scale = 40 + this.save.age * 60
+    // Le camp s'arrête pendant l'expédition : le butin vaut environ le double
+    // de ce que 90 s de travail auraient rapporté, sinon partir serait un piège.
+    const scale = 90 + this.save.age * 80
     for (const id of this.unlocked) {
       if (id === 'insight') continue
       loot[id] = Math.round(scale * BASE_RATE[id] * this.mult[id])
@@ -324,6 +346,7 @@ export class Game {
     // A find is flavour, not power: it is what the settler brings home to look at.
     const find = Math.random() < 0.35 ? (FINDS[Math.floor(Math.random() * FINDS.length)] ?? null) : null
     this.save.expedition = null
+    this.refreshRates()
     this.emit({ type: 'expeditionEnd', loot, find })
   }
 
