@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -17,10 +18,13 @@ import {
   PointLight,
   RingGeometry,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   Vector3,
 } from 'three'
+import type { DataTexture } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { PALETTE, smoothstep, tint } from './palette'
+import { PALETTE, rampTexture, smoothstep, tint } from './palette'
 import type { Island } from './island'
 
 interface Pending {
@@ -45,12 +49,18 @@ const CAMP = {
   wood: { x: -1.77, z: 1.48 },
   frame: { x: -2.26, z: -1.13 },
   knap: { x: 2.9, z: 0.78 },
+  screen: { x: -2.05, z: -3.05 },
 } as const
+
+/** Le campement entier est joué plus grand que l'échelle du terrain. Sur un
+ *  téléphone la tente fait quarante pixels: à cette taille, la justesse
+ *  d'échelle perd contre le fait d'exister. Le colon est déjà joué ainsi. */
+const SCALE = 1.2
 
 /** Le colon rentre au feu, pas au centre géométrique de l'île: c'est ce qui
  *  fait du foyer un lieu où l'on revient, et non un décor à côté duquel on
  *  dépose. Lu par settler.ts. */
-export const CAMP_HOME = { x: HEARTH.x + 1.49, z: HEARTH.z + 0.07 }
+export const CAMP_HOME = { x: HEARTH.x + 1.49 * SCALE, z: HEARTH.z + 0.07 * SCALE }
 
 /** Position du foyer, pour que le colon sache vers quoi se tourner en rentrant. */
 export const CAMP_FIRE = { x: HEARTH.x, z: HEARTH.z }
@@ -58,14 +68,17 @@ export const CAMP_FIRE = { x: HEARTH.x, z: HEARTH.z }
 /** Emprise au sol de ce qui est plein, en monde: le colon la contourne. Un
  *  homme qui ressort par la peau d'une tente ruine le peu de solidité qu'on
  *  vient de donner au campement. */
-export const CAMP_BLOCKERS: readonly { x: number; z: number; r: number }[] = [
-  { x: HEARTH.x + CAMP.tent.x, z: HEARTH.z + CAMP.tent.z, r: 2.15 },
-  { x: HEARTH.x + CAMP.lean.x, z: HEARTH.z + CAMP.lean.z, r: 1.4 },
-  { x: HEARTH.x + CAMP.rack.x, z: HEARTH.z + CAMP.rack.z, r: 0.95 },
-  { x: HEARTH.x + CAMP.wood.x, z: HEARTH.z + CAMP.wood.z, r: 1.0 },
-  { x: HEARTH.x + CAMP.frame.x, z: HEARTH.z + CAMP.frame.z, r: 0.75 },
-  { x: HEARTH.x, z: HEARTH.z, r: 1.35 },
-]
+export const CAMP_BLOCKERS: readonly { x: number; z: number; r: number }[] = (
+  [
+    [CAMP.tent, 2.3],
+    [CAMP.lean, 1.5],
+    [CAMP.rack, 1.02],
+    [CAMP.wood, 1.0],
+    [CAMP.frame, 0.75],
+    [CAMP.screen, 1.25],
+    [{ x: 0, z: 0 }, 1.35],
+  ] as const
+).map(([s, r]) => ({ x: HEARTH.x + s.x * SCALE, z: HEARTH.z + s.z * SCALE, r: r * SCALE }))
 
 /** Regarder le feu ne suffit pas: une pièce ouverte tournée vers la flamme
  *  présente son dos à la caméra et redevient un panneau. Ces trois-là sont donc
@@ -103,7 +116,12 @@ const C = {
   water: PALETTE.water,
   ash: new Color('#544c45'),
   char: new Color('#332c27'),
+  // Au-dessus de 1: le matériau toon multiplie cette couleur par son éclairage,
+  // et sans cette marge une braise à l'ombre redevient une pastille brune.
+  emberCore: new Color(2.1, 1.02, 0.34),
+  emberFlame: new Color(2.6, 1.62, 0.7),
   smoke: new Color('#8d9aa0'),
+  emberSmoke: new Color('#e4854a'),
   sky: new Color('#cfe3ec'),
 } as const
 
@@ -142,7 +160,11 @@ function facingFire(x: number, z: number): number {
   return Math.atan2(-x, -z)
 }
 
-const FIRE_GLOW = new Color('#ff8a3c')
+const FIRE_GLOW = new Color('#ff8f3a')
+/** L'autre moitié du contraste. Ce qui tourne le dos à la flamme ne doit pas
+ *  seulement s'assombrir, il doit virer au bleu: sans ce froid-là, le campement
+ *  garde exactement la température de la forêt et se noie dedans. */
+const FIRE_SHADE = new Color('#3c5772')
 
 /** Une lampe ponctuelle assez forte pour teinter la tente brûlerait les pierres
  *  du foyer. La chaleur est donc peinte dans les sommets, face par face: seules
@@ -155,17 +177,62 @@ function bakeFirelight(geo: BufferGeometry): void {
   if (!pos || !nor || !col) return
   const c = new Color()
   for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i)
     const dx = -pos.getX(i)
-    const dy = 0.75 - pos.getY(i)
+    const dy = 0.8 - y
     const dz = -pos.getZ(i)
     const d = Math.max(0.05, Math.hypot(dx, dy, dz))
     const facing = (dx * nor.getX(i) + dy * nor.getY(i) + dz * nor.getZ(i)) / d
-    const k = Math.max(0, facing) * smoothstep(4.2, 1.1, d) * 0.5
-    if (k < 0.005) continue
-    c.setRGB(col.getX(i), col.getY(i), col.getZ(i)).lerp(FIRE_GLOW, k)
+    const reach = smoothstep(6.6, 0.8, d)
+    if (reach < 0.004) continue
+    c.setRGB(col.getX(i), col.getY(i), col.getZ(i))
+    // Concentré sur les faces vraiment tournées vers la flamme: étalé sur tout
+    // l'hémisphère, ce n'est plus un liseré, c'est une couche de peinture.
+    const warm = Math.min(0.8, Math.pow(Math.max(0, facing), 1.25) * reach * 0.92)
+    // Le rebond du sol remonte sous les peaux: c'est ce bas éclairé qui pose le
+    // campement sur sa terre battue au lieu de l'y superposer.
+    const bounce = smoothstep(1.7, 0, y) * reach * 0.22
+    const cool = Math.max(0, -facing) * reach
+    if (cool > 0.01) c.lerp(FIRE_SHADE, cool * 0.3).multiplyScalar(1 - cool * 0.1)
+    const k = Math.min(0.92, warm + bounce)
+    // Le gain final est retenu sur ce qui est déjà clair: sans ce frein, les
+    // peaux tendues, qui sont les surfaces les plus pâles et les plus tournées
+    // vers la flamme, partaient en drap blanc.
+    if (k > 0.004) {
+      const lum = c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+      c.lerp(FIRE_GLOW, k).multiplyScalar(1 + k * 0.34 * (1 - smoothstep(0.45, 0.95, lum)))
+    }
     col.setXYZ(i, c.r, c.g, c.b)
   }
   col.needsUpdate = true
+}
+
+/** Grain de matière. Une valeur légèrement différente par sommet, tirée de sa
+ *  position: c'est ce qui tient lieu d'enduit tacheté et d'appareillage
+ *  irrégulier, et ça se range dans l'attribut de couleur qu'on paie déjà. */
+function grain(geo: BufferGeometry, amount = 0.11): void {
+  const pos = geo.attributes.position
+  const col = geo.attributes.color
+  if (!pos || !col) return
+  for (let i = 0; i < pos.count; i++) {
+    const s = Math.sin(pos.getX(i) * 51.7 + pos.getY(i) * 97.3 + pos.getZ(i) * 31.1) * 43758.5453
+    const n = (s - Math.floor(s) - 0.5) * 2 * amount
+    // Le bleu bouge moins que le rouge: les éclats sont chauds, les creux
+    // froids, comme sur une pierre vraiment taillée.
+    col.setXYZ(i, col.getX(i) * (1 + n), col.getY(i) * (1 + n * 0.9), col.getZ(i) * (1 + n * 0.72))
+  }
+  col.needsUpdate = true
+}
+
+/** Halo du foyer: un disque additif toujours face caméra. Une lampe ponctuelle
+ *  ne peint rien à cette distance — c'est ce disque, et lui seul, qui fait que
+ *  la flamme a l'air d'émettre au lieu d'être un sprite posé. */
+function haloTexture(inner: Color, outer: Color, power: number): DataTexture {
+  return rampTexture(64, 64, (u, v, out) => {
+    const d = Math.min(1, Math.hypot(u - 0.5, v - 0.5) * 2)
+    out.copy(inner).lerp(outer, smoothstep(0, 0.72, d))
+    return Math.pow(1 - smoothstep(0, 1, d), power)
+  })
 }
 
 /** Halo circulaire dégradé, posé à plat sur le sol. L'alpha vit dans la couleur
@@ -464,6 +531,116 @@ function knappingSpot(): BufferGeometry[] {
   return p
 }
 
+/** Paravent de branches tressées, planté au vent derrière le foyer. Il ferme la
+ *  silhouette du campement du côté où il n'y avait que de l'herbe, et sa face
+ *  intérieure est le plus grand pan que la flamme éclaire vraiment. */
+function windScreen(width: number, height: number): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  const bow = 0.5
+  for (let i = 0; i < 6; i++) {
+    const u = i / 5 - 0.5
+    const x = u * width
+    const z = -bow * (1 - 4 * u * u)
+    const h = height * (0.82 + 0.18 * (1 - Math.abs(u) * 1.6)) + 0.2
+    // Les pieux descendent sous le sol: une palissade qui affleure exactement
+    // la terre a l'air posée dessus, pas plantée dedans.
+    p.push(
+      part(new CylinderGeometry(0.045, 0.062, h, 5), i % 2 ? C.woodDark : C.wood, x, h / 2 - 0.2, z),
+    )
+  }
+  // Clayonnage: des brins qui passent devant et derrière, d'où le décalage en z
+  // alterné. Sans lui c'est une palissade, pas un tressage.
+  for (let k = 0; k < 5; k++) {
+    const y = height * (0.08 + k * 0.2)
+    for (let i = 0; i < 5; i++) {
+      const u0 = i / 5 - 0.5
+      const u1 = (i + 1) / 5 - 0.5
+      const z0 = -bow * (1 - 4 * u0 * u0) + ((i + k) % 2 ? 0.07 : -0.07)
+      const z1 = -bow * (1 - 4 * u1 * u1) + ((i + k) % 2 ? 0.07 : -0.07)
+      const len = Math.hypot((u1 - u0) * width, z1 - z0)
+      p.push(
+        part(
+          new CylinderGeometry(0.036, 0.036, len + 0.05, 4)
+            .rotateZ(Math.PI / 2)
+            .rotateY(Math.atan2(z1 - z0, (u1 - u0) * width)),
+          k % 2 ? tint(C.wood, k * 5 + i, 0.09) : tint(C.woodDark, i * 3, 0.09),
+          ((u0 + u1) / 2) * width,
+          y,
+          (z0 + z1) / 2,
+        ),
+      )
+    }
+  }
+  // Pas de peau tendue ici: une seconde tache pâle à côté du séchoir et du
+  // cadre faisait trois draps blancs alignés, et le campement redevenait un
+  // étal. Le tressage seul suffit à fermer la silhouette.
+  for (let i = 0; i < 3; i++) {
+    p.push(
+      part(
+        new DodecahedronGeometry(0.17 + (i % 2) * 0.04, 0).rotateY(i).scale(1, 0.6, 1),
+        tint(PALETTE.rock, i * 8, 0.09),
+        (i - 1) * width * 0.33,
+        0.06,
+        0.2,
+      ),
+    )
+  }
+  return p
+}
+
+/** Godet de braises sur trois pierres. C'est la lanterne du paléolithique: un
+ *  second point chaud, loin du foyer, qui dit qu'on habite là sans montrer
+ *  personne. La couleur du cœur passe au-dessus de 1 — le matériau toon la
+ *  multiplie par son éclairage, il faut cette marge pour qu'il reste brûlant. */
+function emberBowl(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2
+    p.push(
+      part(
+        new DodecahedronGeometry(0.13, 0).rotateY(i).scale(1, 0.7, 1),
+        tint(PALETTE.rockDark, i * 5, 0.08),
+        Math.cos(a) * 0.2,
+        0.06,
+        Math.sin(a) * 0.2,
+      ),
+    )
+  }
+  p.push(part(new CylinderGeometry(0.22, 0.16, 0.16, 8), C.char, 0, 0.2, 0))
+  p.push(part(new CylinderGeometry(0.19, 0.19, 0.05, 8), C.emberCore, 0, 0.29, 0))
+  p.push(part(new ConeGeometry(0.11, 0.22, 6), C.emberFlame, 0, 0.38, 0))
+  return p
+}
+
+/** Dallage: des pierres plates et dissemblables posées là où l'on marche. Un
+ *  sol qui a de la matière fait autant pour l'habitat qu'un mur de plus, et il
+ *  reçoit la lumière du feu à plat, donc en pleine face. */
+function paving(
+  out: BufferGeometry[],
+  cx: number,
+  cz: number,
+  radius: number,
+  count: number,
+  seed: number,
+): void {
+  for (let i = 0; i < count; i++) {
+    const a = i * 2.399 + seed
+    const r = radius * (0.3 + ((i * 7 + seed) % 5) * 0.175)
+    const s = 0.15 + ((i * 3 + seed) % 4) * 0.038
+    out.push(
+      part(
+        new DodecahedronGeometry(s, 0).rotateY(i * 1.7 + seed).scale(1.5, 0.13, 1.5),
+        // Enfoncées dans la terre battue et non posées dessus: des pierres
+        // claires font un champ de cailloux, pas un seuil.
+        tint(i % 3 === 0 ? PALETTE.rockDark : PALETTE.dirtDark, i * 6 + seed, 0.13),
+        cx + Math.cos(a) * r,
+        0.035,
+        cz + Math.sin(a) * r,
+      ),
+    )
+  }
+}
+
 /** Toit à deux pentes couvert de rangs de tuiles décalés, plus la faîtière et la
  *  planche de rive claires. Le rang, pas la tuile: assez dense de loin, tenable
  *  en triangles. */
@@ -556,13 +733,17 @@ export class Village {
   private smoke!: InstancedMesh
   private fireLight!: PointLight
   private glowMat!: MeshBasicMaterial
+  private halo!: Sprite
+  private haloCore!: Sprite
 
   constructor(private island: Island) {
     this.buildCampfire()
   }
 
   private mesh(p: BufferGeometry[]): Mesh {
-    const m = new Mesh(mergeGeometries(p) ?? new BufferGeometry(), this.solid)
+    const geo = mergeGeometries(p) ?? new BufferGeometry()
+    grain(geo)
+    const m = new Mesh(geo, this.solid)
     m.castShadow = true
     m.receiveShadow = true
     return m
@@ -600,6 +781,7 @@ export class Village {
     }
     this.camp(p)
     const geo = mergeGeometries(p) ?? new BufferGeometry()
+    grain(geo)
     bakeFirelight(geo)
     const hearth = new Mesh(geo, this.solid)
     hearth.castShadow = true
@@ -627,7 +809,9 @@ export class Village {
     // village un centre vivant même quand le colon est parti à l'autre bout.
     this.smoke = new InstancedMesh(
       new IcosahedronGeometry(0.3, 1),
-      new MeshBasicMaterial({ transparent: true, opacity: 0.26, depthWrite: false }),
+      // Plus discrète qu'avant: à neuf boules pleines, la colonne se lisait
+      // comme un chapelet de disques posés devant la tente.
+      new MeshBasicMaterial({ transparent: true, opacity: 0.17, depthWrite: false }),
       9,
     )
     this.smoke.frustumCulled = false
@@ -639,11 +823,49 @@ export class Village {
     this.fireLight = new PointLight(0xff9d4e, 1.5, 10, 1.7)
     this.fireLight.position.y = 1.0
 
-    fire.add(hearth, this.flame, this.core, this.embers, this.smoke, this.fireLight)
+    // Deux nappes: une large et sourde qui baigne les abris, une serrée et
+    // brûlante autour de la flamme. C'est le halo qui manquait — sans lui la
+    // flamme reste un cône orange collé sur une image froide.
+    this.halo = new Sprite(
+      new SpriteMaterial({
+        map: haloTexture(new Color('#ffbe72'), new Color('#c2470f'), 2.1),
+        blending: AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false,
+      }),
+    )
+    this.halo.scale.set(6.4, 6.4, 1)
+    this.halo.position.y = 1.15
+    this.haloCore = new Sprite(
+      new SpriteMaterial({
+        // Assez chaud pour rester orange une fois additionné: un cœur blanc
+        // mange la flamme au lieu de l'entourer.
+        map: haloTexture(new Color('#ffbe6a'), new Color('#e2560c'), 1.9),
+        blending: AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false,
+      }),
+    )
+    this.haloCore.scale.set(2.5, 2.5, 1)
+    this.haloCore.position.y = 0.86
+
+    fire.add(
+      hearth,
+      this.flame,
+      this.core,
+      this.embers,
+      this.smoke,
+      this.fireLight,
+      this.halo,
+      this.haloCore,
+    )
     this.addDecals(fire, fireY)
     // Le colon rentre "au feu", c'est-à-dire au point (0,0,0) que lui fixe la
     // boucle: si le foyer y était aussi, il passerait sa vie dans les flammes.
     fire.position.set(HEARTH.x, fireY, HEARTH.z)
+    fire.scale.setScalar(SCALE)
     this.group.add(fire)
   }
 
@@ -651,13 +873,20 @@ export class Village {
    *  deux tuiles et bat avec la flamme, et les ombres de contact qui posent les
    *  abris sur la terre. Sans elles, tout le campement lévite. */
   private addDecals(fire: Group, fireY: number): void {
+    // Les nappes vivent dans le repère du campement, qui est agrandi: la
+    // hauteur du terrain doit être ramenée dans ce repère, sinon elles
+    // s'enfoncent d'un cinquième de palier.
     const at = (x: number, z: number): number =>
-      this.island.heightAt(HEARTH.x + x, HEARTH.z + z) - fireY + 0.03
+      (this.island.heightAt(HEARTH.x + x * SCALE, HEARTH.z + z * SCALE) - fireY) / SCALE + 0.03
 
-    const warm = new Color('#ef8a3a')
+    // Nappe additive et non peinte: elle éclaircit et sature ce qu'elle
+    // recouvre au lieu de le repeindre, donc la terre battue reste de la terre.
+    // Et elle porte trois fois plus loin qu'avant — une flaque qui s'arrête au
+    // pied de la tente n'éclaire rien, elle décore le foyer.
     const glow = [
-      glowDisc(3.15, warm, 0.5, 22).translate(0, at(0, 0), 0),
-      glowDisc(1.5, new Color('#ffb45c'), 0.34, 16).translate(0, at(0, 0) + 0.005, 0),
+      glowDisc(7.4, new Color('#d4621d'), 0.34, 26).translate(0, at(0, 0), 0),
+      glowDisc(3.4, new Color('#ef8a3a'), 0.5, 22).translate(0, at(0, 0) + 0.004, 0),
+      glowDisc(1.5, new Color('#ffb45c'), 0.46, 16).translate(0, at(0, 0) + 0.008, 0),
       // Braises visibles par la porte de la tente: quelqu'un est rentré.
       glowDisc(0.46, new Color('#ffc06a'), 0.9, 10)
         .rotateX(Math.PI / 2 - 0.42)
@@ -668,8 +897,26 @@ export class Village {
           CAMP.tent.z + Math.cos(TENT_YAW) * 1.68,
         ),
     ]
+    // Chaque brasero a sa flaque au sol et son halo debout, incliné vers l'œil:
+    // c'est le halo qui fait qu'une lanterne éclaire au lieu de seulement
+    // briller, et ces deux-là signent l'habitat loin du foyer.
+    const lamp = new Color('#e88a35')
+    for (const [x, z] of [
+      [CAMP.tent.x + 1.72, CAMP.tent.z + 1.02],
+      [CAMP.frame.x - 0.95, CAMP.frame.z + 0.5],
+    ] as const) {
+      glow.push(glowDisc(1.4, lamp, 0.5, 14).translate(x, at(x, z) + 0.002, z))
+      glow.push(
+        glowDisc(0.62, new Color('#ffc275'), 0.72, 10)
+          .rotateX(Math.PI / 2 - 0.55)
+          .rotateY(CAMERA_YAW)
+          .translate(x, at(x, z) + 0.34, z),
+      )
+    }
 
-    const dark = new Color('#2a2419')
+    // Ombre franchement bleue: c'est l'écart de température, plus que l'écart
+    // de valeur, qui détache un campement chaud d'une île verte et froide.
+    const dark = new Color('#16344f')
     const shade: [number, number, number, number][] = [
       [CAMP.tent.x, CAMP.tent.z, 1.95, 0.36],
       [CAMP.lean.x, CAMP.lean.z, 1.35, 0.3],
@@ -677,6 +924,7 @@ export class Village {
       [CAMP.wood.x, CAMP.wood.z, 1.1, 0.28],
       [CAMP.frame.x, CAMP.frame.z, 0.85, 0.22],
       [CAMP.knap.x, CAMP.knap.z, 0.8, 0.18],
+      [CAMP.screen.x, CAMP.screen.z, 1.3, 0.26],
     ]
     const contact = shade.map(([x, z, r, a]) =>
       glowDisc(r, dark, a, 14).translate(x, at(x, z) - 0.005, z),
@@ -686,6 +934,8 @@ export class Village {
       vertexColors: true,
       transparent: true,
       depthWrite: false,
+      blending: AdditiveBlending,
+      fog: false,
     })
     const glowMesh = new Mesh(mergeGeometries(glow) ?? new BufferGeometry(), this.glowMat)
     glowMesh.renderOrder = 2
@@ -708,12 +958,13 @@ export class Village {
 
     // Deux loges, une grande et une petite, dont les silhouettes se recouvrent à
     // l'écran: c'est une masse bâtie, pas deux objets posés côte à côte.
-    put(hideTent(1.9, 3.6), CAMP.tent, TENT_YAW)
-    put(hideTent(1.15, 2.15), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
-    put(dryingRack(1.85, 1.7), CAMP.rack, CAMERA_YAW + 0.3)
+    put(hideTent(2.04, 3.88), CAMP.tent, TENT_YAW)
+    put(hideTent(1.24, 2.32), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
+    put(dryingRack(2.0, 1.82), CAMP.rack, CAMERA_YAW + 0.3)
     put(woodPile(1.75), CAMP.wood)
     put(hideFrame(1.15, 1.4), CAMP.frame, CAMERA_YAW - 0.2)
     put(knappingSpot(), CAMP.knap)
+    put(windScreen(2.6, 1.45), CAMP.screen)
 
     // Deux sièges au bord du foyer: c'est ce qui transforme un feu en veillée.
     p.push(
@@ -765,6 +1016,18 @@ export class Village {
     }
     p.push(part(new SphereGeometry(0.26, 8, 6).scale(1.15, 0.72, 1), C.hide, -0.75, 0.18, -1.45))
     p.push(part(new BoxGeometry(0.4, 0.06, 0.3).rotateY(0.4), C.hideLight, -0.75, 0.36, -1.45))
+
+    // Le sol du campement: un dallage devant chaque seuil et le long du chemin
+    // du feu à la tente. C'est plat, donc ça prend la lumière du foyer de plein
+    // fouet — la nappe chaude devient de la matière et non un calque.
+    paving(p, CAMP.tent.x * 0.5, CAMP.tent.z * 0.52, 1.5, 7, 1)
+    paving(p, CAMP.rack.x * 0.55, CAMP.rack.z * 0.6, 1.15, 4, 5)
+    paving(p, -1.42, -0.35, 1.25, 5, 9)
+
+    // Deux braseros loin de la flamme: la présence humaine se signe par des
+    // points de feu allumés, pas par des figurants.
+    place(p, emberBowl(), 0, CAMP.tent.x + 1.72, CAMP.tent.z + 1.02)
+    place(p, emberBowl(), 0, CAMP.frame.x - 0.95, CAMP.frame.z + 0.5)
   }
 
   /** Le village se construit derrière le feu, jamais devant. Un bâtiment qui se
@@ -1045,7 +1308,12 @@ export class Village {
     this.fireLight.intensity = 1.45 + Math.sin(t * 9) * 0.35
     // La flaque de lumière bat avec la flamme: une nappe orange immobile se lit
     // comme un autocollant peint sur l'herbe.
-    this.glowMat.opacity = 0.9 + Math.sin(t * 7.4) * 0.1 + Math.sin(t * 3.1) * 0.05
+    const pulse = 0.9 + Math.sin(t * 7.4) * 0.1 + Math.sin(t * 3.1) * 0.05
+    this.glowMat.opacity = pulse
+    this.halo.material.opacity = pulse * 0.8
+    this.halo.scale.setScalar(6.4 * (0.94 + (f - 1) * 0.6))
+    this.haloCore.material.opacity = pulse * 0.62
+    this.haloCore.scale.setScalar(2.5 * f)
 
     for (let i = 0; i < 7; i++) {
       const u = (t * 0.75 + i * 0.143) % 1
@@ -1072,7 +1340,10 @@ export class Village {
       this.dummy.updateMatrix()
       this.smoke.setMatrixAt(i, this.dummy.matrix)
       // La fumée se dissout en virant vers le ciel, faute d'alpha par instance.
-      this.smoke.setColorAt(i, this.scratch.copy(C.smoke).lerp(C.sky, u))
+      // Sa base prend la flamme: une colonne grise dès le premier bouffée dit
+      // que le feu est éteint.
+      this.scratch.copy(C.emberSmoke).lerp(C.smoke, smoothstep(0, 0.3, u))
+      this.smoke.setColorAt(i, this.scratch.lerp(C.sky, u))
     }
     this.smoke.instanceMatrix.needsUpdate = true
     if (this.smoke.instanceColor) this.smoke.instanceColor.needsUpdate = true

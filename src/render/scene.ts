@@ -17,7 +17,7 @@ import {
 import type { DataTexture } from 'three'
 import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
-import { PALETTE, rampTexture, smoothstep } from './palette'
+import { PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
 
 /** Phones get one pixel of DPR headroom, not three. This single clamp is the
  *  difference between 60 fps and 25 fps on a mid-range Android. */
@@ -85,7 +85,7 @@ export class Stage {
     // Le soleil vient de la gauche et de derrière l'épaule gauche : sur le
     // cadrage par défaut, une face est éclairée, l'autre tombe dans l'ombre.
     this.sun = new DirectionalLight(0xfff1d8, 2.35)
-    this.sun.position.set(-34, 46, 24)
+    this.sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z)
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(1024, 1024)
     this.sun.shadow.camera.left = -26

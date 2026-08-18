@@ -45,6 +45,13 @@ const C = {
 const OUTLINE = new MeshBasicMaterial({ color: 0x33261c, side: BackSide })
 const SPARK = new MeshBasicMaterial({ color: 0xfff0cf })
 
+/** Le colon est le seul objet mobile du campement: sa chaleur ne peut pas être
+ *  cuite dans les sommets comme celle des abris. Elle passe donc par l'émissif
+ *  de son matériau, remonté quand il approche du foyer et battu au rythme de la
+ *  flamme — sinon il traverse la nappe de lumière sans jamais la recevoir. */
+const FIRE_WARM = new Color('#ff8a34')
+const FIRE_REACH = 5.4
+
 /** Il s'attarde au foyer au lieu d'y faire demi-tour: sur un arrêt sur image,
  *  c'est ce qui donne une chance au colon d'être vu chez lui plutôt qu'en train
  *  de traverser un bois. */
@@ -124,6 +131,7 @@ export class Settler {
   private swing = 0
   private cheer = 0
   private yaw = 0
+  private clock = 0
   private readonly home = new Vector3(0, 0, 0)
   private destination = new Vector3(3, 0, 3)
   private speed = 2.4
@@ -331,9 +339,23 @@ export class Settler {
 
     this.updateChips(dt)
     this.skirtCamp()
+    this.takeFirelight(dt)
 
     const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
     this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+  }
+
+  /** Un seul uniforme par image, pas une lumière de plus: la scène en compte
+   *  déjà trois et une quatrième coûterait un programme par matériau. */
+  private takeFirelight(dt: number): void {
+    this.clock += dt
+    const d = Math.hypot(
+      this.group.position.x - CAMP_FIRE.x,
+      this.group.position.z - CAMP_FIRE.z,
+    )
+    const k = Math.max(0, 1 - d / FIRE_REACH) ** 1.6
+    const flicker = 0.88 + Math.sin(this.clock * 9) * 0.08 + Math.sin(this.clock * 5.1) * 0.04
+    this.skin.emissive.copy(FIRE_WARM).multiplyScalar(k * 0.15 * flicker)
   }
 
   /** Repoussé hors des abris à chaque pas plutôt que guidé par un chemin: il

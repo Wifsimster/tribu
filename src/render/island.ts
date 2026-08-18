@@ -1,5 +1,7 @@
 import {
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   CircleGeometry,
   Color,
   ConeGeometry,
@@ -17,7 +19,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three'
-import { PALETTE, ramp, rampTexture, smoothstep, tint } from './palette'
+import { PALETTE, SUN_DIR, ramp, rampTexture, smoothstep, tint } from './palette'
 
 /** Small deterministic PRNG — the island must look identical on every reload. */
 function mulberry32(seed: number): () => number {
@@ -83,23 +85,46 @@ const STEP = 0.44
  *  arête de géométrie. Un socle qui plongeait jusqu'au fond se diluait dans la
  *  brume et l'île semblait flotter au-dessus de son reflet. */
 const BED_Y = -0.02
-/** Vrai miroir vertical, sans écrasement : c'est l'écrasement qui donnait à
- *  l'image du dessous l'air d'un tampon plutôt que d'un reflet. */
-const MIRROR = 1
-/** Bande mouillée retenue au-dessus de l'arête, sur tout le pourtour. */
-const WET = 0.17
+/** Le reflet est étiré vers le fond, jamais écrasé : à l'oblique, l'eau allonge
+ *  ce qu'elle renvoie. L'écrasement, lui, donnait un tampon. */
+const MIRROR = 2.4
+/** Opacité du reflet à la ligne d'eau. Il s'éteint ensuite en profondeur : c'est
+ *  l'arête franche du bas qui le faisait lire comme un empilement de boîtes. */
+const REFL_ALPHA = 0.85
+/** Bande mouillée sombre retenue au-dessus de l'arête, sur tout le pourtour. */
+const WET = 0.15
+/** Liseré spéculaire : la ligne claire pile au contact, sous la bande mouillée. */
+const SHEEN = 0.05
+/** Jupe immergée : la falaise continue sous la surface au lieu d'être tranchée
+ *  net. C'est elle qui empêche les faces basses de virer au noir vide — vues à
+ *  travers l'eau, elles doivent tirer vers le bleu. */
+const SUB = 0.4
 const PLAZA_RADIUS = 5.1
 /** Clairière de terre battue. Centrée entre l'origine et le foyer que village.ts
  *  pose en (-1,15 ; 1,15), pour rester dans la place plate. */
 const TROD = { x: -0.6, z: 0.6, r: 4.1 }
 /** Rayon sans sapin autour du feu : la forêt doit encadrer le campement, pas
  *  le manger. */
-const CLEAR_RADIUS = 8.2
+const CLEAR_RADIUS = 8.6
+
+/** La clairière est creusée plus loin derrière le campement que sur ses côtés.
+ *  Au cadrage par défaut, la caméra regarde vers (−x,−z) : un sapin planté là
+ *  monte à l'écran d'un demi-mètre par mètre de recul et vient poser sa base
+ *  contre la pointe des tipis, alors qu'il en est loin dans le monde. */
+function clearRadius(x: number, z: number): number {
+  const dx = x - TROD.x
+  const dz = z - TROD.z
+  const d = Math.hypot(dx, dz)
+  if (d < 1e-3) return CLEAR_RADIUS
+  const back = Math.max(0, -(dx + dz) / (Math.SQRT2 * d))
+  return CLEAR_RADIUS + back * back * back * 3.2
+}
 
 const EDGE_BASE = 9.3
-const EDGE_MAX = EDGE_BASE + 1.15 + 0.6 + 0.8
-/** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran. */
-export const ISLAND_RADIUS = EDGE_MAX * TILE + 0.6
+const DEFAULT_SEED = 1337
+/** Nombre de secteurs de la table de silhouette. À ce rayon, un secteur mesure
+ *  un tiers de tuile : assez fin pour que la ride suive la découpe. */
+const HULL_BINS = 256
 
 /** Silhouette lobée plutôt qu'un disque : c'est le contour qui fait lire
  *  l'île comme un objet posé, pas comme un morceau de terrain. */
@@ -112,6 +137,26 @@ function shoreEdge(theta: number, seed: number): number {
   )
 }
 
+/** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran.
+ *  Mesuré sur la grille, pas majoré. La somme des amplitudes des trois lobes
+ *  n'est jamais atteinte au même angle, et aucune tuile ne tombe sur ce maximum
+ *  théorique : la valeur en dur surestimait le rayon de 5 %, autant de marge
+ *  d'eau payée au cadrage pour du bleu uni. */
+export const ISLAND_RADIUS = (() => {
+  const half = GRID / 2
+  const corner = TILE / 2
+  let far = 0
+  for (let gx = 0; gx < GRID; gx++) {
+    for (let gz = 0; gz < GRID; gz++) {
+      const dx = gx - half + 0.5
+      const dz = gz - half + 0.5
+      if (Math.hypot(dx, dz) > shoreEdge(Math.atan2(dz, dx), DEFAULT_SEED)) continue
+      far = Math.max(far, Math.hypot(Math.abs(dx) * TILE + corner, Math.abs(dz) * TILE + corner))
+    }
+  }
+  return far
+})()
+
 export interface Cell {
   gx: number
   gz: number
@@ -123,7 +168,7 @@ export interface Cell {
   inland: number
   /** Occlusion cuite par cellule : les creux et les pieds de falaise foncent. */
   ao: number
-  /** Cellule du pourtour : c'est elle qui porte la bande mouillée. */
+  /** Cellule du pourtour : c'est elle qui porte l'ourlet de rive. */
   rim: boolean
   /** Terre battue de la clairière. */
   trod: boolean
@@ -139,8 +184,10 @@ export class Island {
   readonly buildSlots: Vector3[] = []
   private kindOf = new Map<InstancedMesh, NodeKind>()
   private byKey = new Map<number, Cell>()
+  /** Rayon de la silhouette rendue, par secteur angulaire. */
+  private hull = new Float32Array(HULL_BINS)
 
-  constructor(private readonly seed = 1337) {
+  constructor(private readonly seed = DEFAULT_SEED) {
     const rnd = mulberry32(seed)
     const half = GRID / 2
     const plaza = STEP * 4
@@ -184,9 +231,66 @@ export class Island {
     }
 
     this.bakeOcclusion()
+    this.bakeFootprint()
     this.buildTerrain()
     this.buildWater()
+    this.buildRipple()
     this.scatter(rnd)
+  }
+
+  /** Empreinte réellement rendue : l'enveloppe polaire des coins des tuiles du
+   *  pourtour. `shoreEdge` n'est que la courbe théorique ; ce que l'oeil voit
+   *  est sa version quantifiée en tuiles, et c'est sur elle — pas sur une
+   *  ellipse — que la ride et l'ombre de contact doivent se découper. */
+  private bakeFootprint(): void {
+    const step = (Math.PI * 2) / HULL_BINS
+    // Plancher tiré de la courbe théorique : aucun secteur ne peut rester vide,
+    // même dans une échancrure que les coins de tuiles couvrent mal.
+    for (let i = 0; i < HULL_BINS; i++) {
+      this.hull[i] = (shoreEdge(i * step, this.seed) - 0.7) * TILE
+    }
+    const h = TILE / 2
+    for (const c of this.cells) {
+      if (!c.rim) continue
+      const a0 = Math.atan2(c.z, c.x)
+      let lo = 0
+      let hi = 0
+      let far = 0
+      for (let k = 0; k < 4; k++) {
+        const cx = c.x + (k & 1 ? h : -h)
+        const cz = c.z + (k & 2 ? h : -h)
+        far = Math.max(far, Math.hypot(cx, cz))
+        let a = Math.atan2(cz, cx) - a0
+        if (a > Math.PI) a -= Math.PI * 2
+        else if (a < -Math.PI) a += Math.PI * 2
+        lo = Math.min(lo, a)
+        hi = Math.max(hi, a)
+      }
+      const i0 = Math.floor((a0 + lo) / step)
+      const i1 = Math.ceil((a0 + hi) / step)
+      for (let i = i0; i <= i1; i++) {
+        const j = ((i % HULL_BINS) + HULL_BINS) % HULL_BINS
+        if (far > this.hull[j]!) this.hull[j] = far
+      }
+    }
+    // Un cran de lissage : la ride épouse la découpe, elle n'en recopie pas
+    // chaque marche d'escalier.
+    const smooth = new Float32Array(HULL_BINS)
+    for (let i = 0; i < HULL_BINS; i++) {
+      smooth[i] =
+        this.hull[(i + HULL_BINS - 1) % HULL_BINS]! * 0.25 +
+        this.hull[i]! * 0.5 +
+        this.hull[(i + 1) % HULL_BINS]! * 0.25
+    }
+    this.hull = smooth
+  }
+
+  /** Rayon de la silhouette dans une direction, interpolé entre deux secteurs. */
+  private hullAt(theta: number): number {
+    const f = (((theta / (Math.PI * 2)) % 1) + 1) * HULL_BINS
+    const i = Math.floor(f)
+    const k = f - i
+    return this.hull[i % HULL_BINS]! * (1 - k) + this.hull[(i + 1) % HULL_BINS]! * k
   }
 
   /** Une cellule cernée de voisins plus hauts reçoit moins de ciel. Sans ça les
@@ -223,14 +327,27 @@ export class Island {
     const geo = new BoxGeometry(TILE, 1, TILE)
     const mat = new MeshLambertMaterial()
     const rims = this.cells.filter((c) => c.rim)
-    // Deux boîtes par cellule — socle de terre, couche d'herbe — plus une bande
-    // mouillée sur le seul pourtour. La troisième boîte d'avant descendait
-    // jusqu'au fond de l'eau : c'est elle qui noyait la ligne de flottaison.
-    const mesh = new InstancedMesh(geo, mat, this.cells.length * 2 + rims.length)
+    // Deux boîtes par cellule : socle de terre, couche d'herbe.
+    const mesh = new InstancedMesh(geo, mat, this.cells.length * 2)
     mesh.castShadow = true
     mesh.receiveShadow = true
 
-    const refl = new InstancedMesh(geo, new MeshBasicMaterial(), this.cells.length)
+    // L'ourlet de rive est peint sans lumière : le liseré doit tenir sur la face
+    // à l'ombre comme sur celle au soleil, et l'eau ne fait pas de clair-obscur
+    // sur ce qu'elle noie. Éclairé, il s'éteignait sur la moitié du pourtour —
+    // exactement la moitié où les falaises viraient au noir.
+    const contact = new InstancedMesh(geo, new MeshBasicMaterial(), rims.length * 3)
+
+    // Seule la bande côtière se reflète : au-delà, le reflet d'une colonne est
+    // masqué par l'île elle-même et ne fait que s'empiler sous elle.
+    const mirrored = this.cells.filter((c) => c.inland < 4)
+    const refl = new InstancedMesh(
+      this.reflectionBox(),
+      new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
+      mirrored.length,
+    )
+    refl.renderOrder = -2
+    let reflIndex = 0
 
     const dummy = new Object3D()
     const capColor = new Color()
@@ -271,48 +388,150 @@ export class Island {
         .copy(PALETTE.earth)
         .lerp(PALETTE.earthDark, 0.68 - smoothstep(0.4, 1.8, c.height) * 0.3)
         .multiplyScalar(c.ao * 0.88)
+      // Le pied des falaises du pourtour prend un rien de l'eau qui le baigne :
+      // sans ça, la face à l'ombre tombe dans un brun quasi noir alors qu'elle
+      // devrait tirer vers le bleu de ce qui la mouille.
+      if (c.rim) socleColor.lerp(PALETTE.water, 0.14)
 
       mesh.setColorAt(i * 2, socleColor)
       mesh.setColorAt(i * 2 + 1, capColor)
 
-      // Reflet : la colonne, retournée, accrochée exactement à l'arête (y=0).
-      // Elle est décalée et élargie d'un rien avec la profondeur — l'eau ne
-      // renvoie pas une copie nette, elle l'étire latéralement.
-      const mirror = Math.max(0.06, c.height * MIRROR)
-      const drift = 0.04 + mirror * 0.06
-      dummy.position.set(
-        c.x + Math.sin(c.gx * 1.73 + c.gz * 0.91) * drift,
-        -mirror / 2,
-        c.z + Math.cos(c.gx * 1.11 + c.gz * 1.67) * drift,
-      )
-      dummy.scale.set(1.1, mirror, 1.1)
-      dummy.updateMatrix()
-      refl.setMatrixAt(i, dummy.matrix)
-      // Le reflet part de la couleur de l'eau, pas du haut-fond : mélangé au
-      // haut-fond il virait au blanc laiteux et redevenait un halo.
-      reflColor.copy(PALETTE.water).lerp(capColor, 0.56).multiplyScalar(0.86)
-      refl.setColorAt(i, reflColor)
+      if (c.inland < 4) {
+        // Reflet : la colonne retournée, sans dérive ni élargissement, accrochée
+        // sous la jupe immergée. Le décalage d'avant la détachait de la berge et
+        // ses escaliers pâles se lisaient comme un calque translucide en travers
+        // de l'eau. L'extinction en profondeur est cuite dans la géométrie.
+        const mirror = Math.max(0.12, c.height * MIRROR)
+        dummy.position.set(c.x, -SUB - mirror / 2, c.z)
+        dummy.scale.set(1, mirror, 1)
+        dummy.updateMatrix()
+        refl.setMatrixAt(reflIndex, dummy.matrix)
+        // Le reflet part de la couleur de l'eau, pas du haut-fond : mélangé au
+        // haut-fond il virait au blanc laiteux et redevenait un halo.
+        reflColor.copy(PALETTE.water).lerp(capColor, 0.45).multiplyScalar(0.92)
+        refl.setColorAt(reflIndex, reflColor)
+        reflIndex++
+      }
     })
 
-    // Bande mouillée : deux ou trois pixels sombres et saturés retenus juste
-    // au-dessus de l'arête. Sans elle, la coupe est nette mais sèche, et l'île
-    // a l'air posée sur l'eau plutôt que dedans.
-    const base = this.cells.length * 2
+    // Trois bandes empilées sur le seul pourtour, du bas vers le haut : la jupe
+    // immergée, le liseré mouillé pile au contact, puis deux ou trois pixels
+    // sombres et saturés. C'est cet empilement qui pose l'île DANS l'eau au lieu
+    // de la trancher au ras du plan.
     rims.forEach((c, i) => {
-      dummy.position.set(c.x, WET / 2, c.z)
+      const shore = c.beach ? PALETTE.sand : PALETTE.earth
+
+      dummy.position.set(c.x, -SUB / 2, c.z)
+      dummy.scale.set(1.004, SUB, 1.004)
+      dummy.updateMatrix()
+      contact.setMatrixAt(i * 3, dummy.matrix)
+      wetColor.copy(shore).lerp(PALETTE.waterDeep, 0.74).multiplyScalar(0.95)
+      contact.setColorAt(i * 3, wetColor)
+
+      dummy.position.set(c.x, SHEEN / 2, c.z)
+      dummy.scale.set(1.006, SHEEN, 1.006)
+      dummy.updateMatrix()
+      contact.setMatrixAt(i * 3 + 1, dummy.matrix)
+      wetColor.copy(shore).lerp(PALETTE.sheen, 0.52).multiplyScalar(1.12)
+      contact.setColorAt(i * 3 + 1, wetColor)
+
+      dummy.position.set(c.x, SHEEN + WET / 2, c.z)
       dummy.scale.set(1.008, WET, 1.008)
       dummy.updateMatrix()
-      mesh.setMatrixAt(base + i, dummy.matrix)
-      wetColor.copy(c.beach ? PALETTE.sand : PALETTE.earth).multiplyScalar(0.3)
-      wetColor.offsetHSL(0, 0.22, 0)
-      mesh.setColorAt(base + i, wetColor)
+      contact.setMatrixAt(i * 3 + 2, dummy.matrix)
+      wetColor.copy(shore).multiplyScalar(0.3).lerp(PALETTE.waterDeep, 0.34)
+      contact.setColorAt(i * 3 + 2, wetColor)
     })
 
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    contact.instanceMatrix.needsUpdate = true
+    if (contact.instanceColor) contact.instanceColor.needsUpdate = true
     refl.instanceMatrix.needsUpdate = true
     if (refl.instanceColor) refl.instanceColor.needsUpdate = true
-    this.group.add(mesh, refl)
+    this.group.add(mesh, contact, refl)
+  }
+
+  /** Boîte du reflet, avec son extinction cuite dans l'alpha des sommets : plein
+   *  à la ligne d'eau, éteint au fond. Un reflet qui se termine sur une arête
+   *  franche ne lit pas comme un reflet mais comme une seconde île. */
+  private reflectionBox(): BoxGeometry {
+    const geo = new BoxGeometry(TILE, 1, TILE)
+    const pos = geo.attributes.position!
+    const rgba = new Float32Array(pos.count * 4)
+    for (let i = 0; i < pos.count; i++) {
+      const t = pos.getY(i) + 0.5
+      rgba[i * 4] = 1
+      rgba[i * 4 + 1] = 1
+      rgba[i * 4 + 2] = 1
+      rgba[i * 4 + 3] = REFL_ALPHA * t * t
+    }
+    geo.setAttribute('color', new BufferAttribute(rgba, 4))
+    return geo
+  }
+
+  /** La ride de contact, en géométrie et non en texture : un anneau découpé sur
+   *  l'empreinte réelle, dont la partie intérieure passe sous les colonnes de
+   *  terrain et se fait donc occlure par elles. Peinte dans la nappe, elle était
+   *  étalée par le filtrage sur trente pixels et flottait en travers de la
+   *  berge ; ici elle ne peut littéralement pas traverser l'île. */
+  private buildRipple(): void {
+    const RINGS = [
+      { off: -0.45, alpha: 0.9 },
+      { off: 0.1, alpha: 1 },
+      { off: 0.34, alpha: 0.45 },
+      { off: 0.82, alpha: 0 },
+    ] as const
+    const verts = new Float32Array(HULL_BINS * RINGS.length * 3)
+    const colors = new Float32Array(HULL_BINS * RINGS.length * 4)
+    const foam = PALETTE.foam
+    for (let i = 0; i < HULL_BINS; i++) {
+      const a = (i / HULL_BINS) * Math.PI * 2
+      const cx = Math.cos(a)
+      const cz = Math.sin(a)
+      const r = this.hull[i]!
+      RINGS.forEach((ring, k) => {
+        const v = (k * HULL_BINS + i) * 3
+        const d = r + ring.off * TILE
+        verts[v] = cx * d
+        // Juste au-dessus de la nappe : sous les tuiles, donc masquée par elles.
+        verts[v + 1] = 0.012
+        verts[v + 2] = cz * d
+        const q = (k * HULL_BINS + i) * 4
+        colors[q] = foam.r
+        colors[q + 1] = foam.g
+        colors[q + 2] = foam.b
+        colors[q + 3] = ring.alpha * 0.5
+      })
+    }
+    const index = new Uint16Array((RINGS.length - 1) * HULL_BINS * 6)
+    let t = 0
+    for (let k = 0; k < RINGS.length - 1; k++) {
+      for (let i = 0; i < HULL_BINS; i++) {
+        const j = (i + 1) % HULL_BINS
+        const a0 = k * HULL_BINS + i
+        const a1 = k * HULL_BINS + j
+        const b0 = a0 + HULL_BINS
+        const b1 = a1 + HULL_BINS
+        index[t++] = a0
+        index[t++] = b1
+        index[t++] = b0
+        index[t++] = a0
+        index[t++] = a1
+        index[t++] = b1
+      }
+    }
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(verts, 3))
+    geo.setAttribute('color', new BufferAttribute(colors, 4))
+    geo.setIndex(new BufferAttribute(index, 1))
+    const mesh = new Mesh(
+      geo,
+      // Une seule passe : `DoubleSide` sur un matériau transparent fait dessiner
+      // l'anneau deux fois, et sa face utile est toujours celle du dessus.
+      new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
+    )
+    this.group.add(mesh)
   }
 
   /** Deux fois la même nappe, à deux centièmes d'unité l'une de l'autre : une
@@ -322,36 +541,22 @@ export class Island {
    *  l'île — une tache de fond, pas une ombre. */
   private buildWater(): void {
     const SPAN = 1600
-    // Le contour de l'île, tabulé une fois : le recalculer par pixel coûterait
-    // cent mille sinus.
-    const LUT = 512
-    const lut = new Float32Array(LUT)
     let maxEdge = 0
-    for (let i = 0; i < LUT; i++) {
-      const e = shoreEdge((i / LUT) * Math.PI * 2, this.seed)
-      lut[i] = e
-      if (e > maxEdge) maxEdge = e
-    }
+    for (let i = 0; i < HULL_BINS; i++) maxEdge = Math.max(maxEdge, this.hull[i]!)
     // La texture ne couvre que l'île et trois cellules d'eau autour : la
     // résolution part là où se joue le trait de côte, le bord clampé donne
     // exactement la couleur du large. Chaque cellule de marge en plus est un
     // quart de texture payé pour peindre du bleu uni.
-    const span = (maxEdge + 3.2) * TILE
-    /** Distance signée au trait de côte, en cellules. La quantification en
-     *  tuiles rentre autant qu'elle déborde : en moyenne la silhouette rendue
-     *  tombe sur `shoreEdge`, sans correction. */
-    const shoreDist = (x: number, z: number): number => {
-      const t = ((fastAtan2(z, x) / (Math.PI * 2)) % 1) + 1
-      const f = t * LUT
-      const i0 = Math.floor(f) % LUT
-      const k = f - Math.floor(f)
-      const edge = lut[i0]! * (1 - k) + lut[(i0 + 1) % LUT]! * k
-      return Math.sqrt(x * x + z * z) / TILE - edge
-    }
-    // Décalage de l'ombre portée : la direction du soleil de scene.ts projetée
-    // au sol pour une hauteur d'île moyenne.
-    const SHADE_X = 1.15
-    const SHADE_Z = -0.81
+    const span = maxEdge + 3.2 * TILE
+    /** Distance signée à l'empreinte rendue, en cellules. */
+    const shoreDist = (x: number, z: number): number =>
+      (Math.sqrt(x * x + z * z) - this.hullAt(fastAtan2(z, x))) / TILE
+    // Décalage de l'ombre portée : la direction du soleil, projetée au sol pour
+    // une hauteur d'île moyenne. Recopiée à la main, elle finissait par ne plus
+    // désigner le même soleil que la lumière de la scène.
+    const SHADE_H = 1.55
+    const SHADE_X = (-SUN_DIR.x / SUN_DIR.y) * SHADE_H
+    const SHADE_Z = (-SUN_DIR.z / SUN_DIR.y) * SHADE_H
     const tex = rampTexture(256, 256, (u, v, out) => {
       const x = (u - 0.5) * 2 * span
       // La nappe est tournée de -90° : le v de la texture descend en -z.
@@ -361,20 +566,19 @@ export class Island {
       // dégradé radial d'avant faisait exactement le halo qu'on nous reproche.
       out.copy(PALETTE.water).multiplyScalar(1 - smoothstep(0.4, 3.2, d) * 0.1)
       // Tout ce qui suit meurt avant deux cellules. Le large, qui est
-      // l'essentiel de la texture, ne paie ni la ride ni la seconde empreinte.
-      if (d < 2) {
-        // Haut-fond serré : quelques dizaines de centimètres d'eau claire, pas
-        // une auréole. Étalé sur plus d'une tuile, il redevient un halo.
-        out.lerp(PALETTE.waterShallow, smoothstep(0.35, -0.7, d) * 0.4)
-        // Ride claire qui épouse l'empreinte : un objet qui déplace l'eau.
-        // Étroite et posée sur le contact — élargie, elle se confond avec le
-        // reflet, qui occupe le même quart d'écran, et les deux font un halo.
-        const ring = smoothstep(-0.05, 0.1, d) * smoothstep(0.34, 0.16, d)
-        out.lerp(PALETTE.foam, ring * 0.62)
+      // l'essentiel de la texture, ne paie pas l'ourlet de rive.
+      if (d < 2.2) {
+        // Haut-fond : une eau plus claire juste au large de la ride, décalée
+        // vers l'extérieur pour laisser la place à l'ombre de contact.
+        out.lerp(PALETTE.waterShallow, smoothstep(1.4, 0.5, d) * 0.12)
+        // Ombre de contact : serrée sous le pourtour, indépendante du soleil.
+        // C'est elle qui creuse le contact — sans elle, l'île est un pain de
+        // terrain posé sur du bleu de valeur voisine.
+        out.multiplyScalar(1 - smoothstep(0.7, -0.1, d) * 0.4)
         // Ombre portée : la même empreinte, décalée à l'opposé du soleil.
         const shade =
-          smoothstep(0.4, -0.3, shoreDist(x - SHADE_X, z - SHADE_Z)) * smoothstep(2, 0.2, d)
-        out.multiplyScalar(1 - shade * 0.24)
+          smoothstep(0.4, -0.3, shoreDist(x - SHADE_X, z - SHADE_Z)) * smoothstep(2.2, 0.3, d)
+        out.multiplyScalar(1 - shade * 0.2)
       }
       // La moitié de la nappe laisse passer ce qu'il y a dessous au pied de
       // l'île, et rien au large : le reflet ne vit que collé à son objet.
@@ -419,7 +623,9 @@ export class Island {
     const free = open.filter((c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > PLAZA_RADIUS + 0.9)
     // Les sapins reculent bien au-delà de la place : le feu est le seul signe
     // d'habitat de la maquette, il lui faut de l'air autour.
-    const wooded = open.filter((c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > CLEAR_RADIUS)
+    const wooded = open.filter(
+      (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z),
+    )
 
     const centers: Cell[] = []
     for (let i = 0; i < 7; i++) {
@@ -465,11 +671,6 @@ export class Island {
     const leafGeo = new ConeGeometry(0.62, 1.5, 7)
     const leafMat = new MeshToonMaterial()
     const leaves = new InstancedMesh(leafGeo, leafMat, cells.length)
-    const refl = new InstancedMesh(
-      new ConeGeometry(0.62, 1.5, 7),
-      new MeshBasicMaterial(),
-      cells.length,
-    )
     leaves.castShadow = true
     trunks.castShadow = true
 
@@ -489,27 +690,11 @@ export class Island {
       leaves.setMatrixAt(i, d.matrix)
       const leaf = tint(leafColors[i % 3]!, i, 0.08)
       leaves.setColorAt(i, leaf.clone().multiplyScalar(0.9 + c.ao * 0.1))
-
-      // Même miroir que le terrain, sinon les sapins pendent sous l'île au lieu
-      // de s'y raccorder ; plus faible, parce qu'ils tombent dans l'eau la plus
-      // lointaine du reflet.
-      // Cônes élargis et raccourcis : un reflet de sapin à la bonne forme fait
-      // une frange de pointes détachée sous l'île. Étalé, il redevient une
-      // tache verte dans l'eau, ce qu'un reflet flou est vraiment.
-      const drift = 0.1 + rnd() * 0.16
-      d.position.set(c.x + jx + drift, -MIRROR * (c.height + 1.2 * s), c.z + jz - drift)
-      d.rotation.set(Math.PI, d.rotation.y, 0)
-      d.scale.set(s * 1.7, s * MIRROR * 0.7, s * 1.7)
-      d.updateMatrix()
-      refl.setMatrixAt(i, d.matrix)
-      refl.setColorAt(i, PALETTE.water.clone().lerp(leaf, 0.42).multiplyScalar(0.86))
     })
     trunks.instanceMatrix.needsUpdate = true
     leaves.instanceMatrix.needsUpdate = true
-    refl.instanceMatrix.needsUpdate = true
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
-    if (refl.instanceColor) refl.instanceColor.needsUpdate = true
-    this.group.add(trunks, leaves, refl)
+    this.group.add(trunks, leaves)
     this.registerPickable(leaves, 'wood')
   }
 

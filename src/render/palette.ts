@@ -24,6 +24,10 @@ export const PALETTE = {
   /** La ride de contact. Un blanc franc faisait un contour lumineux collé
    *  autour de l'île : c'est de l'eau éclaircie, pas de l'écume. */
   foam: new Color('#a8d0cd'),
+  /** Le liseré mouillé qui court pile à la ligne de flottaison. Peint sans
+   *  lumière : il doit se lire aussi bien sur la face au soleil que sur celle
+   *  qui est dans l'ombre, sans quoi il disparaît sur la moitié du pourtour. */
+  sheen: new Color('#bfd9d1'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
   sand: new Color('#dccb9c'),
@@ -49,6 +53,11 @@ export const PALETTE = {
   wheat: new Color('#dcbc65'),
   stoneWall: new Color('#c7bfaf'),
 } as const
+
+/** Direction du soleil, en dur à un seul endroit. `scene.ts` la donne à la
+ *  lumière, `island.ts` en déduit de quel côté l'île pose son ombre sur l'eau :
+ *  recopiée des deux côtés, elle finissait par diverger. */
+export const SUN_DIR = { x: -34, y: 46, z: 24 } as const
 
 /** Deterministic jitter so a field of instanced trees does not look stamped. */
 export function tint(base: Color, seed: number, spread = 0.06): Color {
