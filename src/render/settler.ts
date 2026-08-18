@@ -128,6 +128,9 @@ export class Settler {
 
   private phase: Phase = 'walkOut'
   private trip: Trip = 'none'
+  private wantSleep = false
+  private sleeping = false
+  private lieDown = 0
   private timer = 0
   private walkCycle = 0
   private swing = 0
@@ -202,6 +205,16 @@ export class Settler {
   departExpedition(hasPack: boolean): void {
     this.pack.visible = hasPack
     this.trip = 'leaving'
+  }
+
+  /** La nuit sans lampe, la tribu dort : le colon rentre se coucher près du feu.
+   *  Piloté par main.ts, qui sait s'il reste de la lumière découverte. */
+  setNight(night: boolean): void {
+    this.wantSleep = night
+  }
+
+  get isSleeping(): boolean {
+    return this.sleeping
   }
 
   returnFromExpedition(): void {
@@ -338,6 +351,9 @@ export class Settler {
       this.updateTrip(dt, boost)
       return
     }
+    if (this.wantSleep || this.sleeping || this.lieDown > 0) {
+      if (this.updateSleep(dt)) return
+    }
     const speed = this.speed * boost
     switch (this.phase) {
       case 'walkOut':
@@ -412,6 +428,66 @@ export class Settler {
     const k = Math.max(0, 1 - d / FIRE_REACH) ** 1.6
     const flicker = 0.88 + Math.sin(this.clock * 9) * 0.08 + Math.sin(this.clock * 5.1) * 0.04
     this.skin.emissive.copy(FIRE_WARM).multiplyScalar(k * 0.15 * flicker)
+  }
+
+  /** Sommeil : marche jusqu'au foyer, puis il s'allonge sur le côté, et la cage
+   *  thoracique respire lentement. Retourne true tant qu'il gère l'image. */
+  private updateSleep(dt: number): boolean {
+    this.clock += dt
+
+    if (this.wantSleep && !this.sleeping) {
+      const dx = this.home.x - this.group.position.x
+      const dz = this.home.z - this.group.position.z
+      const dist = Math.hypot(dx, dz)
+      if (dist > 0.45) {
+        const step = Math.min(this.speed * dt, dist)
+        this.group.position.x += (dx / dist) * step
+        this.group.position.z += (dz / dist) * step
+        this.yaw = Math.atan2(dx, dz)
+        this.walkCycle += dt * this.speed * 2.6
+        this.animateWalk()
+        let d = this.yaw - this.group.rotation.y
+        while (d > Math.PI) d -= TAU
+        while (d < -Math.PI) d += TAU
+        this.group.rotation.y += d * Math.min(1, dt * 9)
+        this.skirtCamp()
+        const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
+        this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+        return true
+      }
+      this.sleeping = true
+    }
+
+    // S'allonger (et se relever) en douceur plutôt que basculer d'un coup.
+    const target = this.sleeping ? 1 : 0
+    this.lieDown += (target - this.lieDown) * Math.min(1, dt * 3)
+    if (!this.sleeping && this.lieDown < 0.02) {
+      this.lieDown = 0
+      this.rig.rotation.z = 0
+      this.rig.position.y = 0
+      this.phase = 'walkOut'
+      return false
+    }
+
+    const k = this.lieDown
+    this.rig.rotation.z = (Math.PI / 2 - 0.12) * k
+    this.rig.position.y = 0.1 * k
+    // Respiration lente ; membres repliés.
+    const breath = 1 + Math.sin(this.clock * 1.4) * 0.02 * k
+    this.rig.scale.set(1.32, 1.32 * breath, 1.32)
+    this.legL.rotation.x = 0.5 * k
+    this.legR.rotation.x = 0.62 * k
+    this.armL.rotation.set(-0.55 * k, 0, 0.12)
+    this.armR.rotation.set(-0.4 * k, 0, -0.07)
+    this.body.rotation.set(0.12 * k, 0, 0)
+    this.head.rotation.set(0.3 * k, 0, 0)
+
+    if (this.sleeping && !this.wantSleep) this.sleeping = false
+
+    this.takeFirelight(0)
+    const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
+    this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+    return true
   }
 
   /** Aller-retour d'expédition : même marche que d'habitude, mais vers la plage,

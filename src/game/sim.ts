@@ -469,6 +469,15 @@ export class Game {
     }
   }
 
+  /** Part du rendement conservée en pleine nuit — la meilleure lumière connue. */
+  get nightLight(): number {
+    return this.nightFloor
+  }
+
+  get isNight(): boolean {
+    return this.wasNight
+  }
+
   /** Un tap sur la barque avant la conclusion du troc améliore le prix. */
   haggle(): boolean {
     const c = this.save.caravan

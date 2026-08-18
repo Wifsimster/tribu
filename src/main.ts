@@ -137,6 +137,10 @@ attachControls(stage, canvas, (x, y) => {
 
   const onSettler = raycaster.intersectObject(settler.group, true)
   if (onSettler.length > 0) {
+    if (settler.isSleeping) {
+      hud.toast("Chut — le colon dort jusqu'à l'aube")
+      return
+    }
     if (game.encourage()) settler.celebrate()
     else hud.toast('Laisse-le souffler un instant')
     return
@@ -273,6 +277,8 @@ function frame(now: number): void {
   elapsed += dt
 
   if (!paused) game.tick(dt, Date.now())
+  // Nuit sans lampe à graisse : la tribu dort. Avec les lampes, elle veille.
+  settler.setNight(game.isNight && game.nightLight < 0.85)
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
