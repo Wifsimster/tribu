@@ -21,10 +21,13 @@ export const PALETTE = {
   /** Brume et fond de ciel — même teinte, pour que l'horizon disparaisse. */
   haze: new Color('#7fa2ac'),
   sky: new Color('#a3c4ce'),
-  /** La ride de contact. À peine plus claire que l'eau : quatre rounds de
-   *  blanc-cyan ont tous lu comme un sticker. Un objet posé dans l'eau
-   *  s'assombrit à la base, il ne s'allume pas. */
-  foam: new Color('#568a95'),
+  /** La 2e ride, au large : un souffle à peine plus clair que l'eau. */
+  foam: new Color('#7fadb5'),
+  /** Le trait de flottaison. Clair, oui — mais c'est sa FINESSE qui le
+   *  distingue des halos des rounds passés : un trait dessiné de 2 px collé à
+   *  la découpe, jamais un dégradé. La référence a les deux : ce trait ET un
+   *  soubassement sombre juste dessous. */
+  foamLine: new Color('#e7f2ec'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
   sand: new Color('#dccb9c'),

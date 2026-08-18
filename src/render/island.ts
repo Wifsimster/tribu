@@ -7,6 +7,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DodecahedronGeometry,
+  DoubleSide,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -279,6 +280,7 @@ export class Island {
     this.buildTerrain()
     this.buildWater()
     this.buildRipple()
+    this.buildWaterline()
     this.scatter(rnd)
   }
 
@@ -456,10 +458,11 @@ export class Island {
         dummy.scale.set(1.07, mirror, 1.07)
         dummy.updateMatrix()
         refl.setMatrixAt(reflIndex, dummy.matrix)
-        // Le reflet part de la couleur de l'eau, pas du haut-fond : mélangé au
-        // haut-fond il virait au blanc laiteux et redevenait un halo. La part
-        // de la couleur réelle monte : c'est la silhouette qui doit se lire.
-        reflColor.copy(PALETTE.water).lerp(capColor, 0.58).multiplyScalar(0.88)
+        // Un reflet ASSOMBRIT l'eau, il ne la blanchit pas : la version à 58 %
+        // de couleur de terre lisait comme une traînée beige. Base tirée vers
+        // l'eau profonde, juste assez de teinte réelle pour que la silhouette
+        // en escalier se reconnaisse.
+        reflColor.copy(PALETTE.water).lerp(PALETTE.waterDeep, 0.75).lerp(capColor, 0.12)
         refl.setColorAt(reflIndex, reflColor)
         reflIndex++
       }
@@ -483,7 +486,10 @@ export class Island {
       dummy.scale.set(1.004, SUB, 1.004)
       dummy.updateMatrix()
       contact.setMatrixAt(i * 2, dummy.matrix)
-      wetColor.copy(shore).lerp(PALETTE.waterDeep, 0.78).multiplyScalar(0.9)
+      // Renforcée : le soubassement de la référence est nettement plus sombre
+      // que l'eau juste sous la flottaison — c'est lui qui donne son contraste
+      // au trait clair posé pile au-dessus.
+      wetColor.copy(shore).lerp(PALETTE.waterDeep, 0.86).multiplyScalar(0.82)
       contact.setColorAt(i * 2, wetColor)
 
       dummy.position.set(c.x, WET / 2, c.z)
@@ -523,17 +529,17 @@ export class Island {
     return geo
   }
 
-  /** La ride de contact, en géométrie et non en texture : un anneau découpé sur
-   *  l'empreinte réelle, dont la partie intérieure passe sous les colonnes de
-   *  terrain et se fait donc occlure par elles. Peinte dans la nappe, elle était
-   *  étalée par le filtrage sur trente pixels et flottait en travers de la
-   *  berge ; ici elle ne peut littéralement pas traverser l'île. */
+  /** La 2e ride, au large de la flottaison : une ligne discrète qui ondule
+   *  légèrement à distance du bord — le clapot qui s'éloigne de la berge. Fine
+   *  et à peine plus claire que l'eau : c'est le trait de flottaison
+   *  (`buildWaterline`) qui dessine le contact, pas elle. */
   private buildRipple(): void {
+    // Profil en toit : alpha nul aux deux lisières, plein au centre. Total
+    // ~0,1 tuile de large — une ligne molle, jamais une bande.
     const RINGS = [
-      { off: -0.45, alpha: 0.9 },
-      { off: 0.1, alpha: 1 },
-      { off: 0.34, alpha: 0.45 },
-      { off: 0.82, alpha: 0 },
+      { off: -0.055, alpha: 0 },
+      { off: 0, alpha: 1 },
+      { off: 0.055, alpha: 0 },
     ] as const
     const verts = new Float32Array(HULL_BINS * RINGS.length * 3)
     const colors = new Float32Array(HULL_BINS * RINGS.length * 4)
@@ -542,14 +548,17 @@ export class Island {
       const a = (i / HULL_BINS) * Math.PI * 2
       const cx = Math.cos(a)
       const cz = Math.sin(a)
-      const r = this.hull[i]!
-      // La ride vit avec la lumière : nette côté soleil, presque fondue dans
-      // l'ombre, et hachée par un bruit cohérent — un anneau continu d'alpha
-      // constant était le halo qu'on nous reproche. Et discrète : à peine plus
-      // claire que l'eau, elle souligne la découpe sans jamais l'allumer.
+      // L'ondulation : la distance au bord respire avec un bruit cohérent,
+      // la ligne s'écarte et se rapproche sans jamais toucher la découpe.
+      // Excursion courte : à plus d'un quart de tuile d'amplitude, la ligne
+      // décollait de la berge et lisait comme un fil posé sur l'eau.
+      const swell = valueNoise(cx * 2.2 + 30, cz * 2.2 + 30, this.seed + 7)
+      const r = this.hull[i]! + (0.46 + 0.28 * swell) * TILE
+      // Elle vit avec la lumière et se hache : nette côté soleil, fondue à
+      // l'ombre, interrompue par endroits — un anneau continu ferait cerne.
       const lit = 0.5 + 0.5 * (cx * SUN_HX + cz * SUN_HZ)
       const brk = valueNoise(cx * 3.2 + 60, cz * 3.2 + 60, this.seed + 11)
-      const amp = Math.min(1, (0.35 + 0.65 * lit) * (0.35 + 0.95 * brk)) * 0.72
+      const amp = Math.min(1, (0.4 + 0.6 * lit) * (0.2 + 1.1 * brk)) * 0.34
       RINGS.forEach((ring, k) => {
         const v = (k * HULL_BINS + i) * 3
         const d = r + ring.off * TILE
@@ -561,7 +570,7 @@ export class Island {
         colors[q] = foam.r
         colors[q + 1] = foam.g
         colors[q + 2] = foam.b
-        colors[q + 3] = ring.alpha * 0.72 * amp
+        colors[q + 3] = ring.alpha * amp
       })
     }
     const index = new Uint16Array((RINGS.length - 1) * HULL_BINS * 6)
@@ -591,6 +600,94 @@ export class Island {
     this.unlit.push(rippleMat)
     const mesh = new Mesh(geo, rippleMat)
     this.group.add(mesh)
+  }
+
+  /** Le trait de flottaison : une ligne claire d'une FINESSE de trait (~2 px à
+   *  l'écran), collée à la découpe réelle en escalier des tuiles du pourtour —
+   *  pas à la silhouette polaire lissée. Cinq rounds ont perdu sur l'épaisseur :
+   *  un glow épais lit comme un sticker, l'absence de trait lit comme un
+   *  décalque posé sur l'eau. La référence a un trait dessiné, marche par
+   *  marche, entre le soubassement sombre et l'eau. */
+  private buildWaterline(): void {
+    const h = TILE / 2
+    /** Largeur du trait, en unités monde : ~2-3 px au cadrage desktop. */
+    const W = 0.062
+    const line = PALETTE.foamLine
+    const verts: number[] = []
+    const colors: number[] = []
+    const index: number[] = []
+    const water = (gx: number, gz: number): boolean => !this.byKey.has(gx * 64 + gz)
+
+    /** Alpha au point (x,z) : plein côté soleil, atténué à l'ombre, haché par
+     *  un bruit cohérent — un trait d'alpha constant redeviendrait un cerne. */
+    const ampAt = (x: number, z: number, nx: number, nz: number): number => {
+      const lit = 0.5 + 0.5 * (nx * SUN_HX + nz * SUN_HZ)
+      const brk = valueNoise(x * 0.55 + 40, z * 0.55 + 40, this.seed + 23)
+      return (0.65 + 0.35 * lit) * (0.6 + 0.4 * brk)
+    }
+
+    /** Quad du trait : lisière intérieure collée au mur (i0→i1), lisière
+     *  extérieure décalée de W vers l'eau, où l'alpha tombe d'un cran — juste
+     *  de quoi adoucir le pixel du bord, pas de quoi faire un dégradé. */
+    const strip = (
+      ix0: number, iz0: number, ix1: number, iz1: number,
+      nx: number, nz: number,
+    ): void => {
+      const b = verts.length / 3
+      const pts = [
+        [ix0, iz0], [ix1, iz1],
+        [ix1 + nx * W, iz1 + nz * W], [ix0 + nx * W, iz0 + nz * W],
+      ] as const
+      pts.forEach(([x, z], k) => {
+        // Un souffle au-dessus de la nappe (y=0) et de la 2e ride (0,012).
+        verts.push(x, 0.02, z)
+        const a = ampAt(x, z, nx, nz) * (k < 2 ? 1 : 0.3)
+        colors.push(line.r, line.g, line.b, a)
+      })
+      index.push(b, b + 2, b + 1, b, b + 3, b + 2)
+    }
+
+    for (const c of this.cells) {
+      if (!c.rim) continue
+      // Face est/ouest (normale ±x) : le trait court le long de z. Aux angles
+      // SAILLANTS c'est lui qui possède le carré de coin (il s'allonge de W) ;
+      // aux angles RENTRANTS c'est le trait ±z qui se rétracte — chaque coin
+      // n'est ainsi peint qu'une fois, sans surépaisseur d'alpha.
+      for (const sx of [1, -1] as const) {
+        if (!water(c.gx + sx, c.gz)) continue
+        const x = c.x + sx * h
+        let z0 = c.z - h
+        let z1 = c.z + h
+        if (water(c.gx, c.gz - 1)) z0 -= W
+        if (water(c.gx, c.gz + 1)) z1 += W
+        strip(x, z0, x, z1, sx, 0)
+      }
+      // Face nord/sud (normale ±z) : le trait court le long de x.
+      for (const sz of [1, -1] as const) {
+        if (!water(c.gx, c.gz + sz)) continue
+        const z = c.z + sz * h
+        let x0 = c.x - h
+        let x1 = c.x + h
+        if (!water(c.gx - 1, c.gz) && !water(c.gx - 1, c.gz + sz)) x0 += W
+        if (!water(c.gx + 1, c.gz) && !water(c.gx + 1, c.gz + sz)) x1 -= W
+        strip(x0, z, x1, z, 0, sz)
+      }
+    }
+
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(new Float32Array(verts), 3))
+    geo.setAttribute('color', new BufferAttribute(new Float32Array(colors), 4))
+    geo.setIndex(index)
+    // `DoubleSide` : l'ordre des sommets s'inverse d'une face du pourtour à
+    // l'autre, et un quad ne se dessine qu'une fois quel que soit son côté.
+    const mat = new MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    })
+    this.unlit.push(mat)
+    this.group.add(new Mesh(geo, mat))
   }
 
   /** Deux fois la même nappe, à deux centièmes d'unité l'une de l'autre : une
