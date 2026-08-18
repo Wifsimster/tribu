@@ -6,23 +6,29 @@ import { Stage } from './render/scene'
 import { Island } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
+import { Caravan } from './render/caravan'
 import { attachControls } from './render/controls'
 import { Hud, fmt } from './ui/hud'
 import { RESOURCES } from './game/content'
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
-const island = new Island()
+
+// Le jeu d'abord : l'île de chaque joueur pousse sur le seed de sa sauvegarde.
+const game = new Game(Date.now())
+const island = new Island(game.save.seed)
 const village = new Village(island)
 const settler = new Settler(island)
+const caravan = new Caravan()
 
-stage.scene.add(island.group, village.group, settler.group)
+stage.scene.add(island.group, village.group, settler.group, caravan.group)
 settler.setHome(new Vector3(0, island.heightAt(0, 0), 0))
 stage.sun.target.position.set(0, 0, 0)
 
-const game = new Game(Date.now())
 stage.applyAge(game.save.age)
 village.sync(game.buildings)
+// Barque déjà à quai dans la sauvegarde : elle reprend sa place sans naviguer.
+if (game.save.caravan.visiting) caravan.arrive()
 
 /** Where the settler goes for each resource: the nearest matching node. */
 const nodeSpots = new Map<string, Vector3[]>()
@@ -82,6 +88,21 @@ game.on((e) => {
       hud.toast(`Pendant ton absence (${mins} min), la tribu a continué`)
       break
     }
+    case 'caravanArrive':
+      caravan.arrive()
+      hud.toast(`Une barque marchande ${e.merchant} accoste`)
+      break
+    case 'caravanTrade': {
+      hud.toast(
+        `Troc : ${RESOURCES[e.gave.res].icon} ${fmt(e.gave.amount)} contre ` +
+          `${RESOURCES[e.got.res].icon} ${fmt(e.got.amount)} + ✨ ${e.insight}`,
+      )
+      if (e.tale) hud.toast(`Le marchand raconte : ${e.tale}`)
+      break
+    }
+    case 'caravanLeave':
+      caravan.depart()
+      break
   }
 })
 
@@ -92,6 +113,12 @@ const pointer = new Vector2()
 attachControls(stage, canvas, (x, y) => {
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1)
   raycaster.setFromCamera(pointer, stage.camera)
+
+  if (caravan.group.visible && raycaster.intersectObject(caravan.group, true).length > 0) {
+    if (game.haggle()) hud.toast('Tu marchandes : le marchand cédera un meilleur prix')
+    else hud.toast('Le marchand te salue de la main')
+    return
+  }
 
   const onSettler = raycaster.intersectObject(settler.group, true)
   if (onSettler.length > 0) {
@@ -129,6 +156,7 @@ function frame(now: number): void {
   game.tick(dt, Date.now())
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   settler.update(dt, boost)
+  caravan.update(dt, elapsed, game.knows('sail'))
   village.update(dt, elapsed)
   stage.updateCamera()
   hud.update()

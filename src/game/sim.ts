@@ -16,6 +16,15 @@ export type GameEvent =
   | { type: 'expeditionEnd'; loot: Partial<Record<ResourceId, number>>; find: string | null }
   | { type: 'encourage' }
   | { type: 'offline'; seconds: number; gained: Partial<Record<ResourceId, number>> }
+  | { type: 'caravanArrive'; merchant: string }
+  | {
+      type: 'caravanTrade'
+      gave: { res: ResourceId; amount: number }
+      got: { res: ResourceId; amount: number }
+      insight: number
+      tale: string | null
+    }
+  | { type: 'caravanLeave' }
 
 type Listener = (e: GameEvent) => void
 
@@ -41,6 +50,25 @@ const ENCOURAGE_COOLDOWN = 45
 const EXPEDITION_SECONDS = 90
 const EXPEDITION_FOOD_COST = 10
 
+// Le commerce ouvre avec l'âge du bronze : le fait historique de la techno
+// « bronze » explique déjà pourquoi (cuivre et étain ne gisent jamais ensemble).
+const CARAVAN_AGE = 2
+const CARAVAN_PERIOD = 210
+const CARAVAN_VISIT = 26
+const CARAVAN_OFFLINE_MAX = 3
+
+const MERCHANTS = ['de Chypre', "d'Anatolie", 'du Levant', 'des Cyclades', "d'Égypte"]
+
+/** Le marchand paie en histoires autant qu'en métal : chaque anecdote est un
+ *  fait de commerce ancien réel. */
+const TRADE_TALES = [
+  "l'épave d'Uluburun, coulée vers −1300, portait dix tonnes de cuivre chypriote et une tonne d'étain",
+  "l'étain des Cornouailles voyageait jusqu'à la Méditerranée orientale, de comptoir en comptoir",
+  "le lapis-lazuli des mines d'Afghanistan ornait déjà les tombes égyptiennes vers −3000",
+  'à Kanesh, en Anatolie, les marchands assyriens tenaient leurs comptes et leurs prêts à intérêt sur tablettes, vers −1900',
+  "de l'ambre de la Baltique a été retrouvé dans la tombe de Toutânkhamon",
+]
+
 const FINDS = [
   'un galet gravé de traits parallèles',
   'une dent de grand fauve percée',
@@ -60,7 +88,12 @@ export class Game {
   encourageCooldown = 0
   lastFact: TechDef | null = null
 
+  currentMerchant = ''
+
   private listeners: Listener[] = []
+  /** Événements émis avant le premier abonnement (constructeur, rattrapage hors
+   *  ligne) : sans tampon, le toast « pendant ton absence » partait dans le vide. */
+  private pendingEvents: GameEvent[] = []
   private saveAccumulator = 0
   private mult!: Record<ResourceId, number>
   private insightAdd = 0
@@ -78,6 +111,12 @@ export class Game {
     if (offlineSeconds > 60) {
       const before = { ...this.save.res }
       this.produce(offlineSeconds)
+      // Le commerce continue sans le joueur : quelques passages de barque sont
+      // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
+      if (this.save.age >= CARAVAN_AGE) {
+        const visits = Math.min(CARAVAN_OFFLINE_MAX, Math.floor(offlineSeconds / CARAVAN_PERIOD))
+        for (let i = 0; i < visits; i++) this.doTrade(1, true)
+      }
       const gained: Partial<Record<ResourceId, number>> = {}
       for (const id of Object.keys(this.save.res) as ResourceId[]) {
         const delta = (this.save.res[id] ?? 0) - (before[id] ?? 0)
@@ -101,9 +140,18 @@ export class Game {
 
   on(fn: Listener): void {
     this.listeners.push(fn)
+    if (this.pendingEvents.length > 0) {
+      const backlog = this.pendingEvents
+      this.pendingEvents = []
+      for (const e of backlog) this.emit(e)
+    }
   }
 
   private emit(e: GameEvent): void {
+    if (this.listeners.length === 0) {
+      this.pendingEvents.push(e)
+      return
+    }
     for (const fn of this.listeners) fn(e)
   }
 
@@ -279,6 +327,87 @@ export class Game {
     this.emit({ type: 'expeditionEnd', loot, find })
   }
 
+  private tickCaravan(dt: number): void {
+    if (this.save.age < CARAVAN_AGE) return
+    const c = this.save.caravan
+    if (!c.visiting) {
+      c.nextIn -= dt
+      if (c.nextIn <= 0) {
+        c.visiting = true
+        c.visitLeft = CARAVAN_VISIT
+        c.haggled = false
+        c.traded = false
+        this.currentMerchant = MERCHANTS[Math.floor(Math.random() * MERCHANTS.length)] ?? ''
+        this.emit({ type: 'caravanArrive', merchant: this.currentMerchant })
+      }
+      return
+    }
+    c.visitLeft -= dt
+    // L'échange se conclut au milieu de la visite : le joueur a le temps de
+    // marchander d'un tap avant que le prix soit fixé.
+    if (!c.traded && c.visitLeft <= CARAVAN_VISIT * 0.5) {
+      c.traded = true
+      this.doTrade(c.haggled ? 1.3 : 1, false)
+    }
+    if (c.visitLeft <= 0) {
+      c.visiting = false
+      c.nextIn = CARAVAN_PERIOD * (0.8 + Math.random() * 0.5)
+      this.emit({ type: 'caravanLeave' })
+    }
+  }
+
+  /** Troc : le marchand prend un tiers du surplus le plus abondant et paie dans
+   *  la ressource la plus rare, au cours implicite des taux de récolte. */
+  private doTrade(mult: number, silent: boolean): void {
+    const materials = [...this.unlocked].filter((id) => id !== 'insight')
+    const price = (id: ResourceId): number => 1 / BASE_RATE[id]
+
+    let give: ResourceId | null = null
+    for (const id of materials) {
+      if (this.amount(id) < 15) continue
+      if (!give || this.amount(id) > this.amount(give)) give = id
+    }
+    if (!give) return
+
+    let get: ResourceId | null = null
+    for (const id of materials) {
+      if (id === give) continue
+      if (!get || this.amount(id) < this.amount(get)) get = id
+    }
+    if (!get) return
+
+    const gave = Math.min(this.amount(give) * 0.33, 40 + this.save.age * 50)
+    const value = gave * price(give)
+    const got = Math.max(1, Math.round((value * 0.75 * mult) / price(get)))
+    const insight = Math.round((6 + this.save.age * 8) * mult)
+
+    this.save.res[give] = this.amount(give) - gave
+    this.save.res[get] = this.amount(get) + got
+    this.save.res.insight = this.amount('insight') + insight
+
+    if (!silent) {
+      const tale =
+        Math.random() < 0.4
+          ? (TRADE_TALES[Math.floor(Math.random() * TRADE_TALES.length)] ?? null)
+          : null
+      this.emit({
+        type: 'caravanTrade',
+        gave: { res: give, amount: Math.round(gave) },
+        got: { res: get, amount: got },
+        insight,
+        tale,
+      })
+    }
+  }
+
+  /** Un tap sur la barque avant la conclusion du troc améliore le prix. */
+  haggle(): boolean {
+    const c = this.save.caravan
+    if (!c.visiting || c.haggled || c.traded) return false
+    c.haggled = true
+    return true
+  }
+
   tick(dt: number, now: number): void {
     if (dt <= 0) return
     this.save.totalPlaySeconds += dt
@@ -299,6 +428,8 @@ export class Game {
       exp.remaining -= dt
       if (exp.remaining <= 0) this.finishExpedition()
     }
+
+    this.tickCaravan(dt)
 
     this.saveAccumulator += dt
     if (this.saveAccumulator >= 5) {

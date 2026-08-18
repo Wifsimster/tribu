@@ -6,14 +6,25 @@ export interface Expedition {
   total: number
 }
 
+export interface CaravanState {
+  /** Seconds until the next merchant boat shows up (only counts from Bronze Age). */
+  nextIn: number
+  visiting: boolean
+  visitLeft: number
+  haggled: boolean
+  traded: boolean
+}
+
 export interface SaveV1 {
   v: 1
   t: number
+  seed: number
   res: Partial<Record<ResourceId, number>>
   techs: string[]
   age: number
   focus: ResourceId
   expedition: Expedition | null
+  caravan: CaravanState
   seenFacts: string[]
   totalPlaySeconds: number
 }
@@ -28,11 +39,15 @@ export function emptySave(now: number): SaveV1 {
   return {
     v: 1,
     t: now,
+    // Chaque joueur reçoit sa propre île : le seed est tiré une fois et persiste
+    // avec la sauvegarde, donc l'île est unique mais stable d'une session à l'autre.
+    seed: Math.floor(Math.random() * 0x7fffffff),
     res: { food: 0, wood: 0, stone: 0, insight: 0 },
     techs: [],
     age: 0,
     focus: 'food',
     expedition: null,
+    caravan: { nextIn: 150, visiting: false, visitLeft: 0, haggled: false, traded: false },
     seenFacts: [],
     totalPlaySeconds: 0,
   }
