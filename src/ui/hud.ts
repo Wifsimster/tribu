@@ -91,17 +91,12 @@ function fmtDuration(seconds: number): string {
 
 export class Hud {
   private resNodes = new Map<ResourceId, { root: HTMLElement; val: HTMLElement; rate: HTMLElement }>()
-  private focusButtons = new Map<ResourceId, HTMLButtonElement>()
   private lastValues = new Map<ResourceId, number>()
   private sheetOpen = false
   private factOpen = false
 
-  constructor(
-    private game: Game,
-    private onFocus: (id: ResourceId) => void,
-  ) {
+  constructor(private game: Game) {
     this.buildResources()
-    this.buildFocus()
     this.wire()
     this.refreshTechList()
   }
@@ -121,24 +116,6 @@ export class Hud {
         val: root.querySelector('.val') as HTMLElement,
         rate: root.querySelector('.rate') as HTMLElement,
       })
-    }
-  }
-
-  private buildFocus(): void {
-    const host = el('focus-row')
-    host.textContent = ''
-    for (const id of Object.keys(RESOURCES) as ResourceId[]) {
-      if (id === 'insight') continue
-      const def = RESOURCES[id]
-      const btn = document.createElement('button')
-      btn.className = 'chip'
-      btn.type = 'button'
-      btn.hidden = true
-      btn.setAttribute('aria-pressed', 'false')
-      btn.innerHTML = `${icon(id, 16)}<span>${def.name}</span>`
-      btn.addEventListener('click', () => this.onFocus(id))
-      host.appendChild(btn)
-      this.focusButtons.set(id, btn)
     }
   }
 
@@ -264,12 +241,6 @@ export class Hud {
       } else if (prev === 0) {
         this.lastValues.set(id, amount)
       }
-    }
-
-    for (const [id, btn] of this.focusButtons) {
-      const unlocked = g.unlocked.has(id)
-      btn.hidden = !unlocked
-      btn.setAttribute('aria-pressed', String(g.save.focus === id))
     }
 
     if (this.lastAge !== g.age.id) {

@@ -50,10 +50,7 @@ function spotFor(resource: ResourceId): Vector3 {
   )
 }
 
-const hud = new Hud(game, (id) => {
-  game.setFocus(id)
-  settler.sendTo(spotFor(id))
-})
+const hud = new Hud(game)
 
 game.on((e) => {
   switch (e.type) {

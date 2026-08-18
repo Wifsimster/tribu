@@ -150,8 +150,7 @@ body {
 
 /* A class selector beats the UA rule for [hidden], so display:none must be
    restated or every locked resource shows a permanent zero. */
-.res[hidden],
-.chip[hidden] {
+.res[hidden] {
   display: none;
 }
 
@@ -216,49 +215,10 @@ body {
   gap: 9px;
 }
 
-.focus-row {
-  display: flex;
-  gap: 7px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
 
-.focus-row::-webkit-scrollbar {
-  display: none;
-}
 
-.chip {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line);
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(10px) saturate(1.1);
-  backdrop-filter: blur(10px) saturate(1.1);
-  border-radius: 99px;
-  box-shadow: var(--shadow-s);
-  padding: 7px 13px 7px 10px;
-  font: inherit;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--ink);
-  cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease,
-    box-shadow 0.15s ease;
-}
 
-.chip:active {
-  transform: scale(0.95);
-}
 
-.chip[aria-pressed='true'] {
-  border-color: var(--accent);
-  background: var(--paper);
-  color: var(--accent-deep);
-  box-shadow: 0 2px 10px rgba(201, 111, 78, 0.22);
-}
 
 .actions {
   display: flex;
@@ -660,8 +620,7 @@ body {
     padding: 0 16px 16px;
     align-items: center;
   }
-  .actions,
-  .focus-row {
+  .actions {
     width: min(560px, 100%);
   }
   .sheet {
