@@ -87,30 +87,25 @@ const CAP = 0.3
 const STEP = 0.44
 /** Le plan d'eau est y=0. La coque ne s'y arrête plus : l'île a un DESSOUS. */
 const BED_Y = -0.02
-/** Le reflet est étiré vers le fond, jamais écrasé : à l'oblique, l'eau allonge
- *  ce qu'elle renvoie. Long : c'est la longueur du reflet qui donne le poids. */
-const MIRROR = 4.0
-/** Opacité du reflet à la ligne d'eau. Les rounds 5-6 ont perdu sur un calcul :
- *  alpha × translucidité de la nappe × écart de couleur ≈ 1 % de contraste —
- *  invisible. Depuis, l'écart se RÈGLE AU CHIFFRE : bande 4-12 % sous la
- *  flottaison mesurée contre la référence (waterline-metrics.mjs). */
-const REFL_ALPHA = 0.55
 /** Bande de flottaison sombre retenue au-dessus de l'arête, sur tout le
  *  pourtour. Sombre : l'eau qui remonte par capillarité fonce le pied, elle ne
  *  le fait jamais briller — le liseré spéculaire des rounds passés est mort ici. */
 const WET = 0.21
-/** Fondation immergée : deux à trois rangées de voxels FINIES sous la
- *  flottaison, chacune cuite un cran plus près de la couleur de l'eau, la
- *  dernière quasi dissoute. La jupe du round 2 plongeait jusqu'à un fond à
- *  −2,9 sans dissolution et se noyait dans la brume ; le point d'arrêt est ici
- *  choisi par le dégradé, pas par la géométrie qui se coupe. */
-/** Hauteur d'une rangée immergée. Mesurée, pas goûtée : à 0,36 la masse
- *  s'arrêtait à 1,1 unité sous l'eau et la bande 0-4 % sous la flottaison
- *  restait de l'eau nue — la référence y montre un delta moyen de +27 de
- *  luminance (waterline-metrics.mjs). */
+/** Continuation immergée. Huit rounds ont perdu sur un REFLET — une copie
+ *  INVERSÉE de l'île sous la flottaison. Un miroir, quel que soit son dosage,
+ *  est le signal « surface dure » : « l'île lit comme posée sur du verre
+ *  poli », dit le jury du round 8, à parité de masse MESURÉE. La référence ne
+ *  montre pas un miroir : la fondation se PROLONGE sous la surface, dans la
+ *  MÊME orientation, et se dissout avec la profondeur — floutée, réfractée.
+ *  Ici : chaque colonne du pourtour continue vers le bas sur ROWS rangées de
+ *  voxels, même teinte que la falaise en haut, puis dilution vers une eau
+ *  laiteuse (couleur ET alpha), léger fruit vers l'intérieur, rangées
+ *  profondes élargies et adoucies — l'eau floute ce qu'elle recouvre. */
+/** Hauteur de la première rangée immergée ; les suivantes s'allongent, la
+ *  dissolution s'étire avec la profondeur. */
 const ROW_H = 0.5
-const ROWS_CLIFF = 3
-const ROWS_BEACH = 2
+const ROWS_CLIFF = 6
+const ROWS_BEACH = 4
 const PLAZA_RADIUS = 5.1
 /** Clairière de terre battue. Centrée entre l'origine et le foyer que village.ts
  *  pose en (-1,15 ; 1,15), pour rester dans la place plate. */
@@ -290,6 +285,7 @@ export class Island {
     this.bakeOcclusion()
     this.bakeFootprint()
     this.buildTerrain()
+    this.buildFoundation()
     this.buildWater()
     this.buildRipple()
     this.buildWaterline()
@@ -308,8 +304,8 @@ export class Island {
       this.hull[i] = (shoreEdge(i * step, this.seed) - 0.7) * TILE
     }
     const h = TILE / 2
-    // Profondeur locale de la fondation : les falaises portent trois rangées
-    // immergées, les plages deux — l'ombre de contact suivra ce relief.
+    // Profondeur locale de la fondation : les falaises s'enfoncent plus loin
+    // que les plages — l'ombre de contact suivra ce relief.
     const depth = new Float32Array(HULL_BINS)
     for (const c of this.cells) {
       if (!c.rim) continue
@@ -433,24 +429,16 @@ export class Island {
     // exactement la moitié où les falaises viraient au noir.
     const contactMat = new MeshBasicMaterial()
     this.unlit.push(contactMat)
-    // Par cellule du pourtour : la bande mouillée émergée + jusqu'à trois
-    // rangées de fondation immergées. Instances en plus, zéro draw call.
-    const contact = new InstancedMesh(geo, contactMat, rims.length * (1 + ROWS_CLIFF))
-
-    // Seule la bande côtière se reflète : au-delà, le reflet d'une colonne est
-    // masqué par l'île elle-même et ne fait que s'empiler sous elle.
-    const mirrored = this.cells.filter((c) => c.inland < 4)
-    const reflMat = new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
-    this.unlit.push(reflMat)
-    const refl = new InstancedMesh(this.reflectionBox(), reflMat, mirrored.length)
-    refl.renderOrder = -2
-    let reflIndex = 0
+    // Une bande mouillée émergée par cellule du pourtour. La fondation
+    // immergée, elle, vit dans `buildFoundation` : une géométrie fusionnée
+    // sous la nappe, avec l'alpha par sommet que l'instanciation ne sait pas
+    // porter.
+    const contact = new InstancedMesh(geo, contactMat, rims.length)
 
     const dummy = new Object3D()
     const capColor = new Color()
     const socleColor = new Color()
     const wetColor = new Color()
-    const reflColor = new Color()
     const grassRamp = [
       [0, PALETTE.grassDark],
       [0.55, PALETTE.grass],
@@ -492,80 +480,19 @@ export class Island {
 
       mesh.setColorAt(i * 2, socleColor)
       mesh.setColorAt(i * 2 + 1, capColor)
-
-      if (c.inland < 4) {
-        // Reflet : la colonne retournée, sans dérive ni élargissement, accrochée
-        // sous la fondation immergée. Le décalage d'avant la détachait de la
-        // berge et ses escaliers pâles se lisaient comme un calque translucide.
-        // L'extinction en profondeur est cuite dans la géométrie.
-        const found = (c.beach ? ROWS_BEACH : ROWS_CLIFF) * ROW_H
-        const mirror = Math.max(0.12, c.height * MIRROR)
-        dummy.position.set(c.x, -found - mirror / 2, c.z)
-        // Un rien plus large que la tuile : les colonnes du reflet se soudent en
-        // nappe au lieu de se lire comme des doigts séparés.
-        dummy.scale.set(1.07, mirror, 1.07)
-        dummy.updateMatrix()
-        refl.setMatrixAt(reflIndex, dummy.matrix)
-        // Un reflet BLANCHIT cette eau-ci. Sept rounds ont perdu sur ce signe :
-        // mesurée (waterline-metrics.mjs), la référence a une eau sous l'objet
-        // en moyenne PLUS CLAIRE que l'eau libre (+27 de luminance à 0-4 % sous
-        // la flottaison, +11 à 4-12 %) — l'objet clair posé sur une eau sombre
-        // renvoie une nappe laiteuse, pas une tache d'encre. La version sombre
-        // du round 7 (waterDeep × 0,72) mesurait un signé de −4 : invisible,
-        // dit le jury, et il avait raison au chiffre près.
-        // Mesuré à la passe 2 : à pleine dilution laiteuse la bande 4-12 % sous
-        // la flottaison montait à +22 quand la référence tient +11 — le reflet
-        // clair reprend 40 % d'eau pour redescendre dans la fenêtre 70-130 %.
-        reflColor.copy(capColor).lerp(PALETTE.haze, 0.55).lerp(PALETTE.water, 0.58)
-        refl.setColorAt(reflIndex, reflColor)
-        reflIndex++
-      }
     })
 
-    // Le pourtour porte la bande de flottaison sombre ET la fondation
-    // immergée : des rangées de voxels FINIES sous la ligne d'eau, dont la
-    // couleur tire vers l'eau avec la profondeur — « le socle continue sous la
-    // surface en s'atténuant », dit la référence. C'est le dégradé cuit qui
-    // arrête l'objet, pas une coupe de géométrie à la flottaison.
-    // La rangée noyée se dissout vers une eau LAITEUSE, pas vers l'eau profonde :
-    // sous la flottaison, la référence mesure +27 de luminance par rapport à
-    // l'eau libre — la fondation doit rester plus claire que la nappe jusqu'à
-    // son extinction, comme la coque de la référence.
-    const waterMid = PALETTE.water.clone().lerp(PALETTE.haze, 0.5)
-    // Part d'eau par rangée : pierre encore lisible, pierre noyée, quasi eau.
-    const SINK = [0.5, 0.78, 0.94] as const
+    // La bande de flottaison sombre, sur le pourtour émergé. Le contact se
+    // densifie à l'ombre : l'eau y reprend le pied. Face au soleil il reste
+    // sombre, juste un peu moins — jamais éclairé.
     let ci = 0
     rims.forEach((c) => {
       const shore = c.beach ? PALETTE.sand : PALETTE.earth
-      // Le contact se densifie à l'ombre : l'eau y reprend le pied. Face au
-      // soleil il reste sombre, juste un peu moins — jamais éclairé.
       const len = Math.hypot(c.outx, c.outz)
       const nx = len > 0 ? c.outx / len : c.x / (Math.hypot(c.x, c.z) + 1e-6)
       const nz = len > 0 ? c.outz / len : c.z / (Math.hypot(c.x, c.z) + 1e-6)
       const facing = nx * SUN_HX + nz * SUN_HZ
       const shade = 0.5 - 0.5 * facing
-
-      const rows = c.beach ? ROWS_BEACH : ROWS_CLIFF
-      for (let k = 0; k < rows; k++) {
-        dummy.position.set(c.x, -(k + 0.5) * ROW_H, c.z)
-        // Léger fruit : chaque rangée rentre d'un cheveu, la coque a un galbe
-        // de dessous et non un mur qui tombe droit.
-        const inset = 1.004 - k * 0.03
-        dummy.scale.set(inset, ROW_H, inset)
-        dummy.updateMatrix()
-        contact.setMatrixAt(ci, dummy.matrix)
-        // Pierre mouillée à peine assombrie, puis diluée dans l'eau laiteuse
-        // selon la rangée. À 0,58 la masse tombait sous la luminance de la
-        // nappe et le |delta| mesuré venait du bruit ombre/ride, signé zéro —
-        // « aucune masse immergée », dit le jury. La référence est FRANCHE :
-        // la fondation noyée reste plus claire que l'eau qui l'entoure.
-        wetColor
-          .copy(shore)
-          .multiplyScalar(0.5 - shade * 0.1)
-          .lerp(waterMid, SINK[k]!)
-        contact.setColorAt(ci, wetColor)
-        ci++
-      }
 
       dummy.position.set(c.x, WET / 2, c.z)
       dummy.scale.set(1.008, WET, 1.008)
@@ -581,30 +508,152 @@ export class Island {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     contact.instanceMatrix.needsUpdate = true
     if (contact.instanceColor) contact.instanceColor.needsUpdate = true
-    refl.instanceMatrix.needsUpdate = true
-    if (refl.instanceColor) refl.instanceColor.needsUpdate = true
-    this.group.add(mesh, contact, refl)
+    this.group.add(mesh, contact)
   }
 
-  /** Boîte du reflet, avec son extinction cuite dans l'alpha des sommets : plein
-   *  à la ligne d'eau, éteint au fond. Un reflet qui se termine sur une arête
-   *  franche ne lit pas comme un reflet mais comme une seconde île. */
-  private reflectionBox(): BoxGeometry {
-    const geo = new BoxGeometry(TILE, 1, TILE)
-    const pos = geo.attributes.position!
-    const rgba = new Float32Array(pos.count * 4)
-    for (let i = 0; i < pos.count; i++) {
-      const t = pos.getY(i) + 0.5
-      rgba[i * 4] = 1
-      rgba[i * 4 + 1] = 1
-      rgba[i * 4 + 2] = 1
-      // Décroissance quasi linéaire : à t^1.4 le milieu du reflet tombait déjà
-      // à un tiers d'alpha et mourait sous la nappe. Il doit rester dense sur
-      // sa moitié haute et ne s'éteindre que vers le fond.
-      rgba[i * 4 + 3] = REFL_ALPHA * t
+  /** La CONTINUATION de la fondation sous la flottaison — pas un reflet.
+   *  Chaque colonne du pourtour se prolonge vers le bas dans la MÊME
+   *  orientation, comme si la falaise s'enfonçait, et le regard la perd dans
+   *  la profondeur : même teinte que la falaise à la première rangée, puis
+   *  dilution progressive vers une eau laiteuse (couleur ET alpha par sommet),
+   *  léger fruit vers l'intérieur, rangées profondes élargies — l'eau floute
+   *  ce qu'elle recouvre, elle ne le renvoie pas.
+   *  Géométrie fusionnée, un seul draw call, dessinée ENTRE le fond (-3) et la
+   *  nappe translucide (-1) : la fondation se lit À TRAVERS l'eau, la nappe la
+   *  voile — « floutée et réfractée qui se dissout avec la profondeur », dit
+   *  la référence. Rien n'est cuit vers le haut : rien à inverser, rien qui
+   *  puisse lire comme un miroir. */
+  private buildFoundation(): void {
+    const verts: number[] = []
+    const colors: number[] = []
+    const index: number[] = []
+    // La dissolution vise une eau LAITEUSE, pas l'eau profonde : mesurée, la
+    // référence garde sa fondation noyée PLUS CLAIRE que l'eau libre (+27 de
+    // luminance à 0-4 % sous la flottaison) jusqu'à son extinction.
+    const milk = PALETTE.water.clone().lerp(PALETTE.haze, 0.75)
+    const wall = new Color()
+    const cj = new Color()
+    const h = TILE / 2
+    const water = (gx: number, gz: number): boolean => !this.byKey.has(gx * 64 + gz)
+    /** Alpha selon la profondeur relative : dense sous la flottaison, éteint à
+     *  la dernière rangée — c'est le dégradé qui arrête l'objet, pas une coupe
+     *  de géométrie. */
+    const aOf = (t: number): number => 0.95 * Math.pow(1 - t, 1.3)
+    /** Fruit vers l'intérieur : la paroi rentre en descendant, comme une
+     *  coque — jamais un mur qui tombe droit. Le rideau est le POLYGONE OFFSET
+     *  de la côte à chaque profondeur : poussée le long de la normale, et aux
+     *  extrémités la face se rétracte au coin saillant (elle rejoint l'autre
+     *  face de sa tuile), continue telle quelle en ligne droite, s'allonge au
+     *  coin rentrant (elle rejoint la face de la tuile diagonale). Poussée
+     *  seule, les faces perpendiculaires se croisaient aux angles rentrants et
+     *  leur double mélange rayait la masse de stries claires (passe 2) ;
+     *  contractées vers le centre de leur tuile, les faces voisines
+     *  s'écartaient en dents séparées (passe 3). Offset : étanche. */
+    /** Amplitude courte : à 0,45 les faces d'un promontoire d'une tuile,
+     *  rétractées des deux bouts, convergeaient en pointes fines qui pendaient
+     *  sous la masse. */
+    const fruit = (t: number): number => 0.28 * t * t + 0.04 * t
+
+    // Une NAPPE continue, pas des boîtes : la passe 1 émettait quatre faces
+    // par rangée par cellule, et à travers la transparence leurs faces
+    // intérieures dessinaient un treillis clair — une grille de verre, pas une
+    // falaise. Ici seules les faces qui REGARDENT L'EAU existent, connectées
+    // verticalement : un rideau qui prolonge chaque face de falaise vers le
+    // bas, rien à voir au travers sinon l'eau.
+    /** Comportement d'une extrémité de face quand la côte tourne : +1 la face
+     *  se rétracte (coin saillant), 0 elle continue (ligne droite), -1 elle
+     *  s'allonge (coin rentrant). */
+    const endCode = (c: Cell, ex: number, ez: number, nx: number, nz: number): number => {
+      if (water(c.gx + ex, c.gz + ez)) return 1
+      return water(c.gx + ex + nx, c.gz + ez + nz) ? 0 : -1
     }
-    geo.setAttribute('color', new BufferAttribute(rgba, 4))
-    return geo
+
+    const curtain = (
+      c: Cell,
+      nx: number,
+      nz: number,
+      ax: number, az: number, // extrémité A de l'arête, à la flottaison
+      bx: number, bz: number, // extrémité B
+      codeA: number,
+      codeB: number,
+    ): void => {
+      const rows = c.beach ? ROWS_BEACH : ROWS_CLIFF
+      const shore = c.beach ? PALETTE.sand : PALETTE.earth
+      const facing = nx * SUN_HX + nz * SUN_HZ
+      const shade = 0.5 - 0.5 * facing
+      // La première rangée est la falaise du dessus, mouillée : même valeur
+      // sombre que le socle — c'est le RACCORD qui fait lire « la paroi
+      // continue ». Trop claire dès la flottaison (0,78 à la passe 2), elle
+      // sautait au blanc et lisait comme un rideau posé sous l'île, pas comme
+      // la même pierre.
+      wall.copy(shore).multiplyScalar(0.6 - shade * 0.12)
+      const tx = (bx - ax) / TILE
+      const tz = (bz - az) / TILE
+      const b = verts.length / 3
+      let y = 0
+      for (let j = 0; j <= rows; j++) {
+        const t = j / rows
+        // Les rangées s'allongent avec la profondeur : la dissolution s'étire,
+        // le pas se lit surtout près de la surface, là où l'eau est claire.
+        if (j > 0) y -= ROW_H * (1 + (j - 1) * 0.18)
+        const f = fruit(t)
+        // La dilution laiteuse monte vite après la première rangée : c'est
+        // elle qui porte la masse MESURÉE (+27 signé chez la référence), le
+        // raccord sombre ne vit qu'à la flottaison.
+        cj.copy(wall).lerp(milk, 0.12 + 0.88 * Math.pow(t, 0.7))
+        // Assises alternées : un souffle de clair/sombre par rangée, qui
+        // s'éteint avec la profondeur — le pas de voxel de la falaise continue
+        // sous l'eau, puis l'eau le floute.
+        cj.multiplyScalar(1 + (j % 2 === 0 ? 0.05 : -0.05) * (1 - t))
+        const a = aOf(t)
+        verts.push(
+          ax - nx * f + tx * codeA * f, y, az - nz * f + tz * codeA * f,
+          bx - nx * f - tx * codeB * f, y, bz - nz * f - tz * codeB * f,
+        )
+        colors.push(cj.r, cj.g, cj.b, a, cj.r, cj.g, cj.b, a)
+        if (j > 0) {
+          const p = b + (j - 1) * 2
+          index.push(p, p + 1, p + 3, p, p + 3, p + 2)
+        }
+      }
+    }
+
+    for (const c of this.cells) {
+      if (!c.rim) continue
+      for (const sx of [1, -1] as const) {
+        if (!water(c.gx + sx, c.gz)) continue
+        const x = c.x + sx * h
+        curtain(
+          c, sx, 0, x, c.z - h, x, c.z + h,
+          endCode(c, 0, -1, sx, 0), endCode(c, 0, 1, sx, 0),
+        )
+      }
+      for (const sz of [1, -1] as const) {
+        if (!water(c.gx, c.gz + sz)) continue
+        const z = c.z + sz * h
+        curtain(
+          c, 0, sz, c.x - h, z, c.x + h, z,
+          endCode(c, -1, 0, 0, sz), endCode(c, 1, 0, 0, sz),
+        )
+      }
+    }
+
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(new Float32Array(verts), 3))
+    geo.setAttribute('color', new BufferAttribute(new Float32Array(colors), 4))
+    geo.setIndex(index)
+    // `DoubleSide` : l'ordre des coins s'enroule dans un sens ou l'autre selon
+    // la face du pourtour — un quad doit se dessiner quel que soit son côté.
+    const mat = new MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    })
+    this.unlit.push(mat)
+    const mesh = new Mesh(geo, mat)
+    mesh.renderOrder = -2
+    this.group.add(mesh)
   }
 
   /** La 2e ride, au large de la flottaison : une ligne discrète qui ondule

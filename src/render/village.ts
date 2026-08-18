@@ -738,53 +738,11 @@ export class Village {
 
   constructor(private island: Island) {
     this.buildCampfire()
-    this.waterReflections()
-  }
-
-  /** Reflets des deux loges dans l'eau : les seuls volumes hauts et contrastés
-   *  de l'île — l'équivalent de la « tour rouge » de la référence. Le miroir
-   *  naïf du terrain (colonne étirée sous la berge) ne suffit pas ici : l'image
-   *  d'un tipi central n'émerge à l'écran devant la berge qu'une fois assez
-   *  profonde, d'où l'étirement fort. Deux meshes vertex-color, zéro render
-   *  target. */
-  private waterReflections(): void {
-    const mat = new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
-    this.island.registerUnlit(mat)
-    const tone = new Color().copy(C.hide).lerp(C.hideDark, 0.5)
-    const refColor = new Color().copy(PALETTE.water).lerp(tone, 0.65).multiplyScalar(0.6)
-    const tents = [
-      { s: CAMP.tent, r: 2.04, h: 3.88 },
-      { s: CAMP.lean, r: 1.24, h: 2.32 },
-    ]
-    for (const t of tents) {
-      const x = HEARTH.x + t.s.x * SCALE
-      const z = HEARTH.z + t.s.z * SCALE
-      const apex = this.island.heightAt(x, z) + t.h * SCALE
-      const depth = 0.35 + apex * 2.9
-      // Presque un cylindre : l'eau étire un reflet, elle ne l'effile pas. En
-      // cône, la seule partie qui émerge devant la berge était une pointe d'une
-      // demi-tuile — invisible, exactement le « reflet quasi absent » reproché.
-      const geo = new CylinderGeometry(t.r * SCALE * 0.95, t.r * SCALE * 0.88, depth, 9)
-      geo.translate(0, -depth / 2, 0)
-      const pos = geo.attributes.position!
-      const rgba = new Float32Array(pos.count * 4)
-      for (let i = 0; i < pos.count; i++) {
-        // 1 à la ligne d'eau, 0 à la pointe : extinction douce en profondeur.
-        const k = Math.max(0, 1 + pos.getY(i) / depth)
-        rgba[i * 4] = refColor.r
-        rgba[i * 4 + 1] = refColor.g
-        rgba[i * 4 + 2] = refColor.b
-        // Profil plat : la seule partie visible est la profonde (celle qui
-        // émerge à l'écran devant la berge), une extinction rapide la tuait.
-        rgba[i * 4 + 3] = 0.95 * Math.pow(k, 0.22)
-      }
-      geo.setAttribute('color', new BufferAttribute(rgba, 4))
-      const m = new Mesh(geo, mat)
-      m.position.set(x, 0, z)
-      m.renderOrder = -2
-      m.frustumCulled = false
-      this.group.add(m)
-    }
+    // Les reflets miroir des loges ont vécu ici jusqu'au round 8 : une image
+    // INVERSÉE des tipis sous la flottaison. Le jury les lisait — avec le
+    // miroir du terrain — comme « posée sur du verre poli ». L'eau de ce round
+    // ne renvoie rien : la fondation CONTINUE sous la surface (island.ts,
+    // buildFoundation) et les objets posés dessus n'ont pas d'image.
   }
 
   private mesh(p: BufferGeometry[]): Mesh {
