@@ -893,3 +893,7 @@ body.night .age-bar {
 .tuto-list b {
   color: var(--ink);
 }
+
+.menu-tuto .btn {
+  width: 100%;
+}
