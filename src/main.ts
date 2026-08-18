@@ -1,6 +1,7 @@
 import { InstancedMesh, Raycaster, Vector2, Vector3 } from 'three'
 import './style.css'
 import { Game } from './game/sim'
+import { SAVE_KEY } from './game/state'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START, Stage } from './render/scene'
 import { Island } from './render/island'
@@ -149,6 +150,90 @@ const hParam = new URLSearchParams(location.search).get('h')
 const forcedHour = hParam !== null && !Number.isNaN(Number(hParam)) ? Number(hParam) % 1 : null
 let hudNight = false
 
+// ── Menu d'accueil et reset ────────────────────────────────────────────────
+// Le monde tourne derrière le menu, mais la simulation est en pause : le temps
+// de jeu n'avance pas tant que le joueur n'a pas choisi.
+let paused = true
+
+function menuEl<T extends HTMLElement>(id: string): T {
+  return document.getElementById(id) as T
+}
+
+{
+  const menu = menuEl('menu')
+  const home = menuEl('menu-home')
+  const confirm = menuEl('menu-confirm')
+  const warn = menuEl('menu-warn')
+  const eraseLabel = menuEl('menu-erase-label')
+  const continueBtn = menuEl<HTMLButtonElement>('menu-continue')
+  const newBtn = menuEl('menu-new')
+  let confirmStep = 0
+
+  const hasProgress = game.save.techs.length > 0 || game.save.totalPlaySeconds > 30
+
+  const showHome = () => {
+    confirmStep = 0
+    confirm.hidden = true
+    home.hidden = false
+    continueBtn.hidden = !hasProgress
+    ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
+      ? 'Nouvelle partie'
+      : 'Commencer'
+  }
+
+  const open = () => {
+    showHome()
+    menu.classList.add('open')
+    paused = true
+  }
+
+  const close = () => {
+    menu.classList.remove('open')
+    paused = false
+  }
+
+  continueBtn.addEventListener('click', close)
+
+  newBtn.addEventListener('click', () => {
+    if (!hasProgress) {
+      close()
+      return
+    }
+    // Première confirmation.
+    confirmStep = 1
+    home.hidden = true
+    confirm.hidden = false
+    warn.textContent = `Recommencer au Paléolithique ? Ta tribu — ${game.age.name}, ${game.save.techs.length} découvertes — et son île seront effacées.`
+    eraseLabel.textContent = 'Effacer ma tribu'
+  })
+
+  menuEl('menu-cancel').addEventListener('click', showHome)
+
+  menuEl('menu-erase').addEventListener('click', () => {
+    if (confirmStep === 1) {
+      // Seconde confirmation : le libellé change, il faut re-taper en conscience.
+      confirmStep = 2
+      warn.textContent = 'Dernière confirmation. Il ne restera rien : ni savoir, ni bâtiments, ni île.'
+      eraseLabel.textContent = 'Tout effacer définitivement'
+      return
+    }
+    try {
+      localStorage.removeItem(SAVE_KEY)
+    } catch {
+      /* stockage indisponible : la partie était déjà en mémoire seulement */
+    }
+    location.reload()
+  })
+
+  menuEl('menu-open').addEventListener('click', open)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu.classList.contains('open') && hasProgress) close()
+  })
+
+  showHome()
+  menu.classList.add('open')
+}
+
 let last = performance.now()
 let elapsed = 0
 
@@ -160,7 +245,7 @@ function frame(now: number): void {
   last = now
   elapsed += dt
 
-  game.tick(dt, Date.now())
+  if (!paused) game.tick(dt, Date.now())
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
