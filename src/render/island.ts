@@ -74,7 +74,7 @@ function fbm(x: number, y: number, seed: number): number {
 }
 
 export const TILE = 1.35
-export const GRID = 26
+export const GRID = 32
 
 /** Griffonnage partagé de setDaylight : une teinte par frame, zéro allocation. */
 const tmpTint = new Color()
@@ -90,7 +90,7 @@ const BED_Y = -0.02
 /** Bande de flottaison sombre retenue au-dessus de l'arête, sur tout le
  *  pourtour. Sombre : l'eau qui remonte par capillarité fonce le pied, elle ne
  *  le fait jamais briller — le liseré spéculaire des rounds passés est mort ici. */
-const WET = 0.21
+const WET = 0.34
 /** Continuation immergée. Huit rounds ont perdu sur un REFLET — une copie
  *  INVERSÉE de l'île sous la flottaison. Un miroir, quel que soit son dosage,
  *  est le signal « surface dure » : « l'île lit comme posée sur du verre
@@ -103,7 +103,7 @@ const WET = 0.21
  *  profondes élargies et adoucies — l'eau floute ce qu'elle recouvre. */
 /** Hauteur de la première rangée immergée ; les suivantes s'allongent, la
  *  dissolution s'étire avec la profondeur. */
-const ROW_H = 0.5
+const ROW_H = 0.62
 const ROWS_CLIFF = 6
 const ROWS_BEACH = 4
 const PLAZA_RADIUS = 5.1
@@ -127,7 +127,7 @@ function clearRadius(x: number, z: number): number {
   return CLEAR_RADIUS + back * back * back * 3.2
 }
 
-const EDGE_BASE = 9.3
+const EDGE_BASE = 11.4
 const DEFAULT_SEED = 1337
 
 /** Soleil projeté au sol, normalisé : tout le dosage du contact (liseré,
@@ -146,8 +146,8 @@ const HULL_BINS = 256
 function shoreEdge(theta: number, seed: number): number {
   return (
     EDGE_BASE +
-    1.15 * Math.sin(3 * theta + 0.9) +
-    0.6 * Math.sin(5 * theta - 1.7) +
+    1.45 * Math.sin(3 * theta + 0.9) +
+    0.75 * Math.sin(5 * theta - 1.7) +
     0.8 * valueNoise(Math.cos(theta) * 2.4 + 8, Math.sin(theta) * 2.4 + 8, seed)
   )
 }
@@ -741,7 +741,7 @@ export class Island {
      *  la couronne de la référence culmine à +130 de luminance sur l'eau
      *  voisine, la nôtre à +102 — le trait s'élargit d'un demi-pixel pour que
      *  le pic survive au lissage de l'écran, il ne devient pas un glow. */
-    const W = 0.075
+    const W = 0.16
     const line = PALETTE.foamLine
     const verts: number[] = []
     const colors: number[] = []
@@ -959,11 +959,11 @@ export class Island {
       return out
     }
 
-    this.addTrees(take(46, clustered(wooded, 3.4), () => true), rnd)
+    this.addTrees(take(70, clustered(wooded, 3.4), () => true), rnd)
     // Pierres et buissons, eux, ont le droit de border la clairière : ce sont
     // eux qui l'encadrent une fois les sapins reculés.
-    this.addRocks(take(22, clustered(free, 9), (c) => c.height > 1.2), rnd)
-    this.addBushes(take(26, clustered(free, 6), () => true), rnd)
+    this.addRocks(take(33, clustered(free, 9), (c) => c.height > 1.2), rnd)
+    this.addBushes(take(40, clustered(free, 6), () => true), rnd)
   }
 
   private addTrees(cells: Cell[], rnd: () => number): void {

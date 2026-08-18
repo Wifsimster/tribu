@@ -140,7 +140,7 @@ export class Settler {
   private readonly home = new Vector3(0, 0, 0)
   private readonly shore = new Vector3(0, 0, 0)
   private destination = new Vector3(3, 0, 3)
-  private speed = 2.4
+  private speed = 2.9
   private pack!: Mesh
 
   constructor(private island: Island) {
