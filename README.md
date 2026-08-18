@@ -152,3 +152,22 @@ dans `.claude/skills/gauntlet-loop/`.
 est un jeu connu, un critique attentif peut le reconnaître à sa palette. On
 supprime les étiquettes et on impose un choix binaire, ce qui retire la note
 complaisante — pas l'a priori.
+
+### Bilan (12 rounds, clôturé)
+
+| Axe | Résultat |
+|---|---|
+| Habitat (matière, chaleur, présence) | **Gagné**, nettement et de façon répétée |
+| Écran de téléphone (composition, encre) | **Gagné**, 12 fois sur 12 |
+| Performance (plafonds durs) | **Tenue** : < 3 s de premier dessin bridé, ≤ 60 draw calls, 0 erreur JS |
+| Contact avec l'eau | **Perdu** 12 fois, unanime |
+
+Sur l'eau, tout a été tenté : halo, contact sombre, ride fine, parité de
+luminance mesurée au pixel (l'outil est dans `tools/waterline-metrics.mjs`),
+continuation non inversée de la fondation, changement d'échelle, vue rasante.
+Le protocole sait pourtant préférer notre frame — il le fait sur deux axes avec
+les mêmes juges. Conclusion honnête : le contact eau/objet de Townscaper est la
+signature du meilleur du genre (AO, réfraction et brouillard de profondeur d'un
+moteur complet, sur un sujet en gros plan), et la poursuivre a transformé notre
+rendu sans la rattraper. La boucle est sortie sur décision du joueur, à deux
+axes gagnés sur trois.
