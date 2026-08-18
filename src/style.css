@@ -872,7 +872,7 @@ body.night .age-bar {
 
 .tuto-list {
   margin: 0 0 14px;
-  padding: 0;
+  padding: 0 0 14px;
   list-style: none;
   max-height: 46dvh;
   overflow-y: auto;
@@ -880,6 +880,10 @@ body.night .age-bar {
   display: flex;
   flex-direction: column;
   gap: 9px;
+  /* Le bas fond en transparence : la coupe se lit comme « fais défiler »,
+     pas comme un texte tronqué. */
+  -webkit-mask-image: linear-gradient(180deg, #000 86%, transparent);
+  mask-image: linear-gradient(180deg, #000 86%, transparent);
 }
 
 .tuto-list li {
