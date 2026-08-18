@@ -184,7 +184,21 @@ export class Hud {
         let right: string
         if (known) right = `<span class="cost done-mark">✓</span>`
         else if (future) right = `<span class="cost">🔒</span>`
-        else right = `<span class="cost ${affordable ? 'ok' : ''}">${icon('insight', 13)}${fmt(t.cost)}</span>`
+        else {
+          // Chaque composant du prix est marqué séparément : le joueur voit d'un
+          // coup d'œil CE QUI manque, pas seulement qu'il manque quelque chose.
+          const parts = [
+            `<span class="${g.amount('insight') >= t.cost ? 'have' : 'lack'}">${icon('insight', 13)}${fmt(t.cost)}</span>`,
+          ]
+          if (t.materials) {
+            for (const [res, n] of Object.entries(t.materials) as [ResourceId, number][]) {
+              parts.push(
+                `<span class="${g.amount(res) >= n ? 'have' : 'lack'}">${icon(res, 13)}${fmt(n)}</span>`,
+              )
+            }
+          }
+          right = `<span class="cost ${affordable ? 'ok' : ''}">${parts.join('')}</span>`
+        }
 
         const needs =
           !known && !future && missing.length > 0

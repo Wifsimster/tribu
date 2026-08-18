@@ -897,3 +897,26 @@ body.night .age-bar {
 .menu-tuto .btn {
   width: 100%;
 }
+
+/* Prix composé d'une techno : chaque composant dit s'il est couvert. */
+.tech .cost {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 2px;
+}
+
+.tech .cost > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 7px;
+}
+
+.tech .cost .lack {
+  color: #b0432e;
+  font-weight: 800;
+}
+
+.tech .cost.ok .have {
+  color: var(--gold-deep);
+}

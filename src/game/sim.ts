@@ -334,13 +334,36 @@ export class Game {
   }
 
   canResearch(t: TechDef): boolean {
-    return !this.knows(t.id) && this.amount('insight') >= t.cost
+    if (this.knows(t.id) || this.amount('insight') < t.cost) return false
+    if (t.materials) {
+      for (const [res, n] of Object.entries(t.materials) as [ResourceId, number][]) {
+        if (this.amount(res) < n) return false
+      }
+    }
+    return true
+  }
+
+  /** Ce qui manque encore pour lancer cette recherche, savoir compris. */
+  missingFor(t: TechDef): Partial<Record<ResourceId, number>> {
+    const missing: Partial<Record<ResourceId, number>> = {}
+    if (this.amount('insight') < t.cost) missing.insight = t.cost - this.amount('insight')
+    if (t.materials) {
+      for (const [res, n] of Object.entries(t.materials) as [ResourceId, number][]) {
+        if (this.amount(res) < n) missing[res] = n - this.amount(res)
+      }
+    }
+    return missing
   }
 
   research(id: string): boolean {
     const tech = TECH_BY_ID.get(id)
     if (!tech || !this.canResearch(tech)) return false
     this.save.res.insight = this.amount('insight') - tech.cost
+    if (tech.materials) {
+      for (const [res, n] of Object.entries(tech.materials) as [ResourceId, number][]) {
+        this.save.res[res] = this.amount(res) - n
+      }
+    }
     this.save.techs.push(tech.id)
     if (!this.save.seenFacts.includes(tech.id)) this.save.seenFacts.push(tech.id)
     this.lastFact = tech
