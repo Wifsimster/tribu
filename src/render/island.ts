@@ -89,15 +89,15 @@ const STEP = 0.44
  *  brume et l'île semblait flotter au-dessus de son reflet. */
 const BED_Y = -0.02
 /** Le reflet est étiré vers le fond, jamais écrasé : à l'oblique, l'eau allonge
- *  ce qu'elle renvoie. L'écrasement, lui, donnait un tampon. */
-const MIRROR = 2.4
+ *  ce qu'elle renvoie. Long : c'est la longueur du reflet qui donne le poids. */
+const MIRROR = 3.1
 /** Opacité du reflet à la ligne d'eau. Il s'éteint ensuite en profondeur : c'est
  *  l'arête franche du bas qui le faisait lire comme un empilement de boîtes. */
 const REFL_ALPHA = 0.85
-/** Bande mouillée sombre retenue au-dessus de l'arête, sur tout le pourtour. */
-const WET = 0.15
-/** Liseré spéculaire : la ligne claire pile au contact, sous la bande mouillée. */
-const SHEEN = 0.05
+/** Bande de flottaison sombre retenue au-dessus de l'arête, sur tout le
+ *  pourtour. Sombre : l'eau qui remonte par capillarité fonce le pied, elle ne
+ *  le fait jamais briller — le liseré spéculaire des rounds passés est mort ici. */
+const WET = 0.21
 /** Jupe immergée : la falaise continue sous la surface au lieu d'être tranchée
  *  net. C'est elle qui empêche les faces basses de virer au noir vide — vues à
  *  travers l'eau, elles doivent tirer vers le bleu. */
@@ -203,6 +203,12 @@ export class Island {
   setDaylight(k: number): void {
     const c = tmpTint.setRGB(1, 1, 1).lerp(this.nightTint, 1 - k)
     for (const m of this.unlit) m.color.copy(c)
+  }
+
+  /** Les reflets construits ailleurs (tipis de village.ts) vivent dans la même
+   *  eau : ils doivent suivre la même nuit que la nappe et l'ourlet. */
+  registerUnlit(mat: MeshBasicMaterial): void {
+    this.unlit.push(mat)
   }
   readonly pickables: InstancedMesh[] = []
   /** Flat ground spots reserved for buildings, ordered from the fire outwards. */
@@ -380,7 +386,7 @@ export class Island {
     // exactement la moitié où les falaises viraient au noir.
     const contactMat = new MeshBasicMaterial()
     this.unlit.push(contactMat)
-    const contact = new InstancedMesh(geo, contactMat, rims.length * 3)
+    const contact = new InstancedMesh(geo, contactMat, rims.length * 2)
 
     // Seule la bande côtière se reflète : au-delà, le reflet d'une colonne est
     // masqué par l'île elle-même et ne fait que s'empiler sous elle.
@@ -445,58 +451,47 @@ export class Island {
         // de l'eau. L'extinction en profondeur est cuite dans la géométrie.
         const mirror = Math.max(0.12, c.height * MIRROR)
         dummy.position.set(c.x, -SUB - mirror / 2, c.z)
-        dummy.scale.set(1, mirror, 1)
+        // Un rien plus large que la tuile : les colonnes du reflet se soudent en
+        // nappe au lieu de se lire comme des doigts séparés.
+        dummy.scale.set(1.07, mirror, 1.07)
         dummy.updateMatrix()
         refl.setMatrixAt(reflIndex, dummy.matrix)
         // Le reflet part de la couleur de l'eau, pas du haut-fond : mélangé au
-        // haut-fond il virait au blanc laiteux et redevenait un halo.
-        reflColor.copy(PALETTE.water).lerp(capColor, 0.45).multiplyScalar(0.92)
+        // haut-fond il virait au blanc laiteux et redevenait un halo. La part
+        // de la couleur réelle monte : c'est la silhouette qui doit se lire.
+        reflColor.copy(PALETTE.water).lerp(capColor, 0.58).multiplyScalar(0.88)
         refl.setColorAt(reflIndex, reflColor)
         reflIndex++
       }
     })
 
-    // Trois bandes empilées sur le seul pourtour, du bas vers le haut : la jupe
-    // immergée, le liseré mouillé pile au contact, puis deux ou trois pixels
-    // sombres et saturés. C'est cet empilement qui pose l'île DANS l'eau au lieu
-    // de la trancher au ras du plan.
+    // Deux bandes empilées sur le seul pourtour : la jupe immergée, puis la
+    // ligne de flottaison SOMBRE et saturée pile au contact. C'est l'écart de
+    // valeur — socle clair au-dessus, pied noyé en dessous — qui pose l'île
+    // DANS l'eau ; tout clair ajouté ici a lu quatre fois comme un sticker.
     rims.forEach((c, i) => {
       const shore = c.beach ? PALETTE.sand : PALETTE.earth
-      // Dosage du contact : face au soleil le liseré s'allume, à l'ombre il
-      // s'éteint presque. Un bruit cohérent le long du pourtour casse ce qui
-      // reste en éclats — c'est l'uniformité de l'anneau qui trahissait
-      // l'effet, pas sa présence.
+      // Le contact se densifie à l'ombre : l'eau y reprend le pied. Face au
+      // soleil il reste sombre, juste un peu moins — jamais éclairé.
       const len = Math.hypot(c.outx, c.outz)
       const nx = len > 0 ? c.outx / len : c.x / (Math.hypot(c.x, c.z) + 1e-6)
       const nz = len > 0 ? c.outz / len : c.z / (Math.hypot(c.x, c.z) + 1e-6)
       const facing = nx * SUN_HX + nz * SUN_HZ
-      const th = Math.atan2(c.z, c.x)
-      // Fréquence courte : des éclats d'une à trois tuiles, pas des tronçons.
-      const sparkle = valueNoise(Math.cos(th) * 6.2 + 50, Math.sin(th) * 6.2 + 50, this.seed + 7)
-      const gleam = Math.min(1, Math.max(0, facing) * (0.3 + 1.35 * sparkle))
       const shade = 0.5 - 0.5 * facing
 
       dummy.position.set(c.x, -SUB / 2, c.z)
       dummy.scale.set(1.004, SUB, 1.004)
       dummy.updateMatrix()
-      contact.setMatrixAt(i * 3, dummy.matrix)
-      wetColor.copy(shore).lerp(PALETTE.waterDeep, 0.74).multiplyScalar(0.95)
-      contact.setColorAt(i * 3, wetColor)
+      contact.setMatrixAt(i * 2, dummy.matrix)
+      wetColor.copy(shore).lerp(PALETTE.waterDeep, 0.78).multiplyScalar(0.9)
+      contact.setColorAt(i * 2, wetColor)
 
-      dummy.position.set(c.x, SHEEN / 2, c.z)
-      dummy.scale.set(1.006, SHEEN, 1.006)
-      dummy.updateMatrix()
-      contact.setMatrixAt(i * 3 + 1, dummy.matrix)
-      wetColor.copy(shore).lerp(PALETTE.sheen, 0.1 + 0.7 * gleam).multiplyScalar(0.78 + 0.5 * gleam)
-      contact.setColorAt(i * 3 + 1, wetColor)
-
-      dummy.position.set(c.x, SHEEN + WET / 2, c.z)
+      dummy.position.set(c.x, WET / 2, c.z)
       dummy.scale.set(1.008, WET, 1.008)
       dummy.updateMatrix()
-      contact.setMatrixAt(i * 3 + 2, dummy.matrix)
-      // La bande mouillée, elle, se densifie à l'ombre : l'eau y reprend le pied.
-      wetColor.copy(shore).multiplyScalar(0.3).lerp(PALETTE.waterDeep, 0.28 + shade * 0.2)
-      contact.setColorAt(i * 3 + 2, wetColor)
+      contact.setMatrixAt(i * 2 + 1, dummy.matrix)
+      wetColor.copy(shore).multiplyScalar(0.26).lerp(PALETTE.waterDeep, 0.5 + shade * 0.22)
+      contact.setColorAt(i * 2 + 1, wetColor)
     })
 
     mesh.instanceMatrix.needsUpdate = true
@@ -520,7 +515,9 @@ export class Island {
       rgba[i * 4] = 1
       rgba[i * 4 + 1] = 1
       rgba[i * 4 + 2] = 1
-      rgba[i * 4 + 3] = REFL_ALPHA * t * t
+      // Décroissance douce (t^1.4, pas t²) : le reflet doit rester lisible
+      // loin sous la ligne d'eau — long et diffus, c'est lui qui donne le poids.
+      rgba[i * 4 + 3] = REFL_ALPHA * Math.pow(t, 1.4)
     }
     geo.setAttribute('color', new BufferAttribute(rgba, 4))
     return geo
@@ -548,10 +545,11 @@ export class Island {
       const r = this.hull[i]!
       // La ride vit avec la lumière : nette côté soleil, presque fondue dans
       // l'ombre, et hachée par un bruit cohérent — un anneau continu d'alpha
-      // constant était le halo qu'on nous reproche.
+      // constant était le halo qu'on nous reproche. Et discrète : à peine plus
+      // claire que l'eau, elle souligne la découpe sans jamais l'allumer.
       const lit = 0.5 + 0.5 * (cx * SUN_HX + cz * SUN_HZ)
       const brk = valueNoise(cx * 3.2 + 60, cz * 3.2 + 60, this.seed + 11)
-      const amp = Math.min(1, (0.35 + 0.65 * lit) * (0.35 + 0.95 * brk))
+      const amp = Math.min(1, (0.35 + 0.65 * lit) * (0.35 + 0.95 * brk)) * 0.72
       RINGS.forEach((ring, k) => {
         const v = (k * HULL_BINS + i) * 3
         const d = r + ring.off * TILE
@@ -563,7 +561,7 @@ export class Island {
         colors[q] = foam.r
         colors[q + 1] = foam.g
         colors[q + 2] = foam.b
-        colors[q + 3] = ring.alpha * 0.58 * amp
+        colors[q + 3] = ring.alpha * 0.72 * amp
       })
     }
     const index = new Uint16Array((RINGS.length - 1) * HULL_BINS * 6)
@@ -629,23 +627,23 @@ export class Island {
       // Tout ce qui suit meurt avant deux cellules. Le large, qui est
       // l'essentiel de la texture, ne paie pas l'ourlet de rive.
       if (d < 2.2) {
-        // Haut-fond : une eau plus claire juste au large de la ride, décalée
-        // vers l'extérieur pour laisser la place à l'ombre de contact.
-        out.lerp(PALETTE.waterShallow, smoothstep(1.4, 0.5, d) * 0.12)
-        // Ombre de contact ancrée à l'opposé du soleil : dense là où la berge
-        // est à l'ombre, presque rien côté éclairé. Constante sur le tour,
-        // elle redevenait un contour.
+        // Haut-fond : un souffle d'eau plus claire au large de la ride. Discret :
+        // poussé, il redevenait le halo que quatre rounds ont payé.
+        out.lerp(PALETTE.waterShallow, smoothstep(1.6, 0.6, d) * 0.06)
+        // Ombre de contact : présente sur tout le tour — c'est elle qui assoit
+        // l'île — et densifiée à l'opposé du soleil, où la berge est à l'ombre.
         const rr = Math.sqrt(x * x + z * z) + 1e-6
         const away = 0.5 - 0.5 * ((x * SUN_HX + z * SUN_HZ) / rr)
-        out.multiplyScalar(1 - smoothstep(0.7, -0.1, d) * (0.12 + 0.5 * away))
+        out.multiplyScalar(1 - smoothstep(0.8, -0.1, d) * (0.22 + 0.48 * away))
         // Ombre portée : la même empreinte, décalée à l'opposé du soleil.
         const shade =
           smoothstep(0.4, -0.3, shoreDist(x - SHADE_X, z - SHADE_Z)) * smoothstep(2.2, 0.3, d)
         out.multiplyScalar(1 - shade * 0.2)
       }
-      // La moitié de la nappe laisse passer ce qu'il y a dessous au pied de
-      // l'île, et rien au large : le reflet ne vit que collé à son objet.
-      return 0.5 + smoothstep(0.9, 2.8, d) * 0.5
+      // La nappe laisse passer ce qu'il y a dessous jusque loin au large : le
+      // reflet des éléments hauts (tipis) émerge à plusieurs tuiles de la berge,
+      // le fenêtrer à deux tuiles le tranchait net.
+      return 0.4 + smoothstep(0.9, 7, d) * 0.6
     })
     // La rampe ne couvre que le centre de la nappe ; au-delà, le bord clampé
     // donne exactement la couleur du large.

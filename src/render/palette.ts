@@ -21,13 +21,10 @@ export const PALETTE = {
   /** Brume et fond de ciel — même teinte, pour que l'horizon disparaisse. */
   haze: new Color('#7fa2ac'),
   sky: new Color('#a3c4ce'),
-  /** La ride de contact. Un blanc franc faisait un contour lumineux collé
-   *  autour de l'île : c'est de l'eau éclaircie, pas de l'écume. */
-  foam: new Color('#a8d0cd'),
-  /** Le liseré mouillé de la ligne de flottaison. Presque blanc : depuis qu'il
-   *  est dosé par le soleil et cassé en éclats, il peut se permettre d'être
-   *  spéculaire — uniforme, cette valeur referait un contour. */
-  sheen: new Color('#dcefe6'),
+  /** La ride de contact. À peine plus claire que l'eau : quatre rounds de
+   *  blanc-cyan ont tous lu comme un sticker. Un objet posé dans l'eau
+   *  s'assombrit à la base, il ne s'allume pas. */
+  foam: new Color('#568a95'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
   sand: new Color('#dccb9c'),
