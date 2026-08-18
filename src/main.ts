@@ -147,6 +147,7 @@ settler.sendTo(spotFor(game.save.focus))
 // pour le debug et pour juger l'ambiance à heure fixe.
 const hParam = new URLSearchParams(location.search).get('h')
 const forcedHour = hParam !== null && !Number.isNaN(Number(hParam)) ? Number(hParam) % 1 : null
+let hudNight = false
 
 let last = performance.now()
 let elapsed = 0
@@ -170,6 +171,11 @@ function frame(now: number): void {
     forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
   )
   island.setDaylight(daylight)
+  // Hystérésis : l'encre du HUD ne doit pas clignoter pendant tout un crépuscule.
+  if (hudNight ? daylight > 0.55 : daylight < 0.4) {
+    hudNight = !hudNight
+    document.body.classList.toggle('night', hudNight)
+  }
   stage.updateCamera()
   hud.update()
   stage.render()
