@@ -381,17 +381,26 @@ export class Game {
     }
   }
 
+  /** Plancher à 30 s : les vitesses cumulées de fin de partie réduisaient le
+   *  voyage à 17 s, et le butin fixe en faisait la stratégie dominante (8× la
+   *  récolte focalisée en le spammant). */
   expeditionDuration(): number {
-    return EXPEDITION_SECONDS / this.expeditionSpeed
+    return Math.max(30, EXPEDITION_SECONDS / this.expeditionSpeed)
+  }
+
+  /** Les provisions grandissent avec l'âge : 10 🍖 étaient triviales dès le
+   *  Néolithique. */
+  expeditionCost(): number {
+    return EXPEDITION_FOOD_COST + this.save.age * 10
   }
 
   canExpedition(): boolean {
-    return !this.save.expedition && this.amount('food') >= EXPEDITION_FOOD_COST
+    return !this.save.expedition && this.amount('food') >= this.expeditionCost()
   }
 
   startExpedition(): boolean {
     if (!this.canExpedition()) return false
-    this.save.res.food = this.amount('food') - EXPEDITION_FOOD_COST
+    this.save.res.food = this.amount('food') - this.expeditionCost()
     const total = this.expeditionDuration()
     this.save.expedition = { remaining: total, total }
     this.refreshRates()
@@ -401,14 +410,17 @@ export class Game {
 
   private finishExpedition(): void {
     const loot: Partial<Record<ResourceId, number>> = {}
-    // Le camp s'arrête pendant l'expédition : le butin vaut environ le double
-    // de ce que 90 s de travail auraient rapporté, sinon partir serait un piège.
-    const scale = 90 + this.save.age * 80
+    // Le butin est PROPORTIONNEL à la durée réelle du voyage : un trajet
+    // raccourci par les technos de vitesse rapporte moins par trajet, donc le
+    // taux (butin/seconde) reste constant et le spam n'est plus une stratégie.
+    // Calibré ≈ 1,4× la récolte focalisée, sur toutes les ressources à la fois.
+    const ratio = (this.save.expedition?.total ?? EXPEDITION_SECONDS) / EXPEDITION_SECONDS
+    const scale = (90 + this.save.age * 80) * ratio
     for (const id of this.unlocked) {
       if (id === 'insight') continue
       loot[id] = Math.round(scale * BASE_RATE[id] * this.mult[id])
     }
-    loot.insight = Math.round(12 + this.save.age * 25 + this.insightAdd * 20)
+    loot.insight = Math.round((12 + this.save.age * 25 + this.insightAdd * 20) * ratio)
     for (const [id, n] of Object.entries(loot) as [ResourceId, number][]) {
       this.save.res[id] = this.amount(id) + n
     }
