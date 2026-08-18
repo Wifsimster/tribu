@@ -546,10 +546,13 @@ export class Island {
     const verts: number[] = []
     const colors: number[] = []
     const index: number[] = []
-    // La dissolution vise une eau LAITEUSE, pas l'eau profonde : mesurée, la
-    // référence garde sa fondation noyée PLUS CLAIRE que l'eau libre (+27 de
-    // luminance à 0-4 % sous la flottaison) jusqu'à son extinction.
-    const milk = PALETTE.water.clone().lerp(PALETTE.haze, 0.75)
+    // Verdict du round 11, à la vue rasante : la dissolution laiteuse lisait
+    // comme « un reflet plus clair que l'eau — contredit la physique ». La
+    // fondation de la référence reste PLUS CLAIRE que l'eau libre parce que
+    // c'est de la pierre pâle vue à travers l'eau — elle garde sa MATIÈRE. La
+    // cible de dissolution est donc l'eau elle-même, à peine assombrie : la
+    // paroi reste pierre, bleuit, puis se perd — elle ne blanchit jamais.
+    const milk = PALETTE.water.clone().lerp(PALETTE.waterDeep, 0.25)
     const wall = new Color()
     const cj = new Color()
     const h = TILE / 2
@@ -605,7 +608,7 @@ export class Island {
       // continue ». Trop claire dès la flottaison (0,78 à la passe 2), elle
       // sautait au blanc et lisait comme un rideau posé sous l'île, pas comme
       // la même pierre.
-      wall.copy(shore).multiplyScalar(0.6 - shade * 0.12)
+      wall.copy(shore).multiplyScalar(0.72 - shade * 0.12)
       const tx = (bx - ax) / TILE
       const tz = (bz - az) / TILE
       const b = verts.length / 3
@@ -616,10 +619,9 @@ export class Island {
         // le pas se lit surtout près de la surface, là où l'eau est claire.
         if (j > 0) y -= ROW_H * (1 + (j - 1) * 0.18)
         const f = fruit(t)
-        // La dilution laiteuse monte vite après la première rangée : c'est
-        // elle qui porte la masse MESURÉE (+27 signé chez la référence), le
-        // raccord sombre ne vit qu'à la flottaison.
-        cj.copy(wall).lerp(milk, 0.12 + 0.88 * Math.pow(t, 0.7))
+        // La matière persiste sur la moitié haute (c'est elle qui dit « la
+        // même pierre continue ») et ne se dissout vraiment qu'en profondeur.
+        cj.copy(wall).lerp(milk, 0.06 + 0.9 * Math.pow(t, 1.6))
         // Assises alternées : un souffle de clair/sombre par rangée, qui
         // s'éteint avec la profondeur — le pas de voxel de la falaise continue
         // sous l'eau, puis l'eau le floute.
