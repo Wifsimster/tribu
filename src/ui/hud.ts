@@ -7,16 +7,80 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T
 }
 
+// Les emojis se rendent différemment sur chaque plateforme (et rarement bien) :
+// on dessine nos propres glyphes, dans les teintes de la scène.
+const GLYPHS: Record<ResourceId, string> = {
+  food:
+    '<path d="M13.6 4.2c1.9-.6 3.6-.3 4.6.8-2.1 1.5-3.9 1.9-5.4 1.3z" fill="#7ba24f"/>' +
+    '<path d="M12.2 6.6c-.5-2 .2-3.7 1.6-4.4.9 1.9 1 3.6.3 4.9z" fill="#8fb75c"/>' +
+    '<circle cx="9" cy="15" r="5.2" fill="#c2523c"/>' +
+    '<circle cx="16.2" cy="16.4" r="4" fill="#d9705a"/>' +
+    '<circle cx="7.3" cy="12.9" r="1.5" fill="#dd7a63"/>',
+  wood:
+    '<path d="M8.2 7.2h9.4a4.8 4.8 0 0 1 0 9.6H8.2z" fill="#835e3b"/>' +
+    '<circle cx="8.2" cy="12" r="4.8" fill="#c8a175"/>' +
+    '<circle cx="8.2" cy="12" r="2.7" fill="#b0885c"/>' +
+    '<circle cx="8.2" cy="12" r="1" fill="#96714a"/>',
+  stone:
+    '<path d="M4.4 13.9 8.7 6.1l7.1-1.6 4.6 6.4-2.3 6.9-9.4 1.5z" fill="#7e848d"/>' +
+    '<path d="m8.7 6.1 7.1-1.6 4.6 6.4-10.2 1.2z" fill="#a5abb3"/>',
+  fiber:
+    '<path d="M12 21.8a1.3 1.3 0 0 1-1.3-1.3V10.2a1.3 1.3 0 0 1 2.6 0v10.3c0 .7-.6 1.3-1.3 1.3z" fill="#a8873c"/>' +
+    '<path d="M11.2 15.4C6.4 14.8 3.7 11.5 3.1 5.3c5.7 1.1 8.3 4.5 8.1 10.1z" fill="#cbac51"/>' +
+    '<path d="M12.8 12.6c-.2-5.6 2.4-9 8.1-10.1-.6 6.2-3.3 9.5-8.1 10.1z" fill="#e3c96f"/>',
+  clay:
+    '<path d="M12 6.6c4.2 0 7.2 3.2 7.2 7.4 0 4-3.2 7-7.2 7s-7.2-3-7.2-7c0-4.2 3-7.4 7.2-7.4z" fill="#b06d47"/>' +
+    '<path d="M10.4 5.2h3.2v2.6h-3.2z" fill="#a5643e"/>' +
+    '<rect x="7.4" y="2.6" width="9.2" height="2.6" rx="1.3" fill="#8a5133"/>' +
+    '<path d="M9.2 11c-1.9 1.7-2.7 3.7-2.3 5.9-1.7-2.8-1.1-5.1 1.6-7z" fill="#cb8b63"/>',
+  copper:
+    '<path d="M3.6 17.2 6.5 11h11l2.9 6.2z" fill="#b3702f"/>' +
+    '<path d="M6.5 11 8.3 7.8h7.4L17.5 11z" fill="#dd9d55"/>',
+  iron:
+    '<rect x="3.6" y="4.6" width="16.8" height="5.6" rx="1.7" fill="#6d737c"/>' +
+    '<path d="M15 4.6h3.7a1.7 1.7 0 0 1 1.7 1.7v2.2a1.7 1.7 0 0 1-1.7 1.7H15z" fill="#8d939c"/>' +
+    '<rect x="10.6" y="9.4" width="2.8" height="10.6" rx="1.4" fill="#8a6440"/>',
+  insight:
+    '<path d="M12 2.2c.9 5 3.7 7.8 8.8 8.7-5.1.9-7.9 3.7-8.8 8.7-.9-5-3.7-7.8-8.8-8.7 5.1-.9 7.9-3.7 8.8-8.7z" fill="#d9a441"/>' +
+    '<path d="M18.6 15.4c.4 2 1.5 3.1 3.4 3.5-1.9.4-3 1.5-3.4 3.4-.4-1.9-1.4-3-3.4-3.4 2-.4 3-1.5 3.4-3.5z" fill="#eac272"/>',
+}
+
+function icon(id: ResourceId, size = 15): string {
+  return `<svg class="glyph" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">${GLYPHS[id]}</svg>`
+}
+
+/** Les messages venant du jeu portent encore les emojis de content.ts. */
+const EMOJI: Array<[string, ResourceId]> = (Object.keys(RESOURCES) as ResourceId[]).map((id) => [
+  RESOURCES[id].icon,
+  id,
+])
+const EMOJI_RE = new RegExp(EMOJI.map(([char]) => char).join('|'), 'g')
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+  )
+}
+
+function withGlyphs(s: string): string {
+  return escapeHtml(s).replace(EMOJI_RE, (char) => {
+    const hit = EMOJI.find(([c]) => c === char)
+    return hit ? icon(hit[1], 14) : char
+  })
+}
+
+const comma = (s: string): string => s.replace('.', ',')
+
 /** Idle games live or die on legible big numbers. */
 export function fmt(n: number): string {
-  if (n < 10) return n.toFixed(1)
+  if (n < 10) return Number.isInteger(n) ? n.toString() : comma(n.toFixed(1))
   if (n < 1000) return Math.floor(n).toString()
-  if (n < 1e6) return `${(n / 1000).toFixed(n < 1e4 ? 2 : 1)} k`
-  return `${(n / 1e6).toFixed(2)} M`
+  if (n < 1e6) return `${comma((n / 1000).toFixed(n < 1e4 ? 2 : 1))} k`
+  return `${comma((n / 1e6).toFixed(2))} M`
 }
 
 function fmtRate(n: number): string {
-  return `${n < 10 ? n.toFixed(2) : Math.round(n)}/s`
+  return `${comma(n < 10 ? n.toFixed(2) : Math.round(n).toString())}/s`
 }
 
 function fmtDuration(seconds: number): string {
@@ -30,6 +94,7 @@ export class Hud {
   private focusButtons = new Map<ResourceId, HTMLButtonElement>()
   private lastValues = new Map<ResourceId, number>()
   private sheetOpen = false
+  private factOpen = false
 
   constructor(
     private game: Game,
@@ -49,7 +114,7 @@ export class Hud {
       const root = document.createElement('div')
       root.className = 'res'
       root.hidden = def.hidden
-      root.innerHTML = `<span class="icon">${def.icon}</span><span class="val">0</span><span class="rate"></span>`
+      root.innerHTML = `${icon(id, 14)}<span class="sr">${def.name}</span><span class="val">0</span><span class="rate"></span>`
       host.appendChild(root)
       this.resNodes.set(id, {
         root,
@@ -70,7 +135,7 @@ export class Hud {
       btn.type = 'button'
       btn.hidden = true
       btn.setAttribute('aria-pressed', 'false')
-      btn.innerHTML = `${def.icon} ${def.name}`
+      btn.innerHTML = `${icon(id, 16)}<span>${def.name}</span>`
       btn.addEventListener('click', () => this.onFocus(id))
       host.appendChild(btn)
       this.focusButtons.set(id, btn)
@@ -81,6 +146,10 @@ export class Hud {
     el('btn-research').addEventListener('click', () => this.toggleSheet(!this.sheetOpen))
     el('sheet-close').addEventListener('click', () => this.toggleSheet(false))
     el('fact-close').addEventListener('click', () => this.closeFact())
+    el('scrim').addEventListener('click', () => {
+      this.closeFact()
+      this.toggleSheet(false)
+    })
     el('btn-expedition').addEventListener('click', () => {
       if (!this.game.startExpedition()) this.toast("Pas assez de nourriture pour partir")
     })
@@ -95,7 +164,13 @@ export class Hud {
   toggleSheet(open: boolean): void {
     this.sheetOpen = open
     el('sheet').classList.toggle('open', open)
+    this.syncScrim()
     if (open) this.refreshTechList()
+  }
+
+  /** Un seul voile pour la feuille et la carte : la scène reste le sujet. */
+  private syncScrim(): void {
+    el('scrim').classList.toggle('on', this.sheetOpen || this.factOpen)
   }
 
   refreshTechList(): void {
@@ -104,7 +179,7 @@ export class Hud {
     body.textContent = ''
     if (techs.length === 0) {
       const empty = document.createElement('p')
-      empty.style.cssText = 'color:var(--ink-soft);text-align:center;padding:18px 6px;margin:0'
+      empty.className = 'sheet-empty'
       empty.textContent =
         'Rien de neuf à découvrir pour l’instant. Fais progresser ton âge pour en ouvrir d’autres.'
       body.appendChild(empty)
@@ -116,9 +191,9 @@ export class Hud {
       btn.className = 'tech'
       btn.type = 'button'
       btn.disabled = !affordable
-      btn.innerHTML = `<span><span class="name">${t.name}</span></span><span class="cost ${
+      btn.innerHTML = `<span class="name">${t.name}</span><span class="cost ${
         affordable ? 'ok' : ''
-      }">✨ ${fmt(t.cost)}</span>`
+      }">${icon('insight', 13)}${fmt(t.cost)}</span>`
       btn.addEventListener('click', () => {
         if (this.game.research(t.id)) this.refreshTechList()
       })
@@ -131,10 +206,15 @@ export class Hud {
     el('fact-title').textContent = tech.name
     el('fact-text').textContent = tech.fact
     el('fact').classList.add('open')
+    this.factOpen = true
+    this.syncScrim()
+    el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
   private closeFact(): void {
     el('fact').classList.remove('open')
+    this.factOpen = false
+    this.syncScrim()
   }
 
   showBanner(small: string, big: string): void {
@@ -150,7 +230,7 @@ export class Hud {
     const host = el('toasts')
     const node = document.createElement('div')
     node.className = 'toast'
-    node.textContent = message
+    node.innerHTML = withGlyphs(message)
     host.appendChild(node)
     setTimeout(() => node.remove(), 3600)
     while (host.childElementCount > 3) host.firstElementChild?.remove()
@@ -166,8 +246,13 @@ export class Hud {
       if (!visible) continue
       const shown = fmt(amount)
       if (node.val.textContent !== shown) node.val.textContent = shown
+      // Un débit par ressource, c'est huit chiffres qui bougent : on ne montre
+      // que celui sur lequel le colon travaille, plus le savoir qui coule seul.
+      const lead = id === g.save.focus
+      node.root.classList.toggle('lead', lead || id === 'insight')
       const rate = g.rates[id]
-      node.rate.textContent = rate > 0 ? fmtRate(rate) : ''
+      const shownRate = (lead || id === 'insight') && rate > 0 ? fmtRate(rate) : ''
+      if (node.rate.textContent !== shownRate) node.rate.textContent = shownRate
       const prev = this.lastValues.get(id) ?? 0
       if (amount - prev > Math.max(5, prev * 0.05)) {
         node.root.classList.remove('bump')
@@ -187,30 +272,50 @@ export class Hud {
       btn.setAttribute('aria-pressed', String(g.save.focus === id))
     }
 
-    el('age-name').textContent = g.age.name
-    el('age-period').textContent = g.age.period
+    if (this.lastAge !== g.age.id) {
+      el('age-name').textContent = g.age.name
+      el('age-period').textContent = g.age.period
+      this.lastAge = g.age.id
+    }
     const { done, needed } = g.ageProgress()
-    el('age-fill').style.width = `${Math.min(100, (done / needed) * 100)}%`
+    const step = `${Math.min(done, needed)}/${needed}`
+    if (this.lastStep !== step) {
+      el('age-step').textContent = step
+      el('age-fill').style.width = `${Math.min(100, (done / needed) * 100)}%`
+      this.lastStep = step
+    }
 
     const exp = g.save.expedition
     const expBtn = el<HTMLButtonElement>('btn-expedition')
+    const label = el('expedition-label')
     if (exp) {
       expBtn.disabled = true
-      el('expedition-label').textContent = `En route… ${fmtDuration(exp.remaining)}`
+      const text = `En route… ${fmtDuration(exp.remaining)}`
+      if (this.lastExpLabel !== text) {
+        label.textContent = text
+        this.lastExpLabel = text
+      }
       el('expedition-fill').style.transform = `scaleX(${1 - exp.remaining / exp.total})`
     } else {
       expBtn.disabled = !g.canExpedition()
-      el('expedition-label').textContent = `Expédition · 🍖 10`
+      // Le SVG coûte un reparse : on ne le réécrit qu'au changement d'état.
+      if (this.lastExpLabel !== 'idle') {
+        label.innerHTML = `Expédition <span class="cost">${icon('food', 14)}10</span>`
+        this.lastExpLabel = 'idle'
+      }
       el('expedition-fill').style.transform = 'scaleX(0)'
     }
 
     const ready = g.available().filter((t) => g.canResearch(t)).length
     const badge = el('research-badge')
     badge.hidden = ready === 0
-    badge.textContent = String(ready)
+    if (badge.textContent !== String(ready)) badge.textContent = String(ready)
     if (this.sheetOpen && ready !== this.lastReady) this.refreshTechList()
     this.lastReady = ready
   }
 
   private lastReady = -1
+  private lastAge = -1
+  private lastStep = ''
+  private lastExpLabel = ''
 }

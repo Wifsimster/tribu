@@ -140,6 +140,20 @@ requestAnimationFrame((t) => {
   requestAnimationFrame(frame)
 })
 
+// Measurement hook for the screenshot/perf harness in tools/. Costs one object;
+// exposing draw calls and triangles is what makes the perf half of the bar
+// objective instead of a vibe.
+;(window as unknown as Record<string, unknown>).__tribu = {
+  info: () => ({
+    calls: stage.renderer.info.render.calls,
+    triangles: stage.renderer.info.render.triangles,
+    programs: stage.renderer.info.programs?.length ?? 0,
+    geometries: stage.renderer.info.memory.geometries,
+    textures: stage.renderer.info.memory.textures,
+  }),
+  ready: true,
+}
+
 // Credit real elapsed time when the tab comes back, and never lose a session.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') game.flush(Date.now())

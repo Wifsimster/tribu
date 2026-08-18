@@ -1,62 +1,251 @@
 import {
+  BackSide,
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   CapsuleGeometry,
+  Color,
+  ConeGeometry,
+  CylinderGeometry,
   Group,
+  IcosahedronGeometry,
+  InstancedMesh,
   Mesh,
+  MeshBasicMaterial,
   MeshToonMaterial,
+  Object3D,
   SphereGeometry,
   Vector3,
 } from 'three'
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
 import type { Island } from './island'
 
 type Phase = 'walkOut' | 'work' | 'walkHome' | 'deposit'
 
+const TAU = Math.PI * 2
+
+/** Rouge brique, crème et brun sombre: trois valeurs franches, parce qu'un
+ *  personnage haut de cinquante pixels ne se lit que par ses contrastes. */
+const C = {
+  tunic: PALETTE.cloth,
+  tunicDark: new Color('#a1543a'),
+  fur: new Color('#f0e3cb'),
+  bone: new Color('#efe6d2'),
+  leather: new Color('#6f4c35'),
+  leatherDark: new Color('#4c3425'),
+  hair: new Color('#3d2a1e'),
+  skin: PALETTE.skin,
+  skinDark: new Color('#c88b5c'),
+  flint: new Color('#cdd2d6'),
+  shaft: PALETTE.trunk,
+} as const
+
+const OUTLINE = new MeshBasicMaterial({ color: 0x33261c, side: BackSide })
+const SPARK = new MeshBasicMaterial({ color: 0xfff0cf })
+
+const HIP_Y = 0.44
+const SHOULDER_Y = 0.86
+const HEAD_Y = 1.15
+
+/** Une pièce teintée puis posée. Tout un membre finit fondu en une seule
+ *  géométrie: le détail devient gratuit, seul le nombre de mesh coûte. */
+function part(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
+  // Les polyèdres de three sortent sans index et la fusion refuse alors le lot
+  // entier: un bâtiment disparaissait en silence.
+  const geo = source.index ? source : mergeVertices(source)
+  geo.translate(x, y, z)
+  const n = geo.attributes.position!.count
+  const rgb = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) {
+    rgb[i * 3] = color.r
+    rgb[i * 3 + 1] = color.g
+    rgb[i * 3 + 2] = color.b
+  }
+  geo.setAttribute('color', new BufferAttribute(rgb, 3))
+  return geo
+}
+
+function weld(parts: BufferGeometry[]): BufferGeometry {
+  return mergeGeometries(parts) ?? new BufferGeometry()
+}
+
+interface Pair {
+  detail: BufferGeometry[]
+  hull: BufferGeometry[]
+}
+
+/** Coque inversée, gonflée le long des normales. C'est le seul trait graphique
+ *  du jeu: il n'appartient qu'au colon, pour qu'aucun arbre ne l'avale. */
+function outlineOf(g: BufferGeometry, thickness: number): Mesh {
+  const pos = g.attributes.position!
+  const nor = g.attributes.normal!
+  for (let i = 0; i < pos.count; i++) {
+    pos.setXYZ(
+      i,
+      pos.getX(i) + nor.getX(i) * thickness,
+      pos.getY(i) + nor.getY(i) * thickness,
+      pos.getZ(i) + nor.getZ(i) * thickness,
+    )
+  }
+  g.deleteAttribute('color')
+  const mesh = new Mesh(g, OUTLINE)
+  mesh.renderOrder = -1
+  return mesh
+}
+
 /** The settler is a mime: the economy is rate-based, and he acts it out. What he
  *  is doing always matches the current focus, so the world explains the numbers. */
 export class Settler {
   readonly group = new Group()
+  private readonly rig = new Group()
+  private readonly skin = new MeshToonMaterial({ vertexColors: true })
   private readonly body: Mesh
   private readonly head: Mesh
   private readonly armL: Mesh
   private readonly armR: Mesh
   private readonly legL: Mesh
   private readonly legR: Mesh
+  private readonly chips: InstancedMesh
+  private readonly chipPos = new Float32Array(8 * 3)
+  private readonly chipVel = new Float32Array(8 * 3)
+  private readonly chipLife = new Float32Array(8)
+  private readonly dummy = new Object3D()
 
   private phase: Phase = 'walkOut'
   private timer = 0
   private walkCycle = 0
+  private swing = 0
+  private cheer = 0
+  private yaw = 0
   private readonly home = new Vector3(0, 0, 0)
   private destination = new Vector3(3, 0, 3)
   private speed = 2.4
 
   constructor(private island: Island) {
-    const skin = new MeshToonMaterial({ color: PALETTE.skin })
-    const cloth = new MeshToonMaterial({ color: PALETTE.cloth })
-    const hide = new MeshToonMaterial({ color: PALETTE.hide })
+    this.body = this.limb(this.torsoGeometry(), 0, HIP_Y, 0)
+    this.head = this.limb(this.headGeometry(), 0, HEAD_Y, 0)
+    this.armL = this.limb(this.armGeometry(false), -0.4, SHOULDER_Y, 0)
+    this.armR = this.limb(this.armGeometry(true), 0.4, SHOULDER_Y, 0)
+    this.legL = this.limb(this.legGeometry(), -0.13, HIP_Y, 0)
+    this.legR = this.limb(this.legGeometry(), 0.13, HIP_Y, 0)
 
-    this.body = new Mesh(new CapsuleGeometry(0.17, 0.26, 3, 8), hide)
-    this.body.position.y = 0.52
     this.body.castShadow = true
-
-    this.head = new Mesh(new SphereGeometry(0.16, 12, 10), skin)
-    this.head.position.y = 0.88
     this.head.castShadow = true
+    this.legL.castShadow = this.legR.castShadow = true
 
-    const armGeo = new CapsuleGeometry(0.055, 0.22, 2, 6)
-    this.armL = new Mesh(armGeo, skin)
-    this.armR = new Mesh(armGeo, skin)
-    this.armL.position.set(-0.21, 0.58, 0)
-    this.armR.position.set(0.21, 0.58, 0)
+    this.chips = new InstancedMesh(new IcosahedronGeometry(0.05, 0), SPARK, 8)
+    this.chips.visible = false
+    this.chips.frustumCulled = false
 
-    const legGeo = new CapsuleGeometry(0.065, 0.2, 2, 6)
-    this.legL = new Mesh(legGeo, cloth)
-    this.legR = new Mesh(legGeo, cloth)
-    this.legL.position.set(-0.09, 0.2, 0)
-    this.legR.position.set(0.09, 0.2, 0)
-
-    this.group.add(this.body, this.head, this.armL, this.armR, this.legL, this.legR)
+    // Le colon est joué vingt pour cent plus grand que l'échelle du village: à la
+    // taille d'un téléphone, la justesse d'échelle perd contre la lisibilité.
+    this.rig.scale.setScalar(1.2)
+    this.group.add(this.rig, this.chips)
     this.group.position.set(2.5, island.heightAt(2.5, 2.5), 2.5)
     this.home.set(0, 0, 0)
+  }
+
+  /** Chaque membre porte sa propre coque en enfant: l'animation la suit sans
+   *  une ligne de code de plus. La coque est tirée d'une version grossière du
+   *  membre, sinon chaque œil et chaque lanière gagnerait son propre liseré. */
+  private limb(pair: Pair, x: number, y: number, z: number): Mesh {
+    const mesh = new Mesh(weld(pair.detail), this.skin)
+    mesh.position.set(x, y, z)
+    mesh.add(outlineOf(weld(pair.hull), 0.038))
+    this.rig.add(mesh)
+    return mesh
+  }
+
+  private torsoGeometry(): Pair {
+    // Torse large d'épaules et étroit de taille: la silhouette doit dire "humain"
+    // avant que le moindre détail ne soit lisible.
+    const shell = part(new CylinderGeometry(0.28, 0.21, 0.5, 9).scale(1.14, 1, 0.82), C.tunic, 0, 0.25, 0)
+    const collar = part(new CylinderGeometry(0.33, 0.28, 0.14, 11).scale(1.08, 1, 0.86), C.fur, 0, 0.49, 0)
+    return {
+      detail: [
+        shell,
+        collar,
+        part(new SphereGeometry(0.19, 9, 7).scale(1.14, 0.7, 0.82), C.tunic, 0, 0.46, 0),
+        part(new CylinderGeometry(0.25, 0.25, 0.08, 9).scale(1.14, 1, 0.86), C.leatherDark, 0, 0.06, 0),
+        part(new BoxGeometry(0.09, 0.62, 0.05).rotateZ(0.42), C.bone, 0.01, 0.28, 0.21),
+        part(new BoxGeometry(0.17, 0.15, 0.11), C.leather, -0.27, 0.1, 0.06),
+        part(new CylinderGeometry(0.1, 0.12, 0.12, 7), C.skinDark, 0, 0.55, 0),
+      ],
+      hull: [shell, collar],
+    }
+  }
+
+  private headGeometry(): Pair {
+    const skull = part(new SphereGeometry(0.235, 12, 10).scale(1, 0.98, 0.94), C.skin)
+    // Calotte de cheveux + bandeau: la bande claire sous la masse sombre est ce
+    // qui sépare la tête du corps à distance.
+    const hair = part(
+      new SphereGeometry(0.247, 12, 8, 0, TAU, 0, Math.PI * 0.52).rotateX(-0.2),
+      C.hair,
+      0,
+      0.01,
+      0,
+    )
+    const feather = part(
+      new ConeGeometry(0.042, 0.4, 5).rotateX(0.7).rotateZ(-0.24),
+      C.fur,
+      -0.11,
+      0.3,
+      -0.15,
+    )
+    return {
+      detail: [
+        skull,
+        hair,
+        feather,
+        part(new CylinderGeometry(0.248, 0.248, 0.06, 12, 1, true), C.tunicDark, 0, 0.07, 0),
+        part(new SphereGeometry(0.135, 9, 7).scale(1, 0.85, 0.75), C.hair, 0, -0.13, 0.11),
+        part(new SphereGeometry(0.036, 6, 5), C.hair, -0.085, 0.035, 0.215),
+        part(new SphereGeometry(0.036, 6, 5), C.hair, 0.085, 0.035, 0.215),
+        part(new SphereGeometry(0.045, 6, 5), C.skinDark, 0, -0.025, 0.232),
+      ],
+      hull: [skull, hair, feather],
+    }
+  }
+
+  private armGeometry(spear: boolean): Pair {
+    const limb = part(new CapsuleGeometry(0.073, 0.3, 3, 7), C.skin, 0, -0.21, 0)
+    const hand = part(new SphereGeometry(0.088, 8, 6), C.skinDark, 0, -0.42, 0)
+    const detail = [
+      limb,
+      hand,
+      part(new CylinderGeometry(0.098, 0.088, 0.17, 8), C.tunic, 0, -0.07, 0),
+      part(new CylinderGeometry(0.092, 0.092, 0.06, 8), C.bone, 0, -0.32, 0),
+    ]
+    const hull = [limb, hand]
+    if (spear) {
+      // L'épieu part de la main vers le sol en avant: une longue diagonale qui
+      // casse la verticale du corps et se repère avant le visage.
+      const shaft = part(new CylinderGeometry(0.026, 0.031, 1.32, 6).rotateX(-0.24), C.shaft, 0, -0.3, 0.03)
+      const flint = part(new ConeGeometry(0.068, 0.26, 5).rotateX(Math.PI - 0.24), C.flint, 0, -1.05, 0.21)
+      detail.push(
+        shaft,
+        flint,
+        part(new CylinderGeometry(0.036, 0.036, 0.05, 6).rotateX(-0.24), C.bone, 0, -0.9, 0.17),
+        part(new CylinderGeometry(0.034, 0.034, 0.05, 6).rotateX(-0.24), C.bone, 0, 0.29, -0.11),
+      )
+      hull.push(shaft, flint)
+    }
+    return { detail, hull }
+  }
+
+  private legGeometry(): Pair {
+    const limb = part(new CapsuleGeometry(0.087, 0.22, 3, 7), C.leather, 0, -0.2, 0)
+    const foot = part(new BoxGeometry(0.17, 0.1, 0.25), C.leatherDark, 0, -0.39, 0.04)
+    return {
+      detail: [
+        limb,
+        foot,
+        part(new CylinderGeometry(0.096, 0.096, 0.055, 8), C.bone, 0, -0.29, 0),
+      ],
+      hull: [limb, foot],
+    }
   }
 
   setHome(p: Vector3): void {
@@ -72,6 +261,7 @@ export class Settler {
   celebrate(): void {
     this.timer = Math.min(this.timer, 0.2)
     this.walkCycle += 3
+    this.cheer = 1
   }
 
   update(dt: number, boost: number): void {
@@ -91,14 +281,14 @@ export class Settler {
         const step = Math.min(speed * dt, dist)
         this.group.position.x += (dx / dist) * step
         this.group.position.z += (dz / dist) * step
-        this.group.rotation.y = Math.atan2(dx, dz)
-        this.walkCycle += dt * speed * 3.4
+        this.yaw = Math.atan2(dx, dz)
+        this.walkCycle += dt * speed * 2.6
         this.animateWalk()
         break
       }
       case 'work': {
         this.timer -= dt * boost
-        this.animateWork()
+        this.animateWork(dt * boost)
         if (this.timer <= 0) this.phase = 'walkHome'
         break
       }
@@ -110,6 +300,24 @@ export class Settler {
       }
     }
 
+    // Virage amorti: un demi-tour instantané fait clignoter la silhouette.
+    let d = this.yaw - this.group.rotation.y
+    while (d > Math.PI) d -= TAU
+    while (d < -Math.PI) d += TAU
+    this.group.rotation.y += d * Math.min(1, dt * 9)
+
+    if (this.cheer > 0) {
+      this.cheer = Math.max(0, this.cheer - dt * 1.3)
+      const k = 1 - this.cheer
+      this.rig.position.y = Math.sin(k * Math.PI) * 0.3
+      this.rig.rotation.y = this.cheer * this.cheer * TAU
+    } else {
+      this.rig.position.y = 0
+      this.rig.rotation.y = 0
+    }
+
+    this.updateChips(dt)
+
     const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
     this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
   }
@@ -117,33 +325,100 @@ export class Settler {
   private animateWalk(): void {
     const s = Math.sin(this.walkCycle)
     const c = Math.cos(this.walkCycle)
-    this.legL.rotation.x = s * 0.7
-    this.legR.rotation.x = -s * 0.7
-    this.armL.rotation.x = -s * 0.55
-    this.armR.rotation.x = s * 0.55
-    this.body.position.y = 0.52 + Math.abs(c) * 0.03
-    this.head.position.y = 0.88 + Math.abs(c) * 0.03
-    this.body.rotation.z = s * 0.04
+    const bob = Math.abs(c) * 0.035
+    this.legL.rotation.x = s * 0.72
+    this.legR.rotation.x = -s * 0.72
+    this.armL.rotation.set(-s * 0.55, 0, 0.12)
+    // Le bras à l'épieu reste calme: une hampe qui bat au rythme des jambes
+    // devient une bouillie de pixels à cette taille.
+    this.armR.rotation.set(-0.14 + s * 0.13, 0, -0.07)
+    this.body.rotation.set(0.07, 0, s * 0.05)
+    this.head.rotation.set(0.02, s * 0.09, -s * 0.06)
+    this.body.position.y = HIP_Y + bob
+    this.head.position.y = HEAD_Y + bob
+    this.armL.position.y = SHOULDER_Y + bob
+    this.armR.position.y = SHOULDER_Y + bob
   }
 
-  private animateWork(): void {
-    const t = (2.6 - this.timer) * 7
-    const swing = Math.max(0, Math.sin(t))
-    this.armL.rotation.x = -1.5 + swing * 1.4
-    this.armR.rotation.x = -1.5 + swing * 1.4
-    this.legL.rotation.x = 0.15
-    this.legR.rotation.x = -0.15
-    this.body.rotation.x = 0.18 - swing * 0.22
-    this.head.position.y = 0.86
+  private animateWork(dt: number): void {
+    const before = (this.swing / TAU) % 1
+    this.swing += dt * 4.4
+    const u = (this.swing / TAU) % 1
+    // Lever lent, frappe sèche: la brutalité de la fin est ce qui se voit de loin.
+    const k = u < 0.62 ? 1 - (1 - u / 0.62) ** 2 : 1 - ((u - 0.62) / 0.38) ** 2.4
+    this.armR.rotation.set(-0.15 - 2.15 * k, 0, -0.05)
+    this.armL.rotation.set(-0.12 - 0.85 * k, 0, 0.22)
+    this.body.rotation.set(0.24 - 0.32 * k, 0, 0)
+    this.head.rotation.set(0.16 - 0.24 * k, 0, 0)
+    this.legL.rotation.x = -0.24
+    this.legR.rotation.x = 0.2
+    const bob = k * 0.03
+    this.body.position.y = HIP_Y + bob
+    this.head.position.y = HEAD_Y + bob
+    this.armL.position.y = SHOULDER_Y + bob
+    this.armR.position.y = SHOULDER_Y + bob
+    if (u < before) this.strike()
   }
 
   private animateDeposit(): void {
     const t = (0.7 - this.timer) * 9
-    const hop = Math.max(0, Math.sin(t)) * 0.12
-    this.body.position.y = 0.52 + hop
-    this.head.position.y = 0.88 + hop
-    this.armL.rotation.x = -2.2
-    this.armR.rotation.x = -2.2
-    this.body.rotation.x = 0
+    const hop = Math.max(0, Math.sin(t)) * 0.16
+    this.body.position.y = HIP_Y + hop
+    this.head.position.y = HEAD_Y + hop
+    this.armL.position.y = SHOULDER_Y + hop
+    this.armR.position.y = SHOULDER_Y + hop
+    this.armL.rotation.set(-2.5, 0, 0.35)
+    this.armR.rotation.set(-2.5, 0, -0.35)
+    this.body.rotation.set(-0.08, 0, 0)
+    this.head.rotation.set(-0.12, Math.sin(t * 0.7) * 0.2, 0)
+    this.legL.rotation.x = -0.1
+    this.legR.rotation.x = 0.1
+  }
+
+  /** Éclats de silex à l'impact: la seule chose qui prouve que le colon frappe
+   *  quelque chose plutôt que de mimer dans le vide. */
+  private strike(): void {
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU + Math.random()
+      this.chipPos[i * 3] = Math.sin(a) * 0.08
+      this.chipPos[i * 3 + 1] = 0.12
+      this.chipPos[i * 3 + 2] = 0.62 + Math.cos(a) * 0.08
+      this.chipVel[i * 3] = Math.sin(a) * 1.1
+      this.chipVel[i * 3 + 1] = 1.8 + Math.random() * 1.4
+      this.chipVel[i * 3 + 2] = Math.cos(a) * 1.1
+      this.chipLife[i] = 1
+    }
+    this.chips.visible = true
+  }
+
+  private updateChips(dt: number): void {
+    if (!this.chips.visible) return
+    let alive = 0
+    for (let i = 0; i < 8; i++) {
+      let life = this.chipLife[i]!
+      if (life <= 0) {
+        this.dummy.scale.setScalar(0.0001)
+        this.dummy.position.set(0, -1, 0)
+      } else {
+        life -= dt * 1.7
+        this.chipLife[i] = life
+        this.chipVel[i * 3 + 1] = this.chipVel[i * 3 + 1]! - 9 * dt
+        for (let k = 0; k < 3; k++) {
+          this.chipPos[i * 3 + k] = this.chipPos[i * 3 + k]! + this.chipVel[i * 3 + k]! * dt
+        }
+        this.dummy.position.set(
+          this.chipPos[i * 3]!,
+          Math.max(0.03, this.chipPos[i * 3 + 1]!),
+          this.chipPos[i * 3 + 2]!,
+        )
+        this.dummy.rotation.set(life * 6, life * 4, 0)
+        this.dummy.scale.setScalar(Math.max(0.0001, life))
+        if (life > 0) alive++
+      }
+      this.dummy.updateMatrix()
+      this.chips.setMatrixAt(i, this.dummy.matrix)
+    }
+    this.chips.instanceMatrix.needsUpdate = true
+    if (alive === 0) this.chips.visible = false
   }
 }
