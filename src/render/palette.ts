@@ -24,10 +24,10 @@ export const PALETTE = {
   /** La ride de contact. Un blanc franc faisait un contour lumineux collé
    *  autour de l'île : c'est de l'eau éclaircie, pas de l'écume. */
   foam: new Color('#a8d0cd'),
-  /** Le liseré mouillé qui court pile à la ligne de flottaison. Peint sans
-   *  lumière : il doit se lire aussi bien sur la face au soleil que sur celle
-   *  qui est dans l'ombre, sans quoi il disparaît sur la moitié du pourtour. */
-  sheen: new Color('#bfd9d1'),
+  /** Le liseré mouillé de la ligne de flottaison. Presque blanc : depuis qu'il
+   *  est dosé par le soleil et cassé en éclats, il peut se permettre d'être
+   *  spéculaire — uniforme, cette valeur referait un contour. */
+  sheen: new Color('#dcefe6'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
   sand: new Color('#dccb9c'),

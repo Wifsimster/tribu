@@ -125,6 +125,14 @@ function clearRadius(x: number, z: number): number {
 
 const EDGE_BASE = 9.3
 const DEFAULT_SEED = 1337
+
+/** Soleil projeté au sol, normalisé : tout le dosage du contact (liseré,
+ *  ombre, ride) se fait contre cette direction. Un contact identique sur tout
+ *  le pourtour lit comme un contour ajouté après coup ; le vrai varie avec la
+ *  lumière. */
+const SUN_H = 1 / Math.hypot(SUN_DIR.x, SUN_DIR.z)
+const SUN_HX = SUN_DIR.x * SUN_H
+const SUN_HZ = SUN_DIR.z * SUN_H
 /** Nombre de secteurs de la table de silhouette. À ce rayon, un secteur mesure
  *  un tiers de tuile : assez fin pour que la ride suive la découpe. */
 const HULL_BINS = 256
@@ -173,6 +181,10 @@ export interface Cell {
   ao: number
   /** Cellule du pourtour : c'est elle qui porte l'ourlet de rive. */
   rim: boolean
+  /** Normale sortante du pourtour (somme des voisins d'eau) : c'est contre elle
+   *  que le liseré se dose face au soleil. */
+  outx: number
+  outz: number
   /** Terre battue de la clairière. */
   trod: boolean
 }
@@ -237,7 +249,20 @@ export class Island {
         // Le sol tassé s'enfonce d'un cheveu : le liseré d'herbe qui reste sur
         // le pourtour donne à la clairière une bordure au lieu d'un aplat.
         if (trod) height = plaza - 0.09
-        const cell: Cell = { gx, gz, x, z, height, beach, inland, ao: 1, rim: false, trod }
+        const cell: Cell = {
+          gx,
+          gz,
+          x,
+          z,
+          height,
+          beach,
+          inland,
+          ao: 1,
+          rim: false,
+          outx: 0,
+          outz: 0,
+          trod,
+        }
         this.cells.push(cell)
         this.byKey.set(gx * 64 + gz, cell)
       }
@@ -326,7 +351,11 @@ export class Island {
         if (!n) {
           // Un voisin absent, c'est de l'eau : le pourtour garde tout son ciel,
           // sinon la silhouette s'assombrit là où elle doit trancher.
-          if (Math.abs(ox) + Math.abs(oz) === 1) c.rim = true
+          if (Math.abs(ox) + Math.abs(oz) === 1) {
+            c.rim = true
+            c.outx += ox
+            c.outz += oz
+          }
           continue
         }
         const d = n.height - c.height
@@ -433,6 +462,19 @@ export class Island {
     // de la trancher au ras du plan.
     rims.forEach((c, i) => {
       const shore = c.beach ? PALETTE.sand : PALETTE.earth
+      // Dosage du contact : face au soleil le liseré s'allume, à l'ombre il
+      // s'éteint presque. Un bruit cohérent le long du pourtour casse ce qui
+      // reste en éclats — c'est l'uniformité de l'anneau qui trahissait
+      // l'effet, pas sa présence.
+      const len = Math.hypot(c.outx, c.outz)
+      const nx = len > 0 ? c.outx / len : c.x / (Math.hypot(c.x, c.z) + 1e-6)
+      const nz = len > 0 ? c.outz / len : c.z / (Math.hypot(c.x, c.z) + 1e-6)
+      const facing = nx * SUN_HX + nz * SUN_HZ
+      const th = Math.atan2(c.z, c.x)
+      // Fréquence courte : des éclats d'une à trois tuiles, pas des tronçons.
+      const sparkle = valueNoise(Math.cos(th) * 6.2 + 50, Math.sin(th) * 6.2 + 50, this.seed + 7)
+      const gleam = Math.min(1, Math.max(0, facing) * (0.3 + 1.35 * sparkle))
+      const shade = 0.5 - 0.5 * facing
 
       dummy.position.set(c.x, -SUB / 2, c.z)
       dummy.scale.set(1.004, SUB, 1.004)
@@ -445,14 +487,15 @@ export class Island {
       dummy.scale.set(1.006, SHEEN, 1.006)
       dummy.updateMatrix()
       contact.setMatrixAt(i * 3 + 1, dummy.matrix)
-      wetColor.copy(shore).lerp(PALETTE.sheen, 0.52).multiplyScalar(1.12)
+      wetColor.copy(shore).lerp(PALETTE.sheen, 0.1 + 0.7 * gleam).multiplyScalar(0.78 + 0.5 * gleam)
       contact.setColorAt(i * 3 + 1, wetColor)
 
       dummy.position.set(c.x, SHEEN + WET / 2, c.z)
       dummy.scale.set(1.008, WET, 1.008)
       dummy.updateMatrix()
       contact.setMatrixAt(i * 3 + 2, dummy.matrix)
-      wetColor.copy(shore).multiplyScalar(0.3).lerp(PALETTE.waterDeep, 0.34)
+      // La bande mouillée, elle, se densifie à l'ombre : l'eau y reprend le pied.
+      wetColor.copy(shore).multiplyScalar(0.3).lerp(PALETTE.waterDeep, 0.28 + shade * 0.2)
       contact.setColorAt(i * 3 + 2, wetColor)
     })
 
@@ -503,6 +546,12 @@ export class Island {
       const cx = Math.cos(a)
       const cz = Math.sin(a)
       const r = this.hull[i]!
+      // La ride vit avec la lumière : nette côté soleil, presque fondue dans
+      // l'ombre, et hachée par un bruit cohérent — un anneau continu d'alpha
+      // constant était le halo qu'on nous reproche.
+      const lit = 0.5 + 0.5 * (cx * SUN_HX + cz * SUN_HZ)
+      const brk = valueNoise(cx * 3.2 + 60, cz * 3.2 + 60, this.seed + 11)
+      const amp = Math.min(1, (0.35 + 0.65 * lit) * (0.35 + 0.95 * brk))
       RINGS.forEach((ring, k) => {
         const v = (k * HULL_BINS + i) * 3
         const d = r + ring.off * TILE
@@ -514,7 +563,7 @@ export class Island {
         colors[q] = foam.r
         colors[q + 1] = foam.g
         colors[q + 2] = foam.b
-        colors[q + 3] = ring.alpha * 0.5
+        colors[q + 3] = ring.alpha * 0.58 * amp
       })
     }
     const index = new Uint16Array((RINGS.length - 1) * HULL_BINS * 6)
@@ -583,10 +632,12 @@ export class Island {
         // Haut-fond : une eau plus claire juste au large de la ride, décalée
         // vers l'extérieur pour laisser la place à l'ombre de contact.
         out.lerp(PALETTE.waterShallow, smoothstep(1.4, 0.5, d) * 0.12)
-        // Ombre de contact : serrée sous le pourtour, indépendante du soleil.
-        // C'est elle qui creuse le contact — sans elle, l'île est un pain de
-        // terrain posé sur du bleu de valeur voisine.
-        out.multiplyScalar(1 - smoothstep(0.7, -0.1, d) * 0.4)
+        // Ombre de contact ancrée à l'opposé du soleil : dense là où la berge
+        // est à l'ombre, presque rien côté éclairé. Constante sur le tour,
+        // elle redevenait un contour.
+        const rr = Math.sqrt(x * x + z * z) + 1e-6
+        const away = 0.5 - 0.5 * ((x * SUN_HX + z * SUN_HZ) / rr)
+        out.multiplyScalar(1 - smoothstep(0.7, -0.1, d) * (0.12 + 0.5 * away))
         // Ombre portée : la même empreinte, décalée à l'opposé du soleil.
         const shade =
           smoothstep(0.4, -0.3, shoreDist(x - SHADE_X, z - SHADE_Z)) * smoothstep(2.2, 0.3, d)
