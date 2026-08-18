@@ -567,8 +567,11 @@ body {
 .toasts {
   position: fixed;
   left: 50%;
-  bottom: calc(150px + var(--safe-b));
+  bottom: calc(120px + var(--safe-b));
   transform: translateX(-50%);
+  /* Jamais plus large que l'écran : les anecdotes du marchand font deux lignes
+     sur téléphone, pas une traînée coupée aux deux bords. */
+  width: min(560px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -578,18 +581,19 @@ body {
 }
 
 .toast {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: inline-block;
+  max-width: 100%;
   background: rgba(44, 37, 30, 0.86);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   color: #fff8ee;
-  padding: 8px 14px;
-  border-radius: 99px;
+  padding: 8px 15px;
+  border-radius: 17px;
   font-size: 13px;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
   box-shadow: var(--shadow-m);
   animation: toast 3.4s ease forwards;
 }

@@ -233,8 +233,11 @@ export class Hud {
     const node = document.createElement('div')
     node.className = 'toast'
     node.innerHTML = withGlyphs(message)
+    // Une anecdote de deux lignes mérite plus que 3,4 s ; un « De retour » non.
+    const seconds = Math.min(9, 2.6 + message.length * 0.045)
+    node.style.animationDuration = `${seconds}s`
     host.appendChild(node)
-    setTimeout(() => node.remove(), 3600)
+    setTimeout(() => node.remove(), seconds * 1000 + 200)
     while (host.childElementCount > 3) host.firstElementChild?.remove()
   }
 
