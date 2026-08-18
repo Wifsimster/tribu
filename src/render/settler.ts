@@ -23,6 +23,7 @@ import { CAMP_BLOCKERS, CAMP_FIRE, CAMP_HOME } from './village'
 import type { Island } from './island'
 
 type Phase = 'walkOut' | 'work' | 'walkHome' | 'deposit'
+type Trip = 'none' | 'leaving' | 'away' | 'returning'
 
 const TAU = Math.PI * 2
 
@@ -126,6 +127,7 @@ export class Settler {
   private readonly dummy = new Object3D()
 
   private phase: Phase = 'walkOut'
+  private trip: Trip = 'none'
   private timer = 0
   private walkCycle = 0
   private swing = 0
@@ -133,8 +135,10 @@ export class Settler {
   private yaw = 0
   private clock = 0
   private readonly home = new Vector3(0, 0, 0)
+  private readonly shore = new Vector3(0, 0, 0)
   private destination = new Vector3(3, 0, 3)
   private speed = 2.4
+  private pack!: Mesh
 
   constructor(private island: Island) {
     this.body = this.limb(this.torsoGeometry(), 0, HIP_Y, 0)
@@ -158,6 +162,54 @@ export class Settler {
     this.group.add(this.rig, this.chips)
     this.group.position.set(2.5, island.heightAt(2.5, 2.5), 2.5)
     this.home.set(CAMP_HOME.x, island.heightAt(CAMP_HOME.x, CAMP_HOME.z), CAMP_HOME.z)
+
+    // La hotte d'expédition, accrochée au dos : un cône tressé et deux jarres
+    // débordantes. Invisible au camp — c'est l'attribut du voyage.
+    this.pack = this.buildPack()
+    this.body.add(this.pack)
+
+    // La plage la plus proche du camp : là où le colon quitte le monde et y revient.
+    let best = Infinity
+    for (const c of island.cells) {
+      if (!c.beach) continue
+      const d = (c.x - CAMP_HOME.x) ** 2 + (c.z - CAMP_HOME.z) ** 2
+      if (d < best) {
+        best = d
+        this.shore.set(c.x, c.height, c.z)
+      }
+    }
+  }
+
+  private buildPack(): Mesh {
+    const basket = new Mesh(
+      weld([
+        part(new ConeGeometry(0.19, 0.42, 7).rotateX(Math.PI), C.leather, 0, 0.1, -0.3),
+        part(new CylinderGeometry(0.2, 0.16, 0.09, 7), C.bone, 0, 0.3, -0.3),
+        part(new SphereGeometry(0.07, 6, 5), C.tunicDark, -0.07, 0.4, -0.3),
+        part(new SphereGeometry(0.06, 6, 5), C.flint, 0.08, 0.38, -0.28),
+        // Sangles en travers du torse.
+        part(new BoxGeometry(0.05, 0.4, 0.03).rotateZ(0.5), C.leatherDark, 0.08, 0.22, -0.12),
+        part(new BoxGeometry(0.05, 0.4, 0.03).rotateZ(-0.5), C.leatherDark, -0.08, 0.22, -0.12),
+      ]),
+      this.skin,
+    )
+    basket.visible = false
+    return basket
+  }
+
+  /** Départ en expédition : il charge la hotte, marche jusqu'à la plage la plus
+   *  proche et quitte l'île. hasPack = techno « cordage » connue. */
+  departExpedition(hasPack: boolean): void {
+    this.pack.visible = hasPack
+    this.trip = 'leaving'
+  }
+
+  returnFromExpedition(): void {
+    if (this.trip === 'leaving' || this.trip === 'away') {
+      this.group.visible = true
+      this.group.position.set(this.shore.x, this.shore.y, this.shore.z)
+      this.trip = 'returning'
+    }
   }
 
   /** Chaque membre porte sa propre coque en enfant: l'animation la suit sans
@@ -282,6 +334,10 @@ export class Settler {
   }
 
   update(dt: number, boost: number): void {
+    if (this.trip !== 'none') {
+      this.updateTrip(dt, boost)
+      return
+    }
     const speed = this.speed * boost
     switch (this.phase) {
       case 'walkOut':
@@ -356,6 +412,45 @@ export class Settler {
     const k = Math.max(0, 1 - d / FIRE_REACH) ** 1.6
     const flicker = 0.88 + Math.sin(this.clock * 9) * 0.08 + Math.sin(this.clock * 5.1) * 0.04
     this.skin.emissive.copy(FIRE_WARM).multiplyScalar(k * 0.15 * flicker)
+  }
+
+  /** Aller-retour d'expédition : même marche que d'habitude, mais vers la plage,
+   *  et le monde ne le voit plus une fois embarqué. */
+  private updateTrip(dt: number, boost: number): void {
+    if (this.trip === 'away') return
+    const goal = this.trip === 'leaving' ? this.shore : this.home
+    const dx = goal.x - this.group.position.x
+    const dz = goal.z - this.group.position.z
+    const dist = Math.hypot(dx, dz)
+    const speed = this.speed * boost
+
+    if (dist < 0.4) {
+      if (this.trip === 'leaving') {
+        this.trip = 'away'
+        this.group.visible = false
+      } else {
+        this.trip = 'none'
+        this.pack.visible = false
+        this.phase = 'walkOut'
+      }
+      return
+    }
+
+    const step = Math.min(speed * dt, dist)
+    this.group.position.x += (dx / dist) * step
+    this.group.position.z += (dz / dist) * step
+    this.yaw = Math.atan2(dx, dz)
+    this.walkCycle += dt * speed * 2.6
+    this.animateWalk()
+
+    let d = this.yaw - this.group.rotation.y
+    while (d > Math.PI) d -= TAU
+    while (d < -Math.PI) d += TAU
+    this.group.rotation.y += d * Math.min(1, dt * 9)
+
+    this.skirtCamp()
+    const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
+    this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
   }
 
   /** Repoussé hors des abris à chaque pas plutôt que guidé par un chemin: il

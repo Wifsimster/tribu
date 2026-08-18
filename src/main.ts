@@ -2,7 +2,7 @@ import { InstancedMesh, Raycaster, Vector2, Vector3 } from 'three'
 import './style.css'
 import { Game } from './game/sim'
 import type { ResourceId } from './game/content'
-import { Stage } from './render/scene'
+import { DAY_SECONDS, DAY_START, Stage } from './render/scene'
 import { Island } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
@@ -29,6 +29,8 @@ stage.applyAge(game.save.age)
 village.sync(game.buildings)
 // Barque déjà à quai dans la sauvegarde : elle reprend sa place sans naviguer.
 if (game.save.caravan.visiting) caravan.arrive()
+// Expédition en cours au chargement : le colon est déjà au loin.
+if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
 /** Where the settler goes for each resource: the nearest matching node. */
 const nodeSpots = new Map<string, Vector3[]>()
@@ -66,13 +68,15 @@ game.on((e) => {
       hud.refreshTechList()
       break
     case 'expeditionStart':
-      hud.toast('Le colon part en expédition')
+      settler.departExpedition(game.knows('cordage'))
+      hud.toast('Le colon charge sa hotte et part en expédition — le camp attendra son retour')
       break
     case 'expeditionEnd': {
       const parts = Object.entries(e.loot)
         .filter(([, n]) => (n as number) > 0)
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
         .join('  ')
+      settler.returnFromExpedition()
       hud.toast(`De retour · ${parts}`)
       if (e.find) hud.toast(`Il rapporte ${e.find}`)
       break
@@ -139,6 +143,11 @@ attachControls(stage, canvas, (x, y) => {
 // ── Loop ───────────────────────────────────────────────────────────────────
 settler.sendTo(spotFor(game.save.focus))
 
+// ?h=0.75 fige l'heure (0 = lever, 0,25 = zénith, 0,5 = coucher, 0,75 = nuit) —
+// pour le debug et pour juger l'ambiance à heure fixe.
+const hParam = new URLSearchParams(location.search).get('h')
+const forcedHour = hParam !== null && !Number.isNaN(Number(hParam)) ? Number(hParam) % 1 : null
+
 let last = performance.now()
 let elapsed = 0
 
@@ -155,6 +164,12 @@ function frame(now: number): void {
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
   village.update(dt, elapsed)
+  // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
+  // où elle s'était arrêtée, pas toujours au même matin.
+  const daylight = stage.setDaylight(
+    forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
+  )
+  island.setDaylight(daylight)
   stage.updateCamera()
   hud.update()
   stage.render()

@@ -75,6 +75,9 @@ function fbm(x: number, y: number, seed: number): number {
 export const TILE = 1.35
 export const GRID = 26
 
+/** Griffonnage partagé de setDaylight : une teinte par frame, zéro allocation. */
+const tmpTint = new Color()
+
 /** Épaisseur de la couche d'herbe : le reste de la colonne est de la terre,
  *  c'est elle qui dessine les contre-marches des terrasses. */
 const CAP = 0.3
@@ -179,6 +182,16 @@ export type NodeKind = 'wood' | 'stone' | 'food'
 export class Island {
   readonly group = new Group()
   readonly cells: Cell[] = []
+  /** Matériaux non éclairés (eau, ourlet, ride, reflets) : le soleil ne les
+   *  touche pas, la nuit doit donc leur être appliquée à la main. */
+  private readonly unlit: MeshBasicMaterial[] = []
+  private readonly nightTint = new Color('#48627c')
+
+  /** k = part de jour (0 la nuit, 1 en plein jour), fournie par la scène. */
+  setDaylight(k: number): void {
+    const c = tmpTint.setRGB(1, 1, 1).lerp(this.nightTint, 1 - k)
+    for (const m of this.unlit) m.color.copy(c)
+  }
   readonly pickables: InstancedMesh[] = []
   /** Flat ground spots reserved for buildings, ordered from the fire outwards. */
   readonly buildSlots: Vector3[] = []
@@ -336,16 +349,16 @@ export class Island {
     // à l'ombre comme sur celle au soleil, et l'eau ne fait pas de clair-obscur
     // sur ce qu'elle noie. Éclairé, il s'éteignait sur la moitié du pourtour —
     // exactement la moitié où les falaises viraient au noir.
-    const contact = new InstancedMesh(geo, new MeshBasicMaterial(), rims.length * 3)
+    const contactMat = new MeshBasicMaterial()
+    this.unlit.push(contactMat)
+    const contact = new InstancedMesh(geo, contactMat, rims.length * 3)
 
     // Seule la bande côtière se reflète : au-delà, le reflet d'une colonne est
     // masqué par l'île elle-même et ne fait que s'empiler sous elle.
     const mirrored = this.cells.filter((c) => c.inland < 4)
-    const refl = new InstancedMesh(
-      this.reflectionBox(),
-      new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
-      mirrored.length,
-    )
+    const reflMat = new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
+    this.unlit.push(reflMat)
+    const refl = new InstancedMesh(this.reflectionBox(), reflMat, mirrored.length)
     refl.renderOrder = -2
     let reflIndex = 0
 
@@ -525,12 +538,11 @@ export class Island {
     geo.setAttribute('position', new BufferAttribute(verts, 3))
     geo.setAttribute('color', new BufferAttribute(colors, 4))
     geo.setIndex(new BufferAttribute(index, 1))
-    const mesh = new Mesh(
-      geo,
-      // Une seule passe : `DoubleSide` sur un matériau transparent fait dessiner
-      // l'anneau deux fois, et sa face utile est toujours celle du dessus.
-      new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
-    )
+    // Une seule passe : `DoubleSide` sur un matériau transparent fait dessiner
+    // l'anneau deux fois, et sa face utile est toujours celle du dessus.
+    const rippleMat = new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
+    this.unlit.push(rippleMat)
+    const mesh = new Mesh(geo, rippleMat)
     this.group.add(mesh)
   }
 
@@ -594,15 +606,16 @@ export class Island {
 
     // Couche opaque : même texture, même mapping, donc aucun décalage de
     // parallaxe avec la surface — ce qui n'est pas reflété reste invisible.
-    const bed = new Mesh(disc, new MeshBasicMaterial({ map: tex, depthWrite: false }))
+    const bedMat = new MeshBasicMaterial({ map: tex, depthWrite: false })
+    this.unlit.push(bedMat)
+    const bed = new Mesh(disc, bedMat)
     bed.rotation.x = -Math.PI / 2
     bed.position.y = BED_Y
     bed.renderOrder = -3
 
-    const surface = new Mesh(
-      disc,
-      new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }),
-    )
+    const surfaceMat = new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.unlit.push(surfaceMat)
+    const surface = new Mesh(disc, surfaceMat)
     surface.rotation.x = -Math.PI / 2
     surface.renderOrder = -1
 

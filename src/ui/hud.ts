@@ -1,4 +1,4 @@
-import { RESOURCES, type ResourceId, type TechDef } from '../game/content'
+import { AGES, RESOURCES, TECHS, TECH_BY_ID, type ResourceId, type TechDef } from '../game/content'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -150,31 +150,56 @@ export class Hud {
     el('scrim').classList.toggle('on', this.sheetOpen || this.factOpen)
   }
 
+  /** L'arbre complet, âge par âge : l'acquis, l'atteignable, et la route qui
+   *  reste. Un idle vit de montrer au joueur où il va. */
   refreshTechList(): void {
+    const g = this.game
     const body = el('sheet-body')
-    const techs = this.game.available()
     body.textContent = ''
-    if (techs.length === 0) {
-      const empty = document.createElement('p')
-      empty.className = 'sheet-empty'
-      empty.textContent =
-        'Rien de neuf à découvrir pour l’instant. Fais progresser ton âge pour en ouvrir d’autres.'
-      body.appendChild(empty)
-      return
-    }
-    for (const t of techs) {
-      const affordable = this.game.canResearch(t)
-      const btn = document.createElement('button')
-      btn.className = 'tech'
-      btn.type = 'button'
-      btn.disabled = !affordable
-      btn.innerHTML = `<span class="name">${t.name}</span><span class="cost ${
-        affordable ? 'ok' : ''
-      }">${icon('insight', 13)}${fmt(t.cost)}</span>`
-      btn.addEventListener('click', () => {
-        if (this.game.research(t.id)) this.refreshTechList()
-      })
-      body.appendChild(btn)
+
+    for (const age of AGES) {
+      const ageTechs = TECHS.filter((t) => t.age === age.id)
+      const done = ageTechs.filter((t) => g.knows(t.id)).length
+      const future = age.id > g.save.age
+
+      const head = document.createElement('div')
+      head.className = `age-h${future ? ' future' : ''}`
+      head.innerHTML =
+        `<span class="age-h-name">${age.name}</span>` +
+        `<span class="age-h-meta">${future ? '🔒' : `${done}/${ageTechs.length}`}</span>`
+      body.appendChild(head)
+
+      for (const t of ageTechs) {
+        const known = g.knows(t.id)
+        const missing = t.requires.filter((r) => !g.knows(r))
+        const reachable = !future && missing.length === 0
+        const affordable = reachable && !known && g.canResearch(t)
+
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = `tech${known ? ' done' : ''}${!known && !reachable ? ' locked' : ''}`
+        // Une techno acquise reste tapable : elle rejoue son fait historique.
+        btn.disabled = !known && !affordable
+
+        let right: string
+        if (known) right = `<span class="cost done-mark">✓</span>`
+        else if (future) right = `<span class="cost">🔒</span>`
+        else right = `<span class="cost ${affordable ? 'ok' : ''}">${icon('insight', 13)}${fmt(t.cost)}</span>`
+
+        const needs =
+          !known && !future && missing.length > 0
+            ? `<span class="needs">requiert ${missing
+                .map((r) => TECH_BY_ID.get(r)?.name ?? r)
+                .join(', ')}</span>`
+            : ''
+
+        btn.innerHTML = `<span class="tech-main"><span class="name">${t.name}</span>${needs}</span>${right}`
+        btn.addEventListener('click', () => {
+          if (known) this.showFact(t)
+          else if (this.game.research(t.id)) this.refreshTechList()
+        })
+        body.appendChild(btn)
+      }
     }
   }
 

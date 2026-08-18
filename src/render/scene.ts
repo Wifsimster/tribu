@@ -38,6 +38,19 @@ const BASE_ZOOM = 34
 const FILL_WIDTH = 0.76
 const FILL_HEIGHT = 0.5
 
+/** Une journée complète en secondes de jeu. Assez courte pour qu'une session
+ *  voie un coucher de soleil, assez longue pour ne pas clignoter. */
+export const DAY_SECONDS = 240
+/** Le jeu démarre en milieu de matinée : l'azimut du soleil y coïncide avec
+ *  SUN_DIR, la direction cuite dans l'ombre de contact de la texture d'eau. */
+export const DAY_START = 0.32
+
+const SUN_AZ0 = Math.atan2(SUN_DIR.x, SUN_DIR.z) - DAY_START * Math.PI * 2
+const NIGHT_SKY = new Color('#16283f')
+const NIGHT_HAZE = new Color('#1c3247')
+const SUN_DAY = new Color('#fff1d8')
+const SUN_LOW = new Color('#ffb36b')
+
 export class Stage {
   readonly renderer: WebGLRenderer
   readonly scene: Scene
@@ -148,11 +161,58 @@ export class Stage {
   /** Sky, fog and light temperature drift with the age so progress is visible
    *  in the world itself, not only in the HUD. */
   applyAge(ageId: number): void {
-    const age = AGES[Math.min(ageId, AGES.length - 1)]!
-    this.sky.dispose()
-    this.sky = this.paintSky(age.sky)
-    this.scene.background = this.sky
-    this.fog.color.copy(this.hazeFor(age.fog))
+    this.ageId = Math.min(ageId, AGES.length - 1)
+    this.lastDaylight = -1 // force la repeinture du ciel au prochain frame
+  }
+
+  private ageId = 0
+  private lastDaylight = -1
+  private lastWarmth = -1
+
+  /** La course du soleil : u ∈ [0,1), lever à 0, zénith à 0,25, coucher à 0,5.
+   *  Tout le reste — couleur, intensité, ciel, brume — découle de l'élévation.
+   *  Retourne la part de jour, que l'île applique à ses matériaux non éclairés. */
+  setDaylight(u: number): number {
+    const age = AGES[this.ageId]!
+    const elev = Math.sin(u * Math.PI * 2)
+    const az = SUN_AZ0 + u * Math.PI * 2
+
+    // k : part de jour (0 la nuit, 1 en plein jour) ; w : chaleur d'horizon.
+    const k = smoothstep(-0.06, 0.2, elev)
+    const w = (1 - smoothstep(0.05, 0.42, elev)) * k
+
+    const r = 52
+    const cosE = Math.max(0.25, Math.cos(elev * 0.9))
+    this.sun.position.set(
+      Math.sin(az) * r * cosE,
+      10 + Math.max(0.03, elev) * 50,
+      Math.cos(az) * r * cosE,
+    )
+    this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
+    this.sun.intensity = 2.35 * k
+    // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
+    // rendu de profondeur payé pour rien.
+    this.sun.castShadow = k > 0.02
+    this.hemi.intensity = 0.16 + 0.6 * k
+
+    const haze = this.hazeFor(age.fog).lerp(NIGHT_HAZE, 1 - k)
+    this.fog.color.copy(haze)
+
+    // Le ciel n'est repeint que quand l'ambiance change vraiment : une aube
+    // entière n'écrit la texture qu'une cinquantaine de fois.
+    if (Math.abs(k - this.lastDaylight) > 0.02 || Math.abs(w - this.lastWarmth) > 0.02) {
+      this.lastDaylight = k
+      this.lastWarmth = w
+      this.sky.dispose()
+      const top = PALETTE.sky.clone().lerp(new Color(age.sky), 0.35).lerp(NIGHT_SKY, 1 - k)
+      const bottom = haze.clone().lerp(SUN_LOW, w * 0.4)
+      this.sky = rampTexture(2, 64, (_u, v, out) => {
+        out.copy(bottom).lerp(top, smoothstep(0, 0.85, v))
+        return 1
+      })
+      this.scene.background = this.sky
+    }
+    return k
   }
 
   resize(): void {
