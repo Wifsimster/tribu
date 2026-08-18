@@ -282,6 +282,8 @@ function menuEl<T extends HTMLElement>(id: string): T {
     if (e.key === 'Escape' && menu.classList.contains('open') && hasProgress) close()
   })
 
+  menuEl('menu-version').textContent = `v${__APP_VERSION__}`
+
   // ?nomenu=1 : le harnais de capture juge le jeu, pas l'écran d'accueil.
   if (new URLSearchParams(location.search).has('nomenu')) {
     paused = false
