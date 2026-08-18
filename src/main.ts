@@ -184,9 +184,12 @@ function menuEl<T extends HTMLElement>(id: string): T {
 
   const hasProgress = game.save.techs.length > 0 || game.save.totalPlaySeconds > 30
 
+  const tuto = menuEl('menu-tuto')
+
   const showHome = () => {
     confirmStep = 0
     confirm.hidden = true
+    tuto.hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -221,6 +224,12 @@ function menuEl<T extends HTMLElement>(id: string): T {
   })
 
   menuEl('menu-cancel').addEventListener('click', showHome)
+
+  menuEl('menu-tuto-open').addEventListener('click', () => {
+    home.hidden = true
+    tuto.hidden = false
+  })
+  menuEl('menu-tuto-close').addEventListener('click', showHome)
 
   menuEl('menu-erase').addEventListener('click', () => {
     if (confirmStep === 1) {

@@ -852,3 +852,44 @@ body.night .age-bar {
   color: #fff2ec;
   box-shadow: 0 4px 14px rgba(176, 67, 46, 0.3);
 }
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--ink-soft);
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.menu-tuto[hidden] {
+  display: none;
+}
+
+.menu-tuto {
+  text-align: left;
+}
+
+.tuto-list {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  max-height: 46dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.tuto-list li {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  padding-left: 12px;
+  border-left: 2px solid rgba(217, 164, 65, 0.5);
+}
+
+.tuto-list b {
+  color: var(--ink);
+}
