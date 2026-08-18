@@ -76,12 +76,15 @@ export class Stage {
 
     this.camera = new PerspectiveCamera(FOV, 1, 8, 2600)
 
-    this.hemi = new HemisphereLight(0xdfeef2, 0x51757c, 0.82)
+    // Moins de ciel diffus, plus de soleil : c'est le rapport entre les deux qui
+    // creuse les contre-marches. À 0,82 l'ambiante remplissait tous les creux et
+    // les paliers se lisaient comme un aplat.
+    this.hemi = new HemisphereLight(0xdfeef2, 0x53757f, 0.66)
     this.scene.add(this.hemi)
 
     // Le soleil vient de la gauche et de derrière l'épaule gauche : sur le
     // cadrage par défaut, une face est éclairée, l'autre tombe dans l'ombre.
-    this.sun = new DirectionalLight(0xfff1d8, 2.0)
+    this.sun = new DirectionalLight(0xfff1d8, 2.35)
     this.sun.position.set(-34, 46, 24)
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(1024, 1024)
@@ -190,10 +193,11 @@ export class Stage {
       this.target.z + d * sinP * Math.cos(this.azimuth),
     )
     this.camera.lookAt(this.target)
-    // La brume commence derrière l'île et sature avant le bord du plan d'eau :
-    // l'île reste franche, l'horizon se dissout, aucune ligne de coupe.
-    this.fog.near = d * 0.95
-    this.fog.far = d * 1.7
+    // La brume ne commence qu'au-delà de l'île entière. À 0,95·d elle mordait
+    // sur le bord éloigné : les faces basses se dissolvaient exactement là où
+    // la ligne d'eau doit trancher.
+    this.fog.near = d * 1.16
+    this.fog.far = d * 2.05
   }
 
   render(): void {

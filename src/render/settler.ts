@@ -19,6 +19,7 @@ import {
 } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
+import { CAMP_BLOCKERS, CAMP_FIRE, CAMP_HOME } from './village'
 import type { Island } from './island'
 
 type Phase = 'walkOut' | 'work' | 'walkHome' | 'deposit'
@@ -43,6 +44,11 @@ const C = {
 
 const OUTLINE = new MeshBasicMaterial({ color: 0x33261c, side: BackSide })
 const SPARK = new MeshBasicMaterial({ color: 0xfff0cf })
+
+/** Il s'attarde au foyer au lieu d'y faire demi-tour: sur un arrêt sur image,
+ *  c'est ce qui donne une chance au colon d'être vu chez lui plutôt qu'en train
+ *  de traverser un bois. */
+const DEPOSIT = 2.1
 
 const HIP_Y = 0.44
 const SHOULDER_Y = 0.86
@@ -138,12 +144,12 @@ export class Settler {
     this.chips.visible = false
     this.chips.frustumCulled = false
 
-    // Le colon est joué vingt pour cent plus grand que l'échelle du village: à la
+    // Le colon est joué un tiers plus grand que l'échelle du village: à la
     // taille d'un téléphone, la justesse d'échelle perd contre la lisibilité.
-    this.rig.scale.setScalar(1.2)
+    this.rig.scale.setScalar(1.32)
     this.group.add(this.rig, this.chips)
     this.group.position.set(2.5, island.heightAt(2.5, 2.5), 2.5)
-    this.home.set(0, 0, 0)
+    this.home.set(CAMP_HOME.x, island.heightAt(CAMP_HOME.x, CAMP_HOME.z), CAMP_HOME.z)
   }
 
   /** Chaque membre porte sa propre coque en enfant: l'animation la suit sans
@@ -248,8 +254,11 @@ export class Settler {
     }
   }
 
-  setHome(p: Vector3): void {
-    this.home.copy(p)
+  /** Le point que propose la boucle est le centre géométrique de l'île. Le colon,
+   *  lui, rentre au campement: c'est sa marche qui doit désigner le foyer comme
+   *  le lieu où l'on vit, pas une case vide au milieu du terrain. */
+  setHome(_p: Vector3): void {
+    this.home.set(CAMP_HOME.x, this.island.heightAt(CAMP_HOME.x, CAMP_HOME.z), CAMP_HOME.z)
   }
 
   /** Sent by a tap on a resource node, or by the focus buttons. */
@@ -275,7 +284,7 @@ export class Settler {
         const dist = Math.hypot(dx, dz)
         if (dist < 0.35) {
           this.phase = this.phase === 'walkOut' ? 'work' : 'deposit'
-          this.timer = this.phase === 'work' ? 2.6 : 0.7
+          this.timer = this.phase === 'work' ? 2.6 : DEPOSIT
           break
         }
         const step = Math.min(speed * dt, dist)
@@ -295,6 +304,10 @@ export class Settler {
       case 'deposit': {
         this.timer -= dt * boost
         this.animateDeposit()
+        this.yaw = Math.atan2(
+          CAMP_FIRE.x - this.group.position.x,
+          CAMP_FIRE.z - this.group.position.z,
+        )
         if (this.timer <= 0) this.phase = 'walkOut'
         break
       }
@@ -317,9 +330,24 @@ export class Settler {
     }
 
     this.updateChips(dt)
+    this.skirtCamp()
 
     const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
     this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+  }
+
+  /** Repoussé hors des abris à chaque pas plutôt que guidé par un chemin: il
+   *  glisse le long des peaux et les contourne, pour cinq comparaisons par
+   *  image. */
+  private skirtCamp(): void {
+    for (const b of CAMP_BLOCKERS) {
+      const dx = this.group.position.x - b.x
+      const dz = this.group.position.z - b.z
+      const d = Math.hypot(dx, dz)
+      if (d > b.r || d < 1e-3) continue
+      this.group.position.x = b.x + (dx / d) * b.r
+      this.group.position.z = b.z + (dz / d) * b.r
+    }
   }
 
   private animateWalk(): void {
@@ -360,17 +388,22 @@ export class Settler {
     if (u < before) this.strike()
   }
 
+  /** Il pose sa charge, puis reste au feu: mains tendues vers la flamme, un
+   *  balancement lent. Un colon qui repart aussitôt ne fait pas du foyer un
+   *  chez-soi. */
   private animateDeposit(): void {
-    const t = (0.7 - this.timer) * 9
-    const hop = Math.max(0, Math.sin(t)) * 0.16
+    const t = (DEPOSIT - this.timer) * 9
+    const drop = Math.min(1, t / 6)
+    const hop = Math.max(0, Math.sin(t)) * 0.16 * (1 - drop)
+    const sway = Math.sin(t * 0.22) * 0.09
     this.body.position.y = HIP_Y + hop
     this.head.position.y = HEAD_Y + hop
     this.armL.position.y = SHOULDER_Y + hop
     this.armR.position.y = SHOULDER_Y + hop
-    this.armL.rotation.set(-2.5, 0, 0.35)
-    this.armR.rotation.set(-2.5, 0, -0.35)
-    this.body.rotation.set(-0.08, 0, 0)
-    this.head.rotation.set(-0.12, Math.sin(t * 0.7) * 0.2, 0)
+    this.armL.rotation.set(-2.5 + drop * 1.35, 0, 0.35 - drop * 0.14)
+    this.armR.rotation.set(-2.5 + drop * 1.35, 0, -0.35 + drop * 0.14)
+    this.body.rotation.set(-0.08 + drop * 0.16, 0, sway * 0.4)
+    this.head.rotation.set(-0.12 + drop * 0.24, Math.sin(t * 0.7) * 0.2 * (1 - drop) + sway, 0)
     this.legL.rotation.x = -0.1
     this.legR.rotation.x = 0.1
   }

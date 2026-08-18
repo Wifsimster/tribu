@@ -12,28 +12,36 @@ import {
  *  Les verts sont volontairement cassés vers l'olive : à côté d'une eau
  *  turquoise sourde, un vert pur vire au fluo. */
 export const PALETTE = {
-  /** Couleur de l'eau *proche* : la brume se charge d'éclaircir le lointain. */
-  water: new Color('#3e7a84'),
-  waterDeep: new Color('#1f4c58'),
-  waterShallow: new Color('#74a3a3'),
+  /** Couleur de l'eau *proche* : la brume se charge d'éclaircir le lointain.
+   *  L'eau est franchement bleue et d'une valeur basse : c'est l'écart de
+   *  luminosité avec la terre, plus que la teinte, qui détache la silhouette. */
+  water: new Color('#33697b'),
+  waterDeep: new Color('#183f4f'),
+  waterShallow: new Color('#65949e'),
   /** Brume et fond de ciel — même teinte, pour que l'horizon disparaisse. */
-  haze: new Color('#85a9ab'),
-  sky: new Color('#a9c9cb'),
-  foam: new Color('#d3e4dc'),
-  sand: new Color('#cfbf97'),
-  grass: new Color('#87a566'),
-  grassLight: new Color('#9fb878'),
-  grassDark: new Color('#6c8c55'),
+  haze: new Color('#7fa2ac'),
+  sky: new Color('#a3c4ce'),
+  /** La ride de contact. Un blanc franc faisait un contour lumineux collé
+   *  autour de l'île : c'est de l'eau éclaircie, pas de l'écume. */
+  foam: new Color('#a8d0cd'),
+  /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
+   *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
+  sand: new Color('#dccb9c'),
+  grass: new Color('#9cb264'),
+  grassLight: new Color('#b7c877'),
+  grassDark: new Color('#7a9550'),
   /** Terre du socle : ce qui affleure sous l'herbe dans les contre-marches. */
-  earth: new Color('#8e8471'),
-  earthDark: new Color('#665f52'),
-  rock: new Color('#9d968b'),
-  rockDark: new Color('#7c766d'),
-  dirt: new Color('#a5825e'),
+  earth: new Color('#a4906b'),
+  earthDark: new Color('#6f6047'),
+  rock: new Color('#a49c8e'),
+  rockDark: new Color('#807870'),
+  /** Terre battue de la clairière, et sa version tassée près du feu. */
+  dirt: new Color('#ab8352'),
+  dirtDark: new Color('#8a6740'),
   trunk: new Color('#7d5d41'),
-  leafA: new Color('#5a8d51'),
-  leafB: new Color('#6e9a5b'),
-  leafC: new Color('#47764a'),
+  leafA: new Color('#5f9049'),
+  leafB: new Color('#79a355'),
+  leafC: new Color('#4c7c3f'),
   thatch: new Color('#d0aa6a'),
   hide: new Color('#bb8a62'),
   skin: new Color('#dda878'),
@@ -51,7 +59,25 @@ export function tint(base: Color, seed: number, spread = 0.06): Color {
   return c
 }
 
-const rampRgb = { r: 0, g: 0, b: 0 }
+/** Encodage sRGB tabulé. `Color.getRGB` fait trois `Math.pow` par pixel : sur la
+ *  nappe d'eau, qui se peint en 150 000 pixels, c'est le poste le plus lourd du
+ *  chargement. L'index est en racine du linéaire, là où la courbe est presque
+ *  droite, donc mille entrées suffisent à rester sous le LSB. */
+const ENCODE_N = 1024
+const encodeLut = new Float32Array(ENCODE_N + 1)
+for (let i = 0; i <= ENCODE_N; i++) {
+  const lin = (i / ENCODE_N) ** 2
+  encodeLut[i] = lin <= 0.0031308 ? lin * 12.92 : 1.055 * Math.pow(lin, 1 / 2.4) - 0.055
+}
+
+function encodeSrgb(lin: number): number {
+  if (!(lin > 0)) return 0
+  if (lin >= 1) return 255
+  const t = Math.sqrt(lin) * ENCODE_N
+  const i = t | 0
+  const f = t - i
+  return (encodeLut[i]! * (1 - f) + encodeLut[i + 1]! * f) * 255
+}
 
 /** Dégradés fabriqués en mémoire plutôt qu'avec un canvas 2D : le navigateur
  *  prémultiplie l'alpha d'un canvas, ce qui salit les bords d'un halo. */
@@ -65,11 +91,10 @@ export function rampTexture(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const a = fill((x + 0.5) / width, (y + 0.5) / height, c)
-      c.getRGB(rampRgb, SRGBColorSpace)
       const i = (y * width + x) * 4
-      data[i] = Math.round(Math.min(1, Math.max(0, rampRgb.r)) * 255)
-      data[i + 1] = Math.round(Math.min(1, Math.max(0, rampRgb.g)) * 255)
-      data[i + 2] = Math.round(Math.min(1, Math.max(0, rampRgb.b)) * 255)
+      data[i] = Math.round(encodeSrgb(c.r))
+      data[i + 1] = Math.round(encodeSrgb(c.g))
+      data[i + 2] = Math.round(encodeSrgb(c.b))
       data[i + 3] = Math.round(Math.min(1, Math.max(0, a)) * 255)
     }
   }
