@@ -61,7 +61,7 @@ export class Stage {
 
   // Orbit state, driven by the custom touch controller in controls.ts.
   azimuth = Math.PI * 0.25
-  polar = Math.PI * 0.32
+  polar = Math.PI * 0.38
   distance = BASE_ZOOM
   readonly target = new Vector3(0, 1, 0)
 
