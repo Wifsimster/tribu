@@ -1,0 +1,71 @@
+import type { ResourceId } from './content'
+
+export interface Expedition {
+  /** Seconds of expedition work still to do, before speed multipliers. */
+  remaining: number
+  total: number
+}
+
+export interface SaveV1 {
+  v: 1
+  t: number
+  res: Partial<Record<ResourceId, number>>
+  techs: string[]
+  age: number
+  focus: ResourceId
+  expedition: Expedition | null
+  seenFacts: string[]
+  totalPlaySeconds: number
+}
+
+export const SAVE_KEY = 'tribu.save.v1'
+
+/** Offline progress is credited, but capped so the game cannot be beaten by
+ *  closing the tab for a month. */
+export const OFFLINE_CAP_SECONDS = 8 * 3600
+
+export function emptySave(now: number): SaveV1 {
+  return {
+    v: 1,
+    t: now,
+    res: { food: 0, wood: 0, stone: 0, insight: 0 },
+    techs: [],
+    age: 0,
+    focus: 'food',
+    expedition: null,
+    seenFacts: [],
+    totalPlaySeconds: 0,
+  }
+}
+
+export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } {
+  let raw: string | null = null
+  try {
+    raw = localStorage.getItem(SAVE_KEY)
+  } catch {
+    // Private browsing or blocked storage: play in memory, never crash.
+    return { save: emptySave(now), offlineSeconds: 0 }
+  }
+  if (!raw) return { save: emptySave(now), offlineSeconds: 0 }
+
+  try {
+    const parsed = JSON.parse(raw) as SaveV1
+    if (parsed.v !== 1) return { save: emptySave(now), offlineSeconds: 0 }
+    const elapsed = Math.max(0, Math.min((now - parsed.t) / 1000, OFFLINE_CAP_SECONDS))
+    const base = emptySave(now)
+    return {
+      save: { ...base, ...parsed, res: { ...base.res, ...parsed.res } },
+      offlineSeconds: elapsed,
+    }
+  } catch {
+    return { save: emptySave(now), offlineSeconds: 0 }
+  }
+}
+
+export function writeSave(save: SaveV1, now: number): void {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...save, t: now }))
+  } catch {
+    // Storage full or unavailable — losing a save is better than losing the frame.
+  }
+}
