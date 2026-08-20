@@ -108,10 +108,23 @@ game.on((e) => {
       break
     case 'expeditionStart':
       settler.departExpedition(game.knows('cordage'))
-      boat.setTier(game.knows('sail') ? 2 : game.knows('polished_axe') ? 1 : 0)
+      boat.setTier(
+        game.knows('automobile') ? 5
+        : game.knows('steamengine') ? 4
+        : game.knows('caravel') ? 3
+        : game.knows('sail') ? 2
+        : game.knows('polished_axe') ? 1
+        : 0,
+      )
       expPhase = 'walking'
       hud.toast(
-        game.knows('sail')
+        game.knows('automobile')
+          ? 'Le colon démarre le hors-bord — le camp attendra son retour'
+          : game.knows('steamengine')
+            ? 'Le vapeur souffle et quitte le quai — le camp attendra son retour'
+            : game.knows('caravel')
+              ? 'La caravelle prend le vent — le camp attendra son retour'
+              : game.knows('sail')
           ? 'Le colon hisse la voile — le camp attendra son retour'
           : game.knows('polished_axe')
             ? 'Le colon pousse sa pirogue à l\'eau — le camp attendra son retour'
@@ -372,14 +385,14 @@ function frame(now: number): void {
   settler.setNight(game.isNight && game.nightLight < 0.85)
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   // L'outil suit la ressource travaillée et la matière suit les savoirs.
-  const metal = game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
+  const metal = game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
   if (game.save.focus === 'food') {
     settler.setTool(game.knows('agriculture') ? 'sickle' : game.knows('spear') ? 'spear' : 'hand', metal)
   } else if (game.save.focus === 'wood') {
     settler.setTool(game.knows('flint') ? 'axe' : 'hand', metal)
   } else {
     // Galet percuteur, puis pic de cuivre, puis pic de fer.
-    settler.setTool('pick', game.knows('ironworking') ? 2 : game.knows('copper') ? 1 : 0)
+    settler.setTool('pick', game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('copper') ? 1 : 0)
   }
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))

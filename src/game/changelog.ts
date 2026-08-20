@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.4.0',
+    title: "Jusqu'à nos jours",
+    items: [
+      "Quatre nouvelles époques : Renaissance, ère industrielle, ère moderne et ère contemporaine — vingt savoirs, de la caravelle au smartphone, chacun avec son fait réel et son atelier.",
+      "L'expédition évolue encore : caravelle, vapeur à roues, hors-bord.",
+      "L'éclairage progresse : réverbères à gaz puis électricité — la nuit finit par ne plus rien coûter.",
+      'Outils en acier Bessemer, île encore plus vaste aux derniers âges.',
+    ],
+  },
+  {
     version: '1.3.1',
     title: 'Passage d\'âge rattrapé',
     items: [

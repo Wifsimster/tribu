@@ -80,7 +80,39 @@ export class ExpeditionBoat {
       tinted(new CylinderGeometry(0.03, 0.03, 0.9, 5).rotateX(Math.PI / 2), wood, 0, 1.55, 0),
     ]
 
-    for (const parts of [raft, canoe, boat]) {
+    // Tier 3 — caravelle : coque haute, deux mâts, voiles carrées crème.
+    const cream = new Color('#efe4c8')
+    const caravel: BufferGeometry[] = [
+      tinted(new BoxGeometry(2.1, 0.42, 0.8), woodDark, 0, 0.26, 0),
+      tinted(new BoxGeometry(0.5, 0.36, 0.62).rotateZ(0.5), wood, 1.15, 0.44, 0),
+      tinted(new BoxGeometry(0.6, 0.5, 0.7), wood, -0.85, 0.55, 0),
+      tinted(new CylinderGeometry(0.05, 0.06, 1.7, 6), wood, 0.25, 1.2, 0),
+      tinted(new CylinderGeometry(0.04, 0.05, 1.3, 6), wood, -0.7, 1.15, 0),
+      tinted(new BoxGeometry(0.92, 0.7, 0.03), cream, 0.25, 1.35, 0),
+      tinted(new BoxGeometry(0.7, 0.55, 0.03), cream, -0.7, 1.25, 0),
+    ]
+    // Tier 4 — vapeur : coque métal, roue à aubes, cheminée qui fume.
+    const hullGrey = new Color('#5e6a72')
+    const steam: BufferGeometry[] = [
+      tinted(new BoxGeometry(2.2, 0.4, 0.85), hullGrey, 0, 0.26, 0),
+      tinted(new BoxGeometry(1.1, 0.35, 0.6), new Color('#c9cdd2'), 0.1, 0.6, 0),
+      tinted(new CylinderGeometry(0.09, 0.12, 0.6, 7), new Color('#33383e'), -0.45, 0.95, 0),
+      tinted(new CylinderGeometry(0.3, 0.3, 0.08, 10).rotateX(Math.PI / 2), woodDark, 0.75, 0.4, 0.48),
+      tinted(new CylinderGeometry(0.3, 0.3, 0.08, 10).rotateX(Math.PI / 2), woodDark, 0.75, 0.4, -0.48),
+      tinted(new SphereGeometry(0.14, 6, 5), new Color('#b9c2c6'), -0.45, 1.35, 0),
+      tinted(new SphereGeometry(0.1, 6, 5), new Color('#c9d0d3'), -0.6, 1.55, 0.05),
+    ]
+    // Tier 5 — hors-bord : coque blanche effilée, cabine, moteur.
+    const motor: BufferGeometry[] = [
+      tinted(new BoxGeometry(2.0, 0.3, 0.7), new Color('#f2f4f0'), 0, 0.24, 0),
+      tinted(new BoxGeometry(0.55, 0.28, 0.55).rotateZ(0.35), new Color('#f2f4f0'), 1.1, 0.34, 0),
+      tinted(new BoxGeometry(0.6, 0.3, 0.5), new Color('#3f6d8a'), 0.05, 0.52, 0),
+      tinted(new BoxGeometry(0.06, 0.24, 0.4).rotateZ(-0.35), new Color('#cfe2ec'), 0.4, 0.6, 0),
+      tinted(new BoxGeometry(0.2, 0.3, 0.18), new Color('#33383e'), -1.0, 0.35, 0),
+      tinted(new BoxGeometry(0.5, 0.05, 0.6), new Color('#c96f4e'), -0.3, 0.42, 0),
+    ]
+
+    for (const parts of [raft, canoe, boat, caravel, steam, motor]) {
       const m = new Mesh(mergeGeometries(parts) ?? new BufferGeometry(), mat)
       m.castShadow = true
       m.visible = false
@@ -122,10 +154,11 @@ export class ExpeditionBoat {
     this.group.visible = false
   }
 
-  /** 0 = radeau, 1 = pirogue (hache polie), 2 = barque à voile (voile). */
+  /** 0 radeau, 1 pirogue, 2 barque à voile, 3 caravelle, 4 vapeur, 5 hors-bord. */
   setTier(tier: number): void {
-    this.tiers.forEach((m, i) => (m.visible = i === Math.min(tier, 2)))
-    this.sail.visible = tier >= 2
+    const t = Math.min(tier, 5)
+    this.tiers.forEach((m, i) => (m.visible = i === t))
+    this.sail.visible = t === 2
   }
 
   get active(): boolean {

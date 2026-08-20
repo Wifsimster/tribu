@@ -74,7 +74,7 @@ function fbm(x: number, y: number, seed: number): number {
 }
 
 export const TILE = 1.35
-export const GRID = 38
+export const GRID = 42
 
 /** Griffonnage partagé de setDaylight : une teinte par frame, zéro allocation. */
 const tmpTint = new Color()
@@ -155,9 +155,14 @@ function shoreEdge(theta: number, seed: number, growth = 1): number {
 /** L'île grandit avec les âges : la tribu gagne du terrain sur la mer, et la
  *  place des nouveaux bâtiments avec. */
 export function growthForAge(age: number): number {
-  // +11 % de rayon par âge jusqu'au fer, puis +7 % : l'Antiquité et le Moyen
-  // Âge agrandissent encore l'île sans faire exploser le budget de triangles.
-  return 1 + Math.min(age, 3) * 0.11 + Math.max(0, Math.min(age, 5) - 3) * 0.07
+  // +11 %/âge jusqu'au fer, +7 % jusqu'au Moyen Âge, puis +3 % : la croissance
+  // s'essouffle pour que dix époques tiennent dans les budgets de rendu.
+  return (
+    1 +
+    Math.min(age, 3) * 0.11 +
+    Math.max(0, Math.min(age, 5) - 3) * 0.07 +
+    Math.max(0, Math.min(age, 9) - 5) * 0.03
+  )
 }
 
 /** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran.

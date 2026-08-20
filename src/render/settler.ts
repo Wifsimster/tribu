@@ -330,7 +330,8 @@ export class Settler {
       this.tool = null
     }
     if (kind === 'hand') return
-    const edge = tier >= 2 ? new Color('#8f959e') : tier >= 1 ? new Color('#c98a4b') : C.flint
+    const edge =
+      tier >= 3 ? new Color('#c3cedd') : tier >= 2 ? new Color('#8f959e') : tier >= 1 ? new Color('#c98a4b') : C.flint
     const parts: BufferGeometry[] = []
     switch (kind) {
       case 'spear': {

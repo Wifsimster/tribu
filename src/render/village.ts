@@ -1363,6 +1363,176 @@ export class Village {
         p.push(part(new CylinderGeometry(0.02, 0.02, 0.3, 5).rotateZ(Math.PI / 2), C.wood, 0.3, 0.5, 0))
         return p
       }
+      case 'caravel': {
+        // Maquette de caravelle sur ber, à quai.
+        p.push(part(new BoxGeometry(0.7, 0.16, 0.26), C.woodDark, 0, 0.24, 0))
+        p.push(part(new CylinderGeometry(0.02, 0.025, 0.5, 5), C.wood, 0.06, 0.55, 0))
+        p.push(part(new BoxGeometry(0.28, 0.22, 0.015), C.plaster, 0.06, 0.6, 0))
+        for (const sx of [-0.2, 0.2]) p.push(part(new BoxGeometry(0.05, 0.16, 0.05).rotateZ(sx > 0 ? -0.4 : 0.4), C.wood, sx, 0.1, 0))
+        return p
+      }
+      case 'easel': {
+        // Chevalet et toile en cours.
+        for (const s of [-1, 1]) p.push(part(new CylinderGeometry(0.02, 0.025, 0.6, 5).rotateZ(s * 0.22), C.wood, s * 0.12, 0.3, 0))
+        p.push(part(new CylinderGeometry(0.02, 0.02, 0.6, 5).rotateX(0.3), C.wood, 0, 0.28, -0.06))
+        p.push(part(new BoxGeometry(0.34, 0.28, 0.02), C.plaster, 0, 0.42, 0.03))
+        p.push(part(new BoxGeometry(0.12, 0.09, 0.025), C.tile, -0.04, 0.44, 0.035))
+        p.push(part(new BoxGeometry(0.08, 0.06, 0.025), PALETTE.grassDark, 0.07, 0.38, 0.035))
+        return p
+      }
+      case 'observatory': {
+        // Lunette sur trépied, pointée vers le ciel.
+        for (let i = 0; i < 3; i++) p.push(part(new CylinderGeometry(0.02, 0.025, 0.5, 5).rotateZ(0.35).rotateY((i / 3) * Math.PI * 2), C.woodDark, 0, 0.25, 0))
+        p.push(part(new CylinderGeometry(0.05, 0.07, 0.55, 7).rotateZ(0.9), copper, 0.1, 0.58, 0))
+        p.push(part(new CylinderGeometry(0.075, 0.075, 0.06, 7).rotateZ(0.9), gold, 0.32, 0.68, 0))
+        return p
+      }
+      case 'bank': {
+        // Comptoir : table, registre, coffre cerclé.
+        p.push(part(new BoxGeometry(0.55, 0.06, 0.35), C.woodDark, 0, 0.3, 0))
+        for (const sx of [-0.22, 0.22]) p.push(part(new BoxGeometry(0.06, 0.3, 0.06), C.wood, sx, 0.15, 0))
+        p.push(part(new BoxGeometry(0.16, 0.03, 0.2), C.plaster, -0.1, 0.35, 0))
+        p.push(part(new BoxGeometry(0.22, 0.16, 0.16), C.woodDark, 0.35, 0.08, 0.05))
+        p.push(part(new BoxGeometry(0.24, 0.03, 0.18), iron, 0.35, 0.17, 0.05))
+        for (let i = 0; i < 3; i++) p.push(part(new CylinderGeometry(0.028, 0.028, 0.012, 8), gold, 0.05 + i * 0.07, 0.34, 0.1))
+        return p
+      }
+      case 'anatomy': {
+        // Table d'étude : planche anatomique et fioles.
+        p.push(part(new BoxGeometry(0.55, 0.05, 0.33), C.wood, 0, 0.3, 0))
+        for (const sx of [-0.22, 0.22]) p.push(part(new BoxGeometry(0.05, 0.3, 0.05), C.woodDark, sx, 0.15, 0))
+        p.push(part(new BoxGeometry(0.2, 0.28, 0.02), C.plaster, -0.1, 0.55, -0.1))
+        p.push(part(new BoxGeometry(0.05, 0.16, 0.025), C.meat, -0.1, 0.55, -0.085))
+        for (let i = 0; i < 2; i++) p.push(part(new SphereGeometry(0.045, 6, 5), C.glass, 0.12 + i * 0.12, 0.36, 0.05))
+        return p
+      }
+      case 'steamengine': {
+        // Chaudière, volant, bielle.
+        p.push(part(new CylinderGeometry(0.16, 0.16, 0.5, 8).rotateZ(Math.PI / 2), iron, 0, 0.22, 0))
+        p.push(part(new CylinderGeometry(0.06, 0.08, 0.3, 6), C.char, -0.15, 0.55, 0))
+        p.push(part(new TorusGeometry(0.16, 0.03, 6, 12).rotateY(Math.PI / 2), C.stoneDark, 0.35, 0.3, 0))
+        p.push(part(new BoxGeometry(0.3, 0.04, 0.04), C.stoneLight, 0.15, 0.3, 0.1))
+        p.push(part(new SphereGeometry(0.08, 6, 5), C.smoke, -0.15, 0.78, 0.02))
+        return p
+      }
+      case 'railway': {
+        // Tronçon de voie et wagonnet.
+        for (let i = 0; i < 4; i++) p.push(part(new BoxGeometry(0.12, 0.03, 0.44), C.woodDark, -0.3 + i * 0.2, 0.02, 0))
+        for (const sz of [-0.16, 0.16]) p.push(part(new BoxGeometry(0.85, 0.035, 0.04), iron, 0, 0.05, sz))
+        p.push(part(new BoxGeometry(0.3, 0.16, 0.26), C.tileDark, 0.05, 0.18, 0))
+        for (const sx of [-0.08, 0.18]) for (const sz of [-0.14, 0.14]) p.push(part(new CylinderGeometry(0.05, 0.05, 0.03, 8).rotateX(Math.PI / 2), C.char, sx, 0.07, sz))
+        p.push(part(new DodecahedronGeometry(0.07, 0), C.char, 0.05, 0.3, 0))
+        return p
+      }
+      case 'gaslamp': {
+        // Réverbère à gaz : fût vert sombre, lanterne chaude.
+        p.push(part(new CylinderGeometry(0.035, 0.05, 0.8, 6), new Color('#3c4a42'), 0, 0.4, 0))
+        p.push(part(new BoxGeometry(0.12, 0.14, 0.12), C.glass, 0, 0.86, 0))
+        p.push(part(new ConeGeometry(0.1, 0.08, 4).rotateY(Math.PI / 4), new Color('#3c4a42'), 0, 0.97, 0))
+        p.push(part(new SphereGeometry(0.045, 6, 5), C.emberFlame, 0, 0.86, 0))
+        return p
+      }
+      case 'bessemer': {
+        // Convertisseur basculé, coulée orange.
+        p.push(part(new CylinderGeometry(0.16, 0.12, 0.36, 8).rotateZ(0.6), iron, 0, 0.4, 0))
+        p.push(part(new CylinderGeometry(0.05, 0.05, 0.3, 6).rotateX(Math.PI / 2), C.stoneDark, 0, 0.32, 0))
+        for (const sz of [-0.18, 0.18]) p.push(part(new BoxGeometry(0.08, 0.4, 0.06), C.stoneDark, 0, 0.2, sz))
+        p.push(part(new CylinderGeometry(0.03, 0.05, 0.2, 5).rotateZ(0.6), C.emberCore, 0.22, 0.28, 0))
+        p.push(part(new BoxGeometry(0.2, 0.05, 0.14), C.emberCore, 0.32, 0.05, 0))
+        return p
+      }
+      case 'telegraph': {
+        // Poteau, traverses, isolateurs, fil qui plonge.
+        p.push(part(new CylinderGeometry(0.035, 0.05, 0.95, 6), C.wood, 0, 0.48, 0))
+        for (const y of [0.78, 0.9]) p.push(part(new BoxGeometry(0.4, 0.035, 0.035), C.woodDark, 0, y, 0))
+        for (const sx of [-0.16, 0.16]) for (const y of [0.8, 0.92]) p.push(part(new SphereGeometry(0.02, 5, 4), C.glass, sx, y, 0))
+        p.push(part(new CylinderGeometry(0.008, 0.008, 0.5, 4).rotateZ(1.1), C.char, 0.35, 0.7, 0))
+        return p
+      }
+      case 'electric': {
+        // Lampadaire électrique : fût acier, globe blanc froid.
+        p.push(part(new CylinderGeometry(0.03, 0.045, 0.95, 6), C.stoneDark, 0, 0.48, 0))
+        p.push(part(new CylinderGeometry(0.025, 0.025, 0.3, 5).rotateZ(0.9), C.stoneDark, 0.12, 0.98, 0))
+        p.push(part(new SphereGeometry(0.07, 8, 6), new Color(2.2, 2.2, 1.9), 0.26, 1.02, 0))
+        return p
+      }
+      case 'garage': {
+        // Auto à l'arrêt : caisse, cabine, roues, phares.
+        p.push(part(new BoxGeometry(0.6, 0.14, 0.3), C.tile, 0, 0.18, 0))
+        p.push(part(new BoxGeometry(0.3, 0.14, 0.26), C.tileDark, -0.05, 0.32, 0))
+        for (const sx of [-0.2, 0.2]) for (const sz of [-0.16, 0.16]) p.push(part(new CylinderGeometry(0.06, 0.06, 0.04, 8).rotateX(Math.PI / 2), C.char, sx, 0.08, sz))
+        for (const sz of [-0.09, 0.09]) p.push(part(new SphereGeometry(0.025, 5, 4), gold, 0.31, 0.18, sz))
+        return p
+      }
+      case 'radio': {
+        // Mât haubané et poste à cadran.
+        p.push(part(new CylinderGeometry(0.02, 0.03, 1.05, 5), iron, 0, 0.52, 0))
+        for (const s of [-1, 1]) p.push(part(new CylinderGeometry(0.006, 0.006, 0.95, 3).rotateZ(s * 0.35), C.char, s * 0.17, 0.45, 0))
+        p.push(part(new SphereGeometry(0.035, 6, 5), C.tile, 0, 1.06, 0))
+        p.push(part(new BoxGeometry(0.24, 0.16, 0.1), C.woodDark, 0.3, 0.08, 0.1))
+        p.push(part(new CylinderGeometry(0.03, 0.03, 0.015, 8).rotateX(Math.PI / 2), C.bone, 0.34, 0.1, 0.16))
+        return p
+      }
+      case 'plane': {
+        // Petit avion à hélice sur cales.
+        p.push(part(new CylinderGeometry(0.07, 0.05, 0.6, 7).rotateZ(Math.PI / 2), C.tile, 0, 0.3, 0))
+        p.push(part(new BoxGeometry(0.16, 0.02, 0.85), C.plaster, 0.05, 0.34, 0))
+        p.push(part(new BoxGeometry(0.12, 0.02, 0.3), C.plaster, -0.28, 0.38, 0))
+        p.push(part(new BoxGeometry(0.02, 0.12, 0.1), C.tile, -0.3, 0.42, 0))
+        p.push(part(new BoxGeometry(0.02, 0.22, 0.04).rotateX(0.6), C.woodDark, 0.33, 0.3, 0))
+        for (const sz of [-0.1, 0.1]) p.push(part(new CylinderGeometry(0.035, 0.035, 0.03, 8).rotateX(Math.PI / 2), C.char, 0.05, 0.12, sz))
+        return p
+      }
+      case 'clinic': {
+        // Dispensaire : tente blanche à croix, caisse de fioles.
+        p.push(part(new BoxGeometry(0.5, 0.3, 0.4), C.plaster, 0, 0.15, 0))
+        p.push(part(new ConeGeometry(0.36, 0.2, 4).rotateY(Math.PI / 4), C.bone, 0, 0.4, 0))
+        p.push(part(new BoxGeometry(0.14, 0.04, 0.02), C.tile, 0, 0.24, 0.21))
+        p.push(part(new BoxGeometry(0.04, 0.14, 0.02), C.tile, 0, 0.24, 0.21))
+        p.push(part(new BoxGeometry(0.2, 0.1, 0.14), C.wood, 0.35, 0.05, 0.1))
+        for (let i = 0; i < 2; i++) p.push(part(new SphereGeometry(0.035, 6, 5), C.glass, 0.3 + i * 0.1, 0.13, 0.1))
+        return p
+      }
+      case 'computer': {
+        // Bureau, écran ambré, clavier.
+        p.push(part(new BoxGeometry(0.5, 0.05, 0.32), C.wood, 0, 0.28, 0))
+        for (const sx of [-0.2, 0.2]) p.push(part(new BoxGeometry(0.05, 0.28, 0.05), C.woodDark, sx, 0.14, 0))
+        p.push(part(new BoxGeometry(0.22, 0.18, 0.06), C.bone, -0.06, 0.42, -0.04))
+        p.push(part(new BoxGeometry(0.16, 0.12, 0.01), new Color(1.4, 1.1, 0.4), -0.06, 0.42, -0.005))
+        p.push(part(new BoxGeometry(0.2, 0.02, 0.09), C.stoneLight, 0.02, 0.32, 0.09))
+        return p
+      }
+      case 'dish': {
+        // Parabole pointée vers le ciel.
+        p.push(part(new CylinderGeometry(0.04, 0.06, 0.3, 6), C.stoneDark, 0, 0.15, 0))
+        p.push(part(new SphereGeometry(0.24, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.35).rotateX(-0.9).scale(1, 1, 0.5), C.stoneLight, 0, 0.42, -0.08))
+        p.push(part(new CylinderGeometry(0.012, 0.012, 0.22, 4).rotateX(-0.9), iron, 0, 0.5, 0.04))
+        p.push(part(new SphereGeometry(0.025, 5, 4), C.tile, 0, 0.58, 0.12))
+        return p
+      }
+      case 'server': {
+        // Baie de serveurs : racks à diodes.
+        p.push(part(new BoxGeometry(0.3, 0.6, 0.26), C.char, 0, 0.3, 0))
+        for (let i = 0; i < 5; i++) p.push(part(new BoxGeometry(0.26, 0.06, 0.02), C.stoneDark, 0, 0.1 + i * 0.11, 0.13))
+        for (let i = 0; i < 5; i++) p.push(part(new SphereGeometry(0.012, 4, 3), i % 2 ? new Color(0.3, 1.8, 0.5) : new Color(1.8, 0.5, 0.3), 0.09, 0.1 + i * 0.11, 0.145))
+        return p
+      }
+      case 'solar': {
+        // Deux panneaux inclinés plein sud.
+        for (const sx of [-0.2, 0.22]) {
+          p.push(part(new BoxGeometry(0.36, 0.02, 0.3).rotateX(-0.5), C.glass, sx, 0.22, 0))
+          p.push(part(new BoxGeometry(0.03, 0.2, 0.03), C.stoneDark, sx, 0.08, 0.08))
+        }
+        p.push(part(new BoxGeometry(0.12, 0.1, 0.08), C.stoneLight, 0, 0.05, -0.18))
+        return p
+      }
+      case 'phone': {
+        // Le totem final : un écran dressé qui luit doucement.
+        p.push(part(new BoxGeometry(0.22, 0.44, 0.04), C.char, 0, 0.3, 0))
+        p.push(part(new BoxGeometry(0.18, 0.38, 0.01), new Color(1.3, 1.5, 1.7), 0, 0.31, 0.021))
+        p.push(part(new BoxGeometry(0.3, 0.08, 0.2), C.stoneDark, 0, 0.04, 0))
+        return p
+      }
       default:
         return null
     }
