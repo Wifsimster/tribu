@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.3.1',
+    title: 'Passage d\'âge rattrapé',
+    items: [
+      "Les joueurs qui avaient fini l'âge du fer avant la 1.3.0 passent bien à l'Antiquité au chargement.",
+    ],
+  },
+  {
     version: '1.3.0',
     title: 'Deux nouvelles époques',
     items: [

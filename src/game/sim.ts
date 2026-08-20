@@ -132,6 +132,7 @@ export class Game {
     this.recompute()
 
     if (offlineSeconds > 60) this.creditAbsence(offlineSeconds)
+    this.catchUpAge()
   }
 
   /** Crédite une absence : au CHARGEMENT (constructeur) mais aussi au RETOUR
@@ -390,6 +391,17 @@ export class Game {
     if (done >= needed && this.save.age < AGES.length - 1) {
       this.save.age += 1
       this.emit({ type: 'age', age: this.age })
+    }
+  }
+
+  /** Re-vérifié au chargement : une mise à jour peut AJOUTER des âges après
+   *  qu'un joueur a fini le dernier — son 5/5 doit alors ouvrir la suite. */
+  private catchUpAge(): void {
+    let guard = AGES.length
+    while (guard-- > 0) {
+      const before = this.save.age
+      this.checkAge()
+      if (this.save.age === before) break
     }
   }
 
