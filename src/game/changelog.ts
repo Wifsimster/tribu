@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.9.0',
+    title: 'La Merveille de l’âge',
+    items: [
+      "Chaque époque propose sa grande œuvre — menhirs, ziggourat, phare, cathédrale, tour de fer, fusée… Lance le chantier depuis la feuille de savoir : il boit lentement tes surplus, et l'ouvrage monte sous tes yeux, étape par étape, échafaudages compris.",
+      'Chaque Merveille achevée raconte son histoire vraie et inspire la tribu : +4 % de récolte, cumulés, sur cette île.',
+      "C'est enfin un emploi pour les millions qui dormaient dans le grenier.",
+    ],
+  },
+  {
     version: '2.8.0',
     title: 'La tribu s’agrandit',
     items: [

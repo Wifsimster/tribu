@@ -201,11 +201,39 @@ export class Hud {
    *  reste. Un idle vit de montrer au joueur où il va. */
   private nextMarked = false
 
+  /** La carte de la Merveille, en tête de la feuille de savoir. */
+  private wonderCard(body: HTMLElement): void {
+    const ws = this.game.wonderState()
+    if (!ws) return
+    const card = document.createElement('div')
+    card.className = 'wonder-card'
+    if (ws.status === 'done') {
+      card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Achevée — elle inspire la tribu (+4 % de récolte).</span>`
+    } else if (ws.status === 'building') {
+      card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Chantier en cours — les surplus y sont versés.</span><div class="wonder-bar"><i style="width:${Math.round(ws.progress * 100)}%"></i></div><span class="wonder-note">${Math.round(ws.progress * 100)} %</span>`
+    } else {
+      const costs = Object.entries(ws.def.cost)
+        .map(([id, n]) => `${icon(id as ResourceId, 12)} ${fmt(n as number)}`)
+        .join('  ')
+      card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">La grande œuvre de l'époque. Le chantier boira lentement tes surplus : ${costs}</span>`
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'btn primary wide'
+      btn.innerHTML = '<span class="label">Lancer le chantier</span>'
+      btn.addEventListener('click', () => {
+        if (this.game.startWonder()) this.refreshTechList()
+      })
+      card.appendChild(btn)
+    }
+    body.appendChild(card)
+  }
+
   refreshTechList(): void {
     const g = this.game
     const body = el('sheet-body')
     this.nextMarked = false
     body.textContent = ''
+    this.wonderCard(body)
 
     for (const age of AGES) {
       const ageTechs = TECHS.filter((t) => t.age === age.id)

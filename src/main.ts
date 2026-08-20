@@ -17,6 +17,7 @@ import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { CHANGELOG } from './game/changelog'
+import { WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
 import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
@@ -96,6 +97,18 @@ function buildWorld(): void {
   stage.islandRadius = island.radius
   island.setSeason(game.season.id)
   stage.winter = game.season.id === 3
+  {
+    // La Merveille d'abord : elle réserve sa place au cœur de la clairière
+    // AVANT que les ateliers ne prennent les meilleurs emplacements.
+    const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
+    const cur = game.save.wonder
+    if (cur) {
+      const ws = game.wonderState()
+      village.setWonder(cur.age, ws ? stageOf(ws.progress) : 0)
+    } else if (game.save.wonders.length > 0) {
+      village.setWonder(game.save.wonders[game.save.wonders.length - 1]!, 4)
+    }
+  }
   village.sync(game.buildings)
   village.setRelics(game.save.relics.length)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
@@ -217,6 +230,17 @@ game.on((e) => {
         // La relique passe du sac du colon aux vitrines : le musée pousse (ou
         // s'agrandit) sous les yeux du joueur.
         village.setRelics(game.save.relics.length)
+  {
+    // La Merveille : le chantier en cours, sinon la dernière achevée.
+    const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
+    const cur = game.save.wonder
+    if (cur) {
+      const ws = game.wonderState()
+      village.setWonder(cur.age, ws ? stageOf(ws.progress) : 0)
+    } else if (game.save.wonders.length > 0) {
+      village.setWonder(game.save.wonders[game.save.wonders.length - 1]!, 4)
+    }
+  }
         const name = e.relic.name.charAt(0).toLowerCase() + e.relic.name.slice(1)
         hud.toast(`Il rapporte ${name} — exposée au musée du village`)
       } else if (e.find) hud.toast(`Il rapporte ${e.find}`)
@@ -284,6 +308,27 @@ game.on((e) => {
           hud.toast(e.fact)
           break
       }
+      break
+    case 'wonderStage': {
+      village.setWonder(e.def.age, e.stage)
+      hud.refreshTechList()
+      hud.toast(
+        e.stage === 0
+          ? `Le chantier de ${e.def.name.toLowerCase()} commence — les surplus y seront versés`
+          : e.stage === 1
+            ? 'Les fondations de la Merveille sortent de terre'
+            : e.stage === 2
+              ? 'La Merveille atteint la moitié de sa hauteur'
+              : 'La Merveille approche de son couronnement',
+      )
+      break
+    }
+    case 'wonderDone':
+      village.setWonder(e.def.age, 4)
+      ambience.chime()
+      hud.refreshTechList()
+      hud.showStory('La Merveille', e.def.name, e.def.fact)
+      hud.toast('La tribu, inspirée, récolte 4 % plus vite — pour toujours sur cette île')
       break
     case 'season':
       island.setSeason(e.id)
@@ -417,6 +462,26 @@ attachControls(stage, canvas, (x, y) => {
   if (onVillage.length > 0) {
     const hp = onVillage[0]!.point
     const id = village.identifyAt(hp.x, hp.z)
+    if (id === 'wonder') {
+      const ws = game.wonderState()
+      const built = game.save.wonders
+      const shown = game.save.wonder
+        ? ws
+        : built.length
+          ? { def: WONDER_BY_AGE.get(built[built.length - 1]!)!, status: 'done' as const, progress: 1 }
+          : null
+      if (shown) {
+        ambience.chime()
+        if (shown.status === 'done') hud.showStory('La Merveille', shown.def.name, shown.def.fact)
+        else
+          hud.showStory(
+            'Le chantier',
+            shown.def.name,
+            `L'œuvre est accomplie à ${Math.round(shown.progress * 100)} %. Les surplus de la tribu y sont versés, jour après jour.`,
+          )
+      }
+      return
+    }
     if (id === 'museum') {
       ambience.chime()
       hud.showMuseum(game.relics)

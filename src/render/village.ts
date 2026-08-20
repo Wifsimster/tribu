@@ -1073,6 +1073,123 @@ function fenceRun(): BufferGeometry[] {
   return p
 }
 
+/** La Merveille de l'âge, par étape de chantier (0 fondations … 4 achevée).
+ *  Dix silhouettes distinctes, un vocabulaire commun : socle, corps, couronne.
+ *  Pendant le chantier, des perches d'échafaudage cernent l'ouvrage. */
+function wonderParts(age: number, stage: number): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  const iron = new Color('#6b7078')
+  const steel = new Color('#9aa4ae')
+  const brick = new Color('#b3603f')
+  const put = (g: BufferGeometry, c: Color, x: number, y: number, z: number): void => {
+    p.push(part(g, c, x, y, z))
+  }
+  // Socle commun : l'esplanade du chantier.
+  put(new BoxGeometry(4.6, 0.3, 4.6), C.stoneDark, 0, 0.15, 0)
+  const s1 = stage >= 1
+  const s2 = stage >= 2
+  const s3 = stage >= 3
+  const s4 = stage >= 4
+  switch (age) {
+    case 0:
+      for (let i = 0; i < 7; i++) {
+        if (i / 7 > stage / 4 && stage < 4) break
+        const a = (i / 7) * Math.PI * 2
+        put(new BoxGeometry(0.5, 1.9 + (i % 3) * 0.5, 0.66).rotateY(a), tint(C.stone, i * 7, 0.08), Math.sin(a) * 1.7, 1.2, Math.cos(a) * 1.7)
+      }
+      break
+    case 1:
+      if (s1) put(new BoxGeometry(0.9, 2.2, 0.7), C.stone, -1.2, 1.4, 0)
+      if (s2) put(new BoxGeometry(0.9, 2.2, 0.7), tint(C.stone, 5, 0.06), 1.2, 1.4, 0)
+      if (s3) put(new BoxGeometry(0.8, 2.0, 0.7), tint(C.stone, 9, 0.06), 0, 1.3, -1.1)
+      if (s4) put(new BoxGeometry(4.2, 0.7, 2.6).rotateY(0.06), C.stoneLight, 0, 2.9, -0.3)
+      break
+    case 2:
+      put(new BoxGeometry(4.0, 1.1, 4.0), brick, 0, 0.85, 0)
+      if (s1) put(new BoxGeometry(3.1, 1.0, 3.1), tint(brick, 4, 0.06), 0, 1.9, 0)
+      if (s2) put(new BoxGeometry(2.2, 1.0, 2.2), tint(brick, 8, 0.06), 0, 2.9, 0)
+      if (s3) put(new BoxGeometry(1.4, 0.9, 1.4), tint(brick, 12, 0.06), 0, 3.85, 0)
+      if (s4) {
+        put(new BoxGeometry(0.9, 0.8, 0.9), C.stoneLight, 0, 4.7, 0)
+        put(new BoxGeometry(0.5, 1.6, 4.05), C.stoneLight, 0, 1.0, 0)
+      }
+      break
+    case 3:
+      put(new CylinderGeometry(1.0, 1.2, 0.6, 9), C.stone, 0, 0.6, 0)
+      if (s1) put(new CylinderGeometry(0.42, 0.48, 2.2, 9), C.stoneLight, 0, 2.0, 0)
+      if (s2) put(new CylinderGeometry(0.42, 0.42, 2.0, 9), tint(C.stoneLight, 6, 0.05), 0, 4.0, 0)
+      if (s3) put(new CylinderGeometry(0.5, 0.44, 0.4, 9), C.stone, 0, 5.2, 0)
+      if (s4) put(new ConeGeometry(0.34, 0.9, 7), new Color('#d9b23f'), 0, 5.9, 0)
+      break
+    case 4:
+      put(new CylinderGeometry(1.5, 1.8, 1.4, 8), C.stoneLight, 0, 1.0, 0)
+      if (s1) put(new CylinderGeometry(1.0, 1.4, 2.2, 8), tint(C.stoneLight, 4, 0.05), 0, 2.7, 0)
+      if (s2) put(new CylinderGeometry(0.7, 0.95, 2.2, 8), tint(C.stoneLight, 8, 0.05), 0, 4.9, 0)
+      if (s3) put(new CylinderGeometry(0.5, 0.65, 1.6, 8), C.stone, 0, 6.7, 0)
+      if (s4) {
+        put(new CylinderGeometry(0.62, 0.62, 0.5, 8), C.stoneDark, 0, 7.7, 0)
+        put(new SphereGeometry(0.3, 7, 5), new Color('#ffd76a'), 0, 8.15, 0)
+      }
+      break
+    case 5:
+      put(new BoxGeometry(2.2, 2.2, 3.8), C.stoneLight, 0, 1.4, 0)
+      if (s1) put(new BoxGeometry(2.6, 0.9, 4.2).rotateZ(0), C.tileDark, 0, 2.9, 0)
+      if (s2) put(new BoxGeometry(1.3, 3.4, 1.3), tint(C.stoneLight, 6, 0.05), 0, 3.4, 1.6)
+      if (s3) put(new BoxGeometry(1.0, 1.2, 1.0), C.stone, 0, 5.5, 1.6)
+      if (s4) put(new ConeGeometry(0.72, 2.4, 6), C.tileDark, 0, 7.2, 1.6)
+      break
+    case 6:
+      put(new BoxGeometry(3.6, 1.6, 3.6), C.plaster, 0, 1.1, 0)
+      if (s1) put(new CylinderGeometry(1.7, 1.7, 1.1, 10), tint(C.plaster, 4, 0.04), 0, 2.4, 0)
+      if (s2) put(new SphereGeometry(1.65, 10, 7).scale(1, 0.85, 1), C.tile, 0, 3.4, 0)
+      if (s3) put(new CylinderGeometry(0.4, 0.5, 0.9, 8), C.plaster, 0, 5.0, 0)
+      if (s4) put(new SphereGeometry(0.26, 6, 5), new Color('#d9b23f'), 0, 5.6, 0)
+      break
+    case 7: {
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const)
+        put(new CylinderGeometry(0.09, 0.16, 2.6, 5).rotateZ(sx * 0.28).rotateX(-sz * 0.28), iron, sx * 1.2, 1.4, sz * 1.2)
+      if (s1) put(new BoxGeometry(1.9, 0.22, 1.9), iron, 0, 2.7, 0)
+      if (s2) for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const)
+        put(new CylinderGeometry(0.07, 0.1, 2.4, 5).rotateZ(sx * 0.14).rotateX(-sz * 0.14), iron, sx * 0.62, 3.9, sz * 0.62)
+      if (s3) {
+        put(new BoxGeometry(0.9, 0.18, 0.9), iron, 0, 5.1, 0)
+        put(new CylinderGeometry(0.16, 0.3, 1.8, 5), iron, 0, 6.0, 0)
+      }
+      if (s4) put(new CylinderGeometry(0.03, 0.03, 1.1, 4), steel, 0, 7.4, 0)
+      break
+    }
+    case 8:
+      put(new BoxGeometry(2.6, 2.2, 2.6), C.stoneLight, 0, 1.4, 0)
+      if (s1) put(new BoxGeometry(2.0, 2.2, 2.0), tint(C.glass, 3, 0.1), 0, 3.6, 0)
+      if (s2) put(new BoxGeometry(1.5, 2.2, 1.5), tint(C.glass, 7, 0.1), 0, 5.8, 0)
+      if (s3) put(new BoxGeometry(1.0, 1.8, 1.0), tint(C.glass, 11, 0.1), 0, 7.8, 0)
+      if (s4) put(new CylinderGeometry(0.05, 0.09, 1.5, 4), steel, 0, 9.4, 0)
+      break
+    default: {
+      put(new BoxGeometry(3.2, 0.7, 3.2), C.stoneDark, 0, 0.7, 0)
+      if (s1) put(new BoxGeometry(0.5, 4.2, 0.5), iron, -1.15, 3.1, -0.9)
+      if (s2) {
+        put(new CylinderGeometry(0.55, 0.55, 3.4, 9), new Color('#e8e4da'), 0.4, 2.9, 0.3)
+        put(new CylinderGeometry(0.55, 0.62, 0.7, 9), brick, 0.4, 1.35, 0.3)
+      }
+      if (s3) put(new ConeGeometry(0.55, 1.1, 9), brick, 0.4, 5.15, 0.3)
+      if (s4) {
+        put(new BoxGeometry(0.28, 1.4, 0.28).rotateZ(0.5), iron, -0.5, 4.6, -0.3)
+        for (const a of [0.6, 2.7, 4.8]) put(new BoxGeometry(0.5, 0.9, 0.06).rotateY(a), brick, 0.4 + Math.sin(a) * 0.5, 1.1, 0.3 + Math.cos(a) * 0.5)
+      }
+    }
+  }
+  // Échafaudages tant que l'œuvre n'est pas finie.
+  if (stage < 4) {
+    const h = 1.6 + stage * 1.2
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      put(new CylinderGeometry(0.05, 0.06, h, 5), C.wood, sx * 2.0, h / 2 + 0.3, sz * 2.0)
+      put(new BoxGeometry(0.06, 0.06, 4.0), C.woodDark, sx * 2.0, h + 0.2, 0)
+    }
+  }
+  return p
+}
+
 export class Village {
   readonly group = new Group()
   private readonly solid = new MeshToonMaterial({ vertexColors: true })
@@ -2279,11 +2396,48 @@ export class Village {
     }
     const df = (HEARTH.x - x) ** 2 + (HEARTH.z - z) ** 2
     if (df < bestD && df < 4) best = 'campfire'
+    if (this.wonderPos && this.wonderKey) {
+      const dw = (this.wonderPos.x - x) ** 2 + (this.wonderPos.z - z) ** 2
+      if (dw < bestD && dw < 3.4 * 3.4) best = 'wonder'
+    }
     if (this.museumPos) {
       const dm = (this.museumPos.x - x) ** 2 + (this.museumPos.z - z) ** 2
       if (dm < bestD && dm < 2.4 * 2.4) best = 'museum'
     }
     return best
+  }
+
+  // ── La Merveille ──────────────────────────────────────────────────────────
+  private wonderMesh: Mesh | null = null
+  private wonderPos: { x: number; y: number; z: number } | null = null
+  private wonderKey = ''
+
+  setWonder(age: number | null, stage: number): void {
+    const key = age === null ? '' : `${age}-${stage}`
+    if (key === this.wonderKey) return
+    this.wonderKey = key
+    if (this.wonderMesh) {
+      this.group.remove(this.wonderMesh)
+      this.wonderMesh.geometry.dispose()
+      this.wonderMesh = null
+    }
+    if (age === null) return
+    if (!this.wonderPos) {
+      const slot = this.nextSlot(4.2, 2.4, true)
+      this.wonderPos = { x: slot.x, y: slot.y, z: slot.z }
+    }
+    const geo = mergeGeometries(wonderParts(age, stage)) ?? new BufferGeometry()
+    grain(geo, 0.08)
+    geo.rotateY(Math.atan2(-this.wonderPos.x, -this.wonderPos.z))
+    geo.translate(this.wonderPos.x, this.wonderPos.y, this.wonderPos.z)
+    this.wonderMesh = new Mesh(geo, this.solid)
+    this.wonderMesh.castShadow = true
+    this.wonderMesh.receiveShadow = true
+    this.group.add(this.wonderMesh)
+  }
+
+  get wonderAt(): { x: number; z: number } | null {
+    return this.wonderPos && this.wonderKey ? { x: this.wonderPos.x, z: this.wonderPos.z } : null
   }
 
   // ── Le musée de la tribu ──────────────────────────────────────────────────

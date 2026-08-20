@@ -6,6 +6,8 @@ import {
   DESTINATIONS,
   SEASON_DAYS,
   SEASONS,
+  WONDER_BY_AGE,
+  type WonderDef,
   RELIC_BY_ID,
   RELICS,
   RESOURCES,
@@ -25,6 +27,8 @@ export type GameEvent =
   | { type: 'expeditionStart' }
   | { type: 'exodus'; legacy: number }
   | { type: 'season'; id: number; name: string; fact: string }
+  | { type: 'wonderStage'; def: WonderDef; stage: number }
+  | { type: 'wonderDone'; def: WonderDef }
   | {
       type: 'worldEvent'
       kind: 'wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant'
@@ -376,6 +380,7 @@ export class Game {
         encourage *
         this.lightFactor *
         this.legacyBonus *
+        this.wonderBonus *
         (id === 'food' ? this.seasonFood : 1)
       this.rates[id] = r
       material += r
@@ -655,6 +660,82 @@ export class Game {
     return f < 1 && this.knows('granary') ? (f + 1) / 2 : f
   }
 
+  // ── La Merveille de l'âge ────────────────────────────────────────────────
+  /** État lisible par le HUD et le rendu. */
+  wonderState(): { def: WonderDef; status: 'done' | 'building' | 'available'; progress: number } | null {
+    const cur = this.save.wonder
+    if (cur) {
+      const def = WONDER_BY_AGE.get(cur.age)!
+      return { def, status: 'building', progress: this.wonderProgress(def, cur.paid) }
+    }
+    const def = WONDER_BY_AGE.get(this.save.age)
+    if (!def) return null
+    if (this.save.wonders.includes(def.age)) return { def, status: 'done', progress: 1 }
+    return { def, status: 'available', progress: 0 }
+  }
+
+  private wonderProgress(def: WonderDef, paid: Partial<Record<ResourceId, number>>): number {
+    let need = 0
+    let got = 0
+    for (const [id, n] of Object.entries(def.cost) as [ResourceId, number][]) {
+      need += n
+      got += Math.min(paid[id] ?? 0, n)
+    }
+    return need > 0 ? got / need : 1
+  }
+
+  startWonder(): boolean {
+    if (this.save.wonder) return false
+    const def = WONDER_BY_AGE.get(this.save.age)
+    if (!def || this.save.wonders.includes(def.age)) return false
+    this.save.wonder = { age: def.age, paid: {} }
+    this.record('wonder', `Le chantier commence : ${def.name.toLowerCase()}`)
+    this.emit({ type: 'wonderStage', def, stage: 0 })
+    return true
+  }
+
+  /** Le chantier boit les surplus : jusqu'à ~3 % du restant dû par seconde,
+   *  sans jamais descendre une ressource sous un matelas de sécurité. */
+  private tickWonder(dt: number): void {
+    const cur = this.save.wonder
+    if (!cur) return
+    const def = WONDER_BY_AGE.get(cur.age)
+    if (!def) {
+      this.save.wonder = null
+      return
+    }
+    const before = this.wonderProgress(def, cur.paid)
+    for (const [id, total] of Object.entries(def.cost) as [ResourceId, number][]) {
+      const paid = cur.paid[id] ?? 0
+      if (paid >= total) continue
+      const floor = 50 + this.save.age * 30
+      const avail = this.amount(id) - floor
+      if (avail <= 0) continue
+      const take = Math.min(avail, Math.max(0.5, total * 0.0005) * dt * 60, total - paid)
+      if (take <= 0) continue
+      this.save.res[id] = this.amount(id) - take
+      cur.paid[id] = paid + take
+    }
+    const after = this.wonderProgress(def, cur.paid)
+    const stageOf = (v: number): number => (v >= 1 ? 4 : v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
+    if (stageOf(after) !== stageOf(before)) {
+      if (after >= 1) {
+        this.save.wonder = null
+        this.save.wonders.push(def.age)
+        this.record('wonder', `${def.name} est achevée`)
+        this.refreshRates()
+        this.emit({ type: 'wonderDone', def })
+      } else {
+        this.emit({ type: 'wonderStage', def, stage: stageOf(after) })
+      }
+    }
+  }
+
+  /** Chaque Merveille achevée inspire la tribu : +4 % de récolte, cumulés. */
+  private get wonderBonus(): number {
+    return 1 + this.save.wonders.length * 0.04
+  }
+
   private tickSeason(): void {
     const cur = this.season
     if (cur.id === this.lastSeasonId) return
@@ -829,6 +910,7 @@ export class Game {
     this.tickCaravan(dt)
 
     this.tickEvents(dt)
+    this.tickWonder(dt)
     this.tickSeason()
 
     this.saveAccumulator += dt

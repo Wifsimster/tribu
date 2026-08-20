@@ -988,3 +988,29 @@ export const RELICS: RelicDef[] = [
 ]
 
 export const RELIC_BY_ID = new Map(RELICS.map((r) => [r.id, r]))
+
+// ── Les Merveilles : une grande œuvre par époque ─────────────────────────────
+
+export interface WonderDef {
+  age: number
+  id: string
+  name: string
+  /** Coût TOTAL du chantier, drainé peu à peu sur les surplus. */
+  cost: Partial<Record<ResourceId, number>>
+  fact: string
+}
+
+export const WONDERS: WonderDef[] = [
+  { age: 0, id: 'menhirs', name: "L'alignement de menhirs", cost: { stone: 900, wood: 300 }, fact: "À Carnac, près de 3 000 menhirs s'alignent sur quatre kilomètres. Dressés entre −4500 et −3300, certains pèsent plus de vingt tonnes — déplacés sans roue ni métal." },
+  { age: 1, id: 'dolmen', name: 'Le grand dolmen', cost: { stone: 2200, wood: 900 }, fact: 'La dalle de couverture du dolmen de Browne’s Hill, en Irlande, pèse environ 100 tonnes : la plus lourde d’Europe, levée il y a plus de 5 000 ans.' },
+  { age: 2, id: 'ziggurat', name: 'La ziggourat', cost: { stone: 4500, clay: 2500, wood: 1500 }, fact: "La ziggourat d'Ur (~−2100) alignait des millions de briques crues gainées de briques cuites au bitume. Son cœur d'origine porte encore les restaurations de Nabonide, quinze siècles plus tard." },
+  { age: 3, id: 'trophee', name: 'La colonne trophée', cost: { stone: 8000, iron: 2000, copper: 1500 }, fact: 'La colonne Trajane (113) déroule 200 mètres de bas-reliefs en spirale — 2 500 personnages racontant deux guerres, lisibles comme une bande dessinée de marbre.' },
+  { age: 4, id: 'phare', name: 'Le grand phare', cost: { stone: 15000, wood: 4000, iron: 3000 }, fact: "Le phare d'Alexandrie (~−280) montait à plus de 100 mètres ; son feu, réfléchi par un miroir de bronze, se voyait à 50 kilomètres. Il tint dix-sept siècles avant les séismes." },
+  { age: 5, id: 'cathedrale', name: 'La cathédrale', cost: { stone: 30000, wood: 9000, iron: 5000 }, fact: 'Une cathédrale gothique était le chantier de plusieurs générations : à Strasbourg, 424 ans séparent la première pierre de la flèche — un maçon pouvait y naître, y travailler et mourir sans la voir finie.' },
+  { age: 6, id: 'dome', name: 'Le grand dôme', cost: { stone: 55000, clay: 20000, iron: 9000 }, fact: 'Le dôme de Brunelleschi à Florence (1436) fut bâti SANS cintrage : quatre millions de briques posées en spirale autoportante — personne ne savait si ça tiendrait. Ça tient depuis six siècles.' },
+  { age: 7, id: 'tour', name: 'La tour de fer', cost: { iron: 60000, stone: 25000, wood: 10000 }, fact: "La tour Eiffel (1889) assemble 18 038 pièces de fer puddlé par 2,5 millions de rivets, posés à quatre ouvriers par rivet. Montée en deux ans, deux mois et cinq jours." },
+  { age: 8, id: 'gratteciel', name: 'Le gratte-ciel', cost: { iron: 120000, stone: 50000, copper: 25000 }, fact: "L'Empire State Building (1931) monta de 102 étages en 410 jours — jusqu'à quatre étages et demi par semaine, en pleine Grande Dépression." },
+  { age: 9, id: 'fusee', name: 'La fusée', cost: { iron: 250000, copper: 100000, fiber: 60000 }, fact: 'Saturn V (1967) reste la machine la plus puissante jamais construite : 3 000 tonnes au décollage, dont 91 % de carburant — pour envoyer 45 tonnes vers la Lune.' },
+]
+
+export const WONDER_BY_AGE = new Map(WONDERS.map((w) => [w.age, w]))
