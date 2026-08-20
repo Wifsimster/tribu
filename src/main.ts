@@ -83,6 +83,8 @@ function buildWorld(): void {
   fishing = false
   stage.scene.add(island.group, village.group, settler.group, fauna.group)
   stage.islandRadius = island.radius
+  island.setSeason(game.season.id)
+  stage.winter = game.season.id === 3
   village.sync(game.buildings)
   village.setRelics(game.save.relics.length)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
@@ -271,6 +273,12 @@ game.on((e) => {
           hud.toast(e.fact)
           break
       }
+      break
+    case 'season':
+      island.setSeason(e.id)
+      stage.winter = e.id === 3
+      hud.toast(`${e.name} s'installe${e.id === 3 && !game.knows('granary') ? ' — sans grenier, la récolte souffrira' : ''}`)
+      hud.toast(e.fact)
       break
     case 'nightfall':
       if (game.knows('clock')) ambience.bell()

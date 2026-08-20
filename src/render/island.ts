@@ -442,9 +442,55 @@ export class Island {
     }
   }
 
+  // ── Saisons ───────────────────────────────────────────────────────────────
+  private leavesMesh: InstancedMesh | null = null
+  private leafBase: Float32Array | null = null
+  private bushMesh: InstancedMesh | null = null
+  private bushBase: Float32Array | null = null
+  private terrainMat: MeshLambertMaterial | null = null
+  private seasonId = -1
+
+  /** Repeint l'île à la saison : feuillage lerpé vers le roux ou le givre,
+   *  buissons assortis, et un léger étalonnage global du terrain. */
+  setSeason(id: number): void {
+    if (id === this.seasonId) return
+    this.seasonId = id
+    const target = id === 2 ? new Color('#b96f35') : id === 3 ? new Color('#c2cfcc') : null
+    const mixK = id === 2 ? 0.48 : id === 3 ? 0.55 : 0
+    const mul: [number, number, number] =
+      id === 0 ? [0.97, 1.06, 0.94] : id === 1 ? [1.06, 1.0, 0.85] : [1, 1, 1]
+    const c = new Color()
+    const repaint = (mesh: InstancedMesh | null, base: Float32Array | null, k: number): void => {
+      if (!mesh?.instanceColor || !base) return
+      const arr = mesh.instanceColor.array as Float32Array
+      for (let i = 0; i < base.length; i += 3) {
+        c.setRGB(base[i]!, base[i + 1]!, base[i + 2]!)
+        if (target) c.lerp(target, mixK * k)
+        arr[i] = c.r * mul[0]
+        arr[i + 1] = c.g * mul[1]
+        arr[i + 2] = c.b * mul[2]
+      }
+      mesh.instanceColor.needsUpdate = true
+    }
+    repaint(this.leavesMesh, this.leafBase, 1)
+    repaint(this.bushMesh, this.bushBase, 0.7)
+    if (this.terrainMat) {
+      const grade: [number, number, number] =
+        id === 0
+          ? [0.99, 1.01, 0.99]
+          : id === 1
+            ? [1.03, 1.0, 0.93]
+            : id === 2
+              ? [1.04, 0.965, 0.885]
+              : [0.965, 0.99, 1.05]
+      this.terrainMat.color.setRGB(grade[0], grade[1], grade[2])
+    }
+  }
+
   private buildTerrain(): void {
     const geo = new BoxGeometry(TILE, 1, TILE)
     const mat = new MeshLambertMaterial()
+    this.terrainMat = mat
     const rims = this.cells.filter((c) => c.rim)
     // Deux boîtes par cellule : socle de terre, couche d'herbe.
     const mesh = new InstancedMesh(geo, mat, this.cells.length * 2)
@@ -1155,6 +1201,9 @@ export class Island {
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
     this.group.add(trunks, leaves)
     this.registerPickable(leaves, 'wood')
+    // Les saisons repeignent le feuillage : garder la teinte de base.
+    this.leavesMesh = leaves
+    this.leafBase = leaves.instanceColor ? new Float32Array(leaves.instanceColor.array) : null
   }
 
   private addRocks(cells: Cell[], rnd: () => number): void {
@@ -1177,6 +1226,8 @@ export class Island {
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     this.group.add(mesh)
+    this.bushMesh = mesh
+    this.bushBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
     this.registerPickable(mesh, 'stone')
   }
 
@@ -1201,6 +1252,8 @@ export class Island {
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     this.group.add(mesh)
+    this.bushMesh = mesh
+    this.bushBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
     this.registerPickable(mesh, 'food')
   }
 

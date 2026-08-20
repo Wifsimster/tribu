@@ -141,6 +141,45 @@ export const AGES: AgeDef[] = [
 export const DAY_SECONDS = 240
 export const DAY_START = 0.32
 
+/** Une saison dure trois jours de jeu : l'année entière tient en 48 minutes.
+ *  Les saisons sont une règle (la récolte suit) autant qu'un décor. */
+export const SEASON_DAYS = 3
+
+export interface SeasonDef {
+  id: number
+  name: string
+  /** Multiplicateur de récolte de nourriture — l'hiver mord, le grenier aide. */
+  food: number
+  fact: string
+}
+
+export const SEASONS: SeasonDef[] = [
+  {
+    id: 0,
+    name: 'Le printemps',
+    food: 1.05,
+    fact: "Le calendrier julien (−45) recale l'année sur le soleil : 365 jours un quart. Pour rattraper le retard accumulé, César dut allonger l'an −46 à 445 jours — « l'année de la confusion ».",
+  },
+  {
+    id: 1,
+    name: "L'été",
+    food: 1.12,
+    fact: "À Stonehenge, vers −2500, l'axe du monument vise le lever du soleil au solstice d'été : l'architecture servait déjà de calendrier.",
+  },
+  {
+    id: 2,
+    name: "L'automne",
+    food: 1.0,
+    fact: 'Le calendrier républicain de 1792 renomma l’automne en vendémiaire, brumaire et frimaire — les mois des vendanges, des brumes et des premiers froids.',
+  },
+  {
+    id: 3,
+    name: "L'hiver",
+    food: 0.8,
+    fact: "L'hiver 1709, le « Grand Hyver », gela la Seine et les oliviers de Provence en quelques nuits. On sonnait les cloches et allumait des feux dans les vignes pour briser le gel.",
+  },
+]
+
 export type Effect =
   | { kind: 'gatherRate'; resource: ResourceId; mult: number }
   | { kind: 'unlockResource'; resource: ResourceId }

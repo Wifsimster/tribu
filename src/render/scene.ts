@@ -748,10 +748,15 @@ export class Stage {
 
   private readonly rainDummy = new Object3D()
 
+  /** L'hiver change l'état de l'eau du ciel : la pluie devient neige. */
+  winter = false
+
   private updateRain(dt: number): void {
     void dt
     const strength = this.wCur.rain * (0.25 + 0.75 * this.lastDaylight)
-    ;(this.rain.material as MeshBasicMaterial).opacity = 0.34 * strength
+    const mat = this.rain.material as MeshBasicMaterial
+    mat.opacity = (this.winter ? 0.5 : 0.34) * strength
+    mat.color.set(this.winter ? '#f2f7fa' : '#a8bfd2')
     this.rain.visible = strength > 0.04
     if (!this.rain.visible) return
     const h = (n: number, m: number) => {
@@ -761,10 +766,14 @@ export class Stage {
     for (let i = 0; i < 240; i++) {
       const r = Math.sqrt(h(i, 1)) * 26
       const a = h(i, 2) * Math.PI * 2
-      const speed = 16 + h(i, 3) * 6
+      // La neige tombe quatre fois plus lentement et dérive un peu.
+      const speed = this.winter ? 3.5 + h(i, 3) * 2 : 16 + h(i, 3) * 6
       const y = 24 - ((this.skyTime * speed + h(i, 4) * 40) % 26)
-      this.rainDummy.position.set(Math.cos(a) * r, y, Math.sin(a) * r)
-      this.rainDummy.rotation.set(0, 0, 0.08)
+      const drift = this.winter ? Math.sin(this.skyTime * 1.3 + i) * 0.6 : 0
+      this.rainDummy.position.set(Math.cos(a) * r + drift, y, Math.sin(a) * r)
+      this.rainDummy.rotation.set(0, 0, this.winter ? 0 : 0.08)
+      // Un flocon est court et rond, une goutte est un trait.
+      this.rainDummy.scale.set(this.winter ? 2.4 : 1, this.winter ? 0.16 : 1, this.winter ? 2.4 : 1)
       this.rainDummy.updateMatrix()
       this.rain.setMatrixAt(i, this.rainDummy.matrix)
     }

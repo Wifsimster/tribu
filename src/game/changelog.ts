@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.7.0',
+    title: 'Les saisons',
+    items: [
+      "L'île vit une année entière en 48 minutes : printemps tendre, été doré, automne roux, hiver givré — le feuillage, les buissons et la lumière suivent.",
+      "En hiver la pluie devient neige, et la récolte de nourriture souffre (le grenier l'amortit). L'été, elle abonde.",
+      'Chaque saison arrive avec son histoire vraie : l’année de la confusion de César, Stonehenge, vendémiaire, le Grand Hyver de 1709.',
+    ],
+  },
+  {
     version: '2.6.0',
     title: 'Nous ne sommes pas seuls',
     items: [

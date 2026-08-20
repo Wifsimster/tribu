@@ -4,6 +4,8 @@ import {
   DAY_START,
   DESTINATION_BY_ID,
   DESTINATIONS,
+  SEASON_DAYS,
+  SEASONS,
   RELIC_BY_ID,
   RELICS,
   RESOURCES,
@@ -22,6 +24,7 @@ export type GameEvent =
   | { type: 'age'; age: AgeDef }
   | { type: 'expeditionStart' }
   | { type: 'exodus'; legacy: number }
+  | { type: 'season'; id: number; name: string; fact: string }
   | {
       type: 'worldEvent'
       kind: 'wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant'
@@ -179,6 +182,7 @@ export class Game {
   private nightFloor = NIGHT_BASE_FLOOR
   /** Le grand marchand (événement) paie mieux — consommé au départ de la barque. */
   private goldenTrade = false
+  private lastSeasonId = -1
   private lightFactor = 1
   private wasNight = false
 
@@ -365,7 +369,14 @@ export class Game {
       }
       const focusFactor = this.save.focus === id ? 1 : IDLE_FRACTION
       const r =
-        BASE_RATE[id] * this.mult[id] * focusFactor * carryBonus * encourage * this.lightFactor * this.legacyBonus
+        BASE_RATE[id] *
+        this.mult[id] *
+        focusFactor *
+        carryBonus *
+        encourage *
+        this.lightFactor *
+        this.legacyBonus *
+        (id === 'food' ? this.seasonFood : 1)
       this.rates[id] = r
       material += r
     }
@@ -633,6 +644,28 @@ export class Game {
     return true
   }
 
+  /** La saison courante, calculée sur le temps de jeu cumulé. */
+  get season(): (typeof SEASONS)[number] {
+    return SEASONS[Math.floor(this.save.totalPlaySeconds / (DAY_SECONDS * SEASON_DAYS)) % 4]!
+  }
+
+  /** L'hiver mord moins quand on sait stocker : le grenier amortit. */
+  private get seasonFood(): number {
+    const f = this.season.food
+    return f < 1 && this.knows('granary') ? (f + 1) / 2 : f
+  }
+
+  private tickSeason(): void {
+    const cur = this.season
+    if (cur.id === this.lastSeasonId) return
+    const first = this.lastSeasonId === -1
+    this.lastSeasonId = cur.id
+    this.refreshRates()
+    if (first) return
+    this.record('season', `${cur.name} s'installe`)
+    this.emit({ type: 'season', id: cur.id, name: cur.name, fact: cur.fact })
+  }
+
   get relics(): RelicDef[] {
     return this.save.relics
       .map((id) => RELIC_BY_ID.get(id))
@@ -796,6 +829,7 @@ export class Game {
     this.tickCaravan(dt)
 
     this.tickEvents(dt)
+    this.tickSeason()
 
     this.saveAccumulator += dt
     if (this.saveAccumulator >= 5) {
