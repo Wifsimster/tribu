@@ -19,6 +19,8 @@ import {
   RingGeometry,
   SphereGeometry,
   Sprite,
+  TetrahedronGeometry,
+  TorusGeometry,
   SpriteMaterial,
   Vector3,
 } from 'three'
@@ -1039,13 +1041,13 @@ export class Village {
    *  glisse entre la caméra et le colon coûte plus cher que tous les défauts
    *  qu'on pourrait lui trouver par ailleurs; le reste (écart minimal, rayon de
    *  dégagement) empêche seulement les toits de s'interpénétrer. */
-  private nextSlot(): Vector3 {
+  private nextSlot(spacing = 3.4): Vector3 {
     let best: Vector3 | null = null
     let bestScore = Infinity
     for (const slot of this.island.buildSlots) {
       const r = Math.hypot(slot.x, slot.z)
       if (r < 4) continue
-      if (this.taken.some((t) => t.distanceToSquared(slot) < 3.4 * 3.4)) continue
+      if (this.taken.some((t) => t.distanceToSquared(slot) < spacing * spacing)) continue
       // Le campement de départ tient sa place, chacun selon son emprise: un
       // écart uniforme aurait soit laissé une hutte dans la tente, soit épuisé
       // les emplacements et renvoyé le quatrième bâtiment sur le tas de bois.
@@ -1064,7 +1066,18 @@ export class Village {
         best = slot
       }
     }
-    const picked = best ? best.clone() : new Vector3(-4.6, this.island.heightAt(-4.6, 0), 0)
+    if (!best && spacing > 1.4) return this.nextSlot(spacing * 0.65)
+    // Plus une seule case libre : spirale d'or vers l'extérieur plutôt qu'un
+    // point fixe — vingt-et-un savoirs empilés au même endroit, c'était ça le
+    // « village vide » : tout existait, tout se cachait dans le même mètre.
+    const n = this.taken.length
+    const fallback = new Vector3(
+      Math.cos(n * 2.4) * (5.2 + n * 0.3),
+      0,
+      Math.sin(n * 2.4) * (5.2 + n * 0.3),
+    )
+    fallback.y = this.island.heightAt(fallback.x, fallback.z)
+    const picked = best ? best.clone() : fallback
     this.taken.push(picked)
     return picked
   }
@@ -1073,7 +1086,14 @@ export class Village {
     for (const b of buildings) {
       if (this.placed.has(b)) continue
       const obj = this.make(b)
-      if (!obj) continue
+      if (!obj) {
+        // Pas un bâtiment : un atelier de savoir, fondu dans le mesh unique.
+        const s = this.nextSlot(2.0)
+        this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot: Math.atan2(-s.x, -s.z) })
+        this.rebuildProps()
+        this.placed.add(b)
+        continue
+      }
       const slot = this.nextSlot()
       obj.position.set(slot.x, slot.y, slot.z)
       obj.rotation.y = Math.atan2(-slot.x, -slot.z)
@@ -1082,6 +1102,199 @@ export class Village {
       this.growing.push({ object: obj, age: 0 })
       this.placed.add(b)
     }
+  }
+
+
+  // ── Ateliers de savoir ────────────────────────────────────────────────────
+  // Chaque technologie pose son objet dans le village : le savoir se VOIT.
+  // Tous les ateliers vivent dans UN SEUL mesh fusionné (this.propsMesh) :
+  // dix-sept objets pour un draw call.
+
+  private readonly propPlacements: { id: string; x: number; y: number; z: number; rot: number }[] = []
+  private propsMesh: Mesh | null = null
+
+  private propGeo(id: string): BufferGeometry[] | null {
+    const p: BufferGeometry[] = []
+    const copper = new Color('#c47a3f')
+    const gold = new Color('#d9b23f')
+    const iron = new Color('#6b7078')
+    switch (id) {
+      case 'knapping': {
+        // Atelier de taille : souche, gros silex, éclats au sol.
+        p.push(part(new CylinderGeometry(0.26, 0.3, 0.3, 7), C.wood, 0, 0.15, 0))
+        p.push(part(new DodecahedronGeometry(0.14, 0), PALETTE.rockDark, 0.02, 0.37, 0))
+        for (let i = 0; i < 5; i++)
+          p.push(part(new TetrahedronGeometry(0.06, 0), C.stoneLight, 0.35 * Math.cos(i * 1.3), 0.03, 0.35 * Math.sin(i * 1.7)))
+        return p
+      }
+      case 'woodpile': {
+        // Réserve de bois du feu : bûches empilées en pyramide.
+        for (let row = 0; row < 3; row++)
+          for (let i = 0; i <= 2 - row; i++)
+            p.push(part(new CylinderGeometry(0.09, 0.09, 0.72, 6).rotateX(Math.PI / 2), row % 2 ? C.woodDark : C.wood, -0.2 + i * 0.2 + row * 0.1, 0.09 + row * 0.15, 0))
+        return p
+      }
+      case 'lamps': {
+        // Lampes à graisse : pierres creuses, flamme émissive.
+        for (let i = 0; i < 3; i++) {
+          const x = -0.3 + i * 0.3
+          const z = (i % 2) * 0.25
+          p.push(part(new CylinderGeometry(0.09, 0.12, 0.09, 6), PALETTE.rock, x, 0.05, z))
+          p.push(part(new ConeGeometry(0.035, 0.11, 5), C.emberFlame, x, 0.15, z))
+        }
+        return p
+      }
+      case 'spearrack': {
+        // Râtelier : deux croix, trois épieux inclinés.
+        for (const sx of [-0.38, 0.38]) {
+          p.push(part(new CylinderGeometry(0.03, 0.03, 0.5, 5).rotateZ(0.4), C.wood, sx, 0.24, 0))
+          p.push(part(new CylinderGeometry(0.03, 0.03, 0.5, 5).rotateZ(-0.4), C.wood, sx, 0.24, 0))
+        }
+        for (let i = 0; i < 3; i++) {
+          p.push(part(new CylinderGeometry(0.022, 0.03, 0.95, 5).rotateZ(1.25), C.woodDark, -0.1 + i * 0.14, 0.47, 0.02 * i))
+          p.push(part(new TetrahedronGeometry(0.05, 0), C.stoneLight, -0.53 + i * 0.14, 0.63, 0.02 * i))
+        }
+        return p
+      }
+      case 'ropes': {
+        // Corderie : deux poteaux, trois cordes tendues, écheveaux.
+        for (const sx of [-0.45, 0.45]) p.push(part(new CylinderGeometry(0.035, 0.045, 0.62, 5), C.wood, sx, 0.31, 0))
+        for (let i = 0; i < 3; i++)
+          p.push(part(new CylinderGeometry(0.014, 0.014, 0.9, 4).rotateZ(Math.PI / 2), C.hidePale, 0, 0.5 - i * 0.12, 0))
+        p.push(part(new TorusGeometry(0.09, 0.03, 5, 8), C.hideLight, -0.3, 0.06, 0.22))
+        p.push(part(new TorusGeometry(0.07, 0.025, 5, 8), C.hidePale, 0.25, 0.05, 0.2))
+        return p
+      }
+      case 'jars': {
+        // Trois jarres : panse, col, une couchée.
+        const jar = (s: number) => [
+          part(new SphereGeometry(0.16 * s, 8, 6).scale(1, 1.15, 1), C.ochre, 0, 0.18 * s, 0),
+          part(new CylinderGeometry(0.07 * s, 0.09 * s, 0.09 * s, 6), C.tileDark, 0, 0.36 * s, 0),
+        ]
+        place(p, jar(1), 0, -0.18, 0)
+        place(p, jar(0.8), 0, 0.16, 0.12)
+        const couche = [
+          part(new SphereGeometry(0.13, 8, 6).scale(1, 1.15, 1).rotateZ(Math.PI / 2), C.ochre, 0, 0.12, 0),
+        ]
+        place(p, couche, 0.6, 0.05, -0.25)
+        return p
+      }
+      case 'loom': {
+        // Métier à tisser vertical : cadre, toile rayée, navette.
+        for (const sx of [-0.32, 0.32]) p.push(part(new CylinderGeometry(0.03, 0.04, 0.78, 5), C.wood, sx, 0.39, 0))
+        p.push(part(new CylinderGeometry(0.03, 0.03, 0.72, 5).rotateZ(Math.PI / 2), C.wood, 0, 0.76, 0))
+        for (let i = 0; i < 4; i++)
+          p.push(part(new BoxGeometry(0.56, 0.13, 0.02), i % 2 ? PALETTE.cloth : C.hidePale, 0, 0.62 - i * 0.13, 0.01))
+        p.push(part(new BoxGeometry(0.1, 0.04, 0.05), C.woodDark, 0.1, 0.34, 0.05))
+        return p
+      }
+      case 'chopping': {
+        // Billot, hache plantée, bûches fendues.
+        p.push(part(new CylinderGeometry(0.22, 0.25, 0.34, 7), C.wood, 0, 0.17, 0))
+        p.push(part(new CylinderGeometry(0.025, 0.03, 0.46, 5).rotateZ(0.7), C.woodDark, 0.16, 0.5, 0))
+        p.push(part(new BoxGeometry(0.16, 0.09, 0.04), C.stoneLight, 0.32, 0.62, 0))
+        for (let i = 0; i < 3; i++)
+          p.push(part(new CylinderGeometry(0.07, 0.07, 0.4, 5).rotateX(Math.PI / 2).rotateY(i), C.hideLight, 0.3 - i * 0.3, 0.07, 0.3))
+        return p
+      }
+      case 'orepile': {
+        // Minerai de cuivre : panier et tas orangé.
+        p.push(part(new CylinderGeometry(0.2, 0.14, 0.26, 7), C.hideDark, -0.2, 0.13, 0))
+        for (let i = 0; i < 6; i++)
+          p.push(part(new DodecahedronGeometry(0.07, 0), i % 2 ? copper : PALETTE.rockDark, 0.15 + (i % 3) * 0.12, 0.06 + Math.floor(i / 3) * 0.1, (i % 2) * 0.12))
+        p.push(part(new DodecahedronGeometry(0.06, 0), copper, -0.2, 0.3, 0))
+        return p
+      }
+      case 'furnace': {
+        // Four à bronze : dôme percé, braise, lingots.
+        p.push(part(new SphereGeometry(0.3, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), PALETTE.rock, 0, 0.1, 0))
+        p.push(part(new CylinderGeometry(0.1, 0.12, 0.16, 6), PALETTE.rockDark, 0, 0.42, 0))
+        p.push(part(new BoxGeometry(0.14, 0.12, 0.06), C.emberCore, 0, 0.12, 0.28))
+        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.16, 0.05, 0.08), gold, 0.35, 0.03 + i * 0.055, 0.1 - i * 0.02))
+        return p
+      }
+      case 'cart': {
+        // Charrette à bras : caisse, deux roues, brancards.
+        p.push(part(new BoxGeometry(0.55, 0.16, 0.4), C.wood, 0, 0.3, 0))
+        p.push(part(new BoxGeometry(0.55, 0.05, 0.44), C.woodDark, 0, 0.2, 0))
+        for (const sz of [-0.24, 0.24]) p.push(part(new CylinderGeometry(0.16, 0.16, 0.05, 10).rotateX(Math.PI / 2), C.woodDark, 0, 0.16, sz))
+        for (const sz of [-0.1, 0.1]) p.push(part(new CylinderGeometry(0.02, 0.02, 0.5, 5).rotateZ(1.35), C.wood, 0.45, 0.32, sz))
+        p.push(part(new SphereGeometry(0.09, 6, 5), C.wheat, -0.1, 0.42, 0.05))
+        p.push(part(new SphereGeometry(0.07, 6, 5), C.ochre, 0.08, 0.4, -0.08))
+        return p
+      }
+      case 'tablets': {
+        // Table basse et tablettes d'argile.
+        p.push(part(new BoxGeometry(0.5, 0.06, 0.34), C.wood, 0, 0.2, 0))
+        for (const sx of [-0.2, 0.2]) for (const sz of [-0.12, 0.12]) p.push(part(new BoxGeometry(0.05, 0.18, 0.05), C.woodDark, sx, 0.09, sz))
+        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.13, 0.02, 0.18).rotateY(i * 0.3 - 0.3), C.hidePale, -0.1 + i * 0.12, 0.24, 0))
+        return p
+      }
+      case 'sailframe': {
+        // Voile carrée sur cadre, rayée comme celle de la barque.
+        for (const sx of [-0.35, 0.35]) p.push(part(new CylinderGeometry(0.03, 0.04, 0.85, 5), C.wood, sx, 0.42, 0))
+        p.push(part(new CylinderGeometry(0.025, 0.025, 0.78, 5).rotateZ(Math.PI / 2), C.wood, 0, 0.82, 0))
+        for (let i = 0; i < 4; i++)
+          p.push(part(new BoxGeometry(0.66, 0.15, 0.02), i % 2 ? PALETTE.cloth : C.plaster, 0, 0.68 - i * 0.15, 0))
+        return p
+      }
+      case 'forge': {
+        // Forge : enclume, bac, charbon, lueur.
+        p.push(part(new BoxGeometry(0.14, 0.18, 0.14), C.woodDark, -0.2, 0.09, 0))
+        p.push(part(new BoxGeometry(0.3, 0.08, 0.12), iron, -0.2, 0.22, 0))
+        p.push(part(new BoxGeometry(0.34, 0.12, 0.26), PALETTE.rockDark, 0.22, 0.06, 0))
+        p.push(part(new BoxGeometry(0.26, 0.05, 0.18), C.emberCore, 0.22, 0.14, 0))
+        for (let i = 0; i < 4; i++) p.push(part(new DodecahedronGeometry(0.05, 0), C.char, 0.1 + (i % 2) * 0.2, 0.2, -0.05 + (i % 3) * 0.07))
+        return p
+      }
+      case 'plough': {
+        // Araire posée : age courbe, mancherons, soc de fer.
+        p.push(part(new CylinderGeometry(0.035, 0.045, 0.7, 5).rotateZ(1.1), C.wood, 0, 0.2, 0))
+        p.push(part(new CylinderGeometry(0.03, 0.03, 0.4, 5).rotateZ(0.35), C.woodDark, 0.32, 0.4, 0))
+        p.push(part(new BoxGeometry(0.16, 0.06, 0.08).rotateZ(0.5), iron, -0.32, 0.05, 0))
+        return p
+      }
+      case 'stele': {
+        // Stèle gravée : pierre levée, lignes sombres.
+        p.push(part(new BoxGeometry(0.34, 0.8, 0.12), C.stone, 0, 0.4, 0))
+        p.push(part(new BoxGeometry(0.4, 0.1, 0.18), C.stoneDark, 0, 0.05, 0))
+        for (let i = 0; i < 4; i++) p.push(part(new BoxGeometry(0.2, 0.025, 0.015), C.stoneDark, 0, 0.62 - i * 0.12, 0.062))
+        return p
+      }
+      case 'market': {
+        // Étal de marchand : table, auvent rayé, pièces d'électrum.
+        p.push(part(new BoxGeometry(0.6, 0.05, 0.36), C.wood, 0, 0.3, 0))
+        for (const sx of [-0.25, 0.25]) for (const sz of [-0.13, 0.13]) p.push(part(new BoxGeometry(0.05, 0.3, 0.05), C.woodDark, sx, 0.15, sz))
+        for (const sx of [-0.27, 0.27]) p.push(part(new CylinderGeometry(0.02, 0.02, 0.5, 4), C.wood, sx, 0.55, -0.14))
+        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.24, 0.02, 0.3).rotateX(-0.25), i % 2 ? C.tile : C.plaster, -0.24 + i * 0.24, 0.82, -0.02))
+        for (let i = 0; i < 5; i++) p.push(part(new CylinderGeometry(0.035, 0.035, 0.015, 8), gold, -0.15 + (i % 3) * 0.12, 0.34, -0.05 + Math.floor(i / 3) * 0.1))
+        return p
+      }
+      default:
+        return null
+    }
+  }
+
+  /** Reconstruit le mesh unique des ateliers ; transformations cuites dans la
+   *  géométrie, un draw call pour tous les savoirs. */
+  private rebuildProps(): void {
+    if (this.propsMesh) {
+      this.group.remove(this.propsMesh)
+      this.propsMesh.geometry.dispose()
+      this.propsMesh = null
+    }
+    if (this.propPlacements.length === 0) return
+    const all: BufferGeometry[] = []
+    for (const pl of this.propPlacements) {
+      const parts = this.propGeo(pl.id)
+      if (!parts) continue
+      for (const g of parts) all.push(g.rotateY(pl.rot).translate(pl.x, pl.y, pl.z))
+    }
+    const merged = mergeGeometries(all)
+    if (!merged) return
+    this.propsMesh = new Mesh(merged, this.solid)
+    this.propsMesh.castShadow = true
+    this.group.add(this.propsMesh)
   }
 
   private make(kind: string): Object3D | null {

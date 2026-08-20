@@ -14,6 +14,7 @@ import {
   MeshBasicMaterial,
   MultiplyBlending,
   PCFSoftShadowMap,
+  RepeatWrapping,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
@@ -246,12 +247,12 @@ export class Stage {
         const cy = Math.floor(v * cells)
         const h = starHash(cx * 57.31 + cy * 131.7)
         out.set('#dfe8ff')
-        if (h > 0.3) return 0
+        if (h > 0.16) return 0
         const sx = (cx + 0.2 + 0.6 * starHash(cx * 91.7 + cy * 17.3)) / cells
         const sy = (cy + 0.2 + 0.6 * starHash(cx * 41.9 + cy * 73.1)) / cells
         const d = Math.hypot(u - sx, v - sy) * 256
         const bright = 0.25 + 0.75 * starHash(cx * 13.7 + cy * 219.4)
-        return bright * Math.max(0, 1 - d / 1.7)
+        return bright * Math.pow(Math.max(0, 1 - d / 1.25), 1.6)
       }),
       transparent: true,
       blending: AdditiveBlending,
@@ -261,6 +262,10 @@ export class Stage {
       toneMapped: false,
       opacity: 0,
     })
+    // La texture se répète horizontalement pour garder des cellules CARRÉES à
+    // l'écran : plaquée telle quelle sur un quad six fois plus large que haut,
+    // chaque étoile devenait une traînée floue.
+    ;(starMat.map as DataTexture).wrapS = RepeatWrapping
     this.stars = new Mesh(new PlaneGeometry(1, 1), starMat)
     this.stars.renderOrder = 988
     this.camera.add(this.stars)
@@ -613,6 +618,8 @@ export class Stage {
     // Bande de ciel : du haut du cadre jusqu'au-dessus de l'île, jamais dessus.
     this.stars.position.set(0, halfH * 0.68, -D + 0.5)
     this.stars.scale.set(halfW * 2.4, halfH * 0.66, 1)
+    ;((this.stars.material as MeshBasicMaterial).map as DataTexture).repeat.x =
+      (halfW * 2.4) / (halfH * 0.66)
     ;(this.stars.material as MeshBasicMaterial).opacity = this.starsBase
     this.stars.visible = this.starsBase > 0.02
     // La brume ne commence qu'au-delà de l'île entière. À 0,95·d elle mordait
