@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.4.2',
+    title: 'Grand audit et confort',
+    items: [
+      "Audit complet des 51 savoirs : dix faits historiques précisés (Barbegal, Galilée, codex, roue…), déblocage vérifié de bout en bout, ateliers retouchés pour la lisibilité.",
+      "Les expéditions durent selon l'époque (~90 s au Paléolithique, ~4 min à l'ère contemporaine) et leur coût suit ta production.",
+      'Zoom rapproché ×2, ciel de nuit ancré au monde (lune et étoiles défilent quand on orbite).',
+      'La feuille de savoir s\'ouvre sur le prochain objectif ; un tap sur une ressource explique son rôle ; toasts lisibles sur mobile.',
+    ],
+  },
+  {
     version: '1.4.1',
     title: 'Expéditions rééquilibrées',
     items: [
