@@ -929,6 +929,9 @@ function aqueductParts(): BufferGeometry[] {
   p.push(part(new BoxGeometry(3.06, 0.16, 0.38), C.water, 0, 2.4, 0))
   p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, 0.29))
   p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, -0.29))
+  // ×1.7 : un aqueduc porte son eau à ~8 m — à 2.65 u, le colon touchait le
+  // canal du bout de la lance. Le slot ne bouge pas, seule la pierre grandit.
+  for (const g of p) g.scale(1.7, 1.7, 1.7)
   return p
 }
 
@@ -1284,8 +1287,13 @@ export class Village {
       if (r < 4.2) continue
       const slot = tmpSlot.set(c.x, c.height, c.z)
       if (this.taken.some((t) => t.distanceToSquared(slot) < spacing * spacing)) continue
-      if (CAMP_BLOCKERS.some((b) => Math.hypot(c.x - b.x, c.z - b.z) < b.r + 1.9)) continue
-      if (this.treeDist(c.x, c.z) < 1.25) continue
+      // L'emprise s'ajoute au dégagement du camp : le moulin ×4 posé « central »
+      // venait frôler la toile du grand tipi à un dixième d'unité.
+      if (CAMP_BLOCKERS.some((b) => Math.hypot(c.x - b.x, c.z - b.z) < b.r + 1.9 + footprint * 0.5))
+        continue
+      // Le dégagement aux sapins suit l'emprise : depuis les remises à
+      // l'échelle, une villa de 4 u posée à 1.25 u d'un tronc le prend en toit.
+      if (this.treeDist(c.x, c.z) < 1.25 + footprint * 0.4) continue
       if (!this.flatEnough(slot, footprint)) continue
 
       let dNear = Infinity
@@ -1342,10 +1350,13 @@ export class Village {
 
   /** Monuments urbains: ils réclament un slot proche du centre, pas la lisière. */
   private static readonly MONUMENTS = new Set(['clock', 'windmill', 'aqueduct'])
-  /** Emprise au sol des gros objets: le slot doit être plat sous toute la base. */
+  /** Emprise au sol des gros objets: le slot doit être plat sous toute la base.
+   *  Les valeurs suivent les remises à l'échelle du round 1 (villa ×2,
+   *  aqueduc ×1.7, moulins ×2.5/×4, campanile ×4.5, garage ×2). */
   private static readonly FOOTPRINT: Record<string, number> = {
-    hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 1.6,
-    railway: 1.2, villa: 1.0, threefield: 0.8, milestone: 0.8,
+    hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2,
+    railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
+    clock: 0.8, windmill: 1.0, watermill: 1.2, garage: 1.0,
   }
   /** Les quatre bâtiments v1 gardent les règles d'espacement de l'époque où ils
    *  étaient des Object3D séparés : les slots choisis — donc le plan du village
@@ -1356,9 +1367,13 @@ export class Village {
     let dirty = false
     for (const b of buildings) {
       if (this.placed.has(b)) continue
+      // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
+      // villa de 4 u posée à 2 u d'une hutte lui rentrait dans le toit — et à
+      // ×2.2 d'emprise elle venait encore s'accoler aux arches de l'aqueduc.
+      const fp = Village.FOOTPRINT[b] ?? 0.5
       const s = Village.LEGACY.has(b)
         ? this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
-        : this.nextSlot(2.0, Village.FOOTPRINT[b] ?? 0.5, Village.MONUMENTS.has(b))
+        : this.nextSlot(Math.max(2.0, fp * 2.6), fp, Village.MONUMENTS.has(b))
       this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot: Math.atan2(-s.x, -s.z) })
       this.placed.add(b)
       dirty = true
@@ -1511,6 +1526,9 @@ export class Village {
         for (const sz of [-0.1, 0.1]) p.push(part(new CylinderGeometry(0.02, 0.02, 0.5, 5).rotateZ(1.35), C.wood, 0.45, 0.32, sz))
         p.push(part(new SphereGeometry(0.09, 6, 5), C.wheat, -0.1, 0.42, 0.05))
         p.push(part(new SphereGeometry(0.07, 6, 5), C.ochre, 0.08, 0.4, -0.08))
+        // ×1.8 : à 0.42 u de haut elle arrivait au genou du colon — une vraie
+        // charrette à bras (~1.8 m) lui arrive à l'épaule, roues comprises.
+        for (const g of p) g.scale(1.8, 1.8, 1.8)
         return p
       }
       case 'tablets': {
@@ -1590,6 +1608,9 @@ export class Village {
           p.push(part(new CylinderGeometry(0.06, 0.075, 0.74, 6), C.bone, -0.8 + i * 0.32, 0.57, 0.62))
         p.push(part(new BoxGeometry(1.82, 0.09, 0.34), C.plaster, 0, 0.98, 0.58))
         gableRoof(p, 2.0, 0.85, 0.52, 1.02, 5)
+        // ×2 : à 1.56 u de faîte, la villa restait sous la hutte paléolithique.
+        // Une villa de ~5 m doit dominer le colon de deux fois sa taille.
+        for (const g of p) g.scale(2, 2, 2)
         return p
       }
       case 'watermill': {
@@ -1605,6 +1626,9 @@ export class Village {
         for (const sz of [-0.44, 0.44]) p.push(part(new CylinderGeometry(0.04, 0.05, 0.7, 5), C.wood, 0, 0.35, sz))
         p.push(part(new BoxGeometry(0.18, 0.06, 1.05).rotateX(0.22), C.woodDark, 0.26, 0.8, -0.1))
         p.push(part(new BoxGeometry(0.1, 0.035, 0.95).rotateX(0.22), C.water, 0.26, 0.85, -0.1))
+        // ×2.5 : une roue à aubes réelle fait ~3.5 m — la roue de Ø 0.78 u
+        // tournait sous la ceinture du colon.
+        for (const g of p) g.scale(2.5, 2.5, 2.5)
         return p
       }
       case 'glassworks': {
@@ -1671,6 +1695,9 @@ export class Village {
           p.push(part(new BoxGeometry(0.09, 0.5, 0.02).rotateZ(a), C.wood, Math.sin(a) * -0.28, 0.78 + Math.cos(a) * 0.28, 0.26))
         }
         p.push(part(new CylinderGeometry(0.03, 0.03, 0.14, 5).rotateX(Math.PI / 2), C.woodDark, 0, 0.78, 0.2))
+        // ×4 : un moulin-pivot fait ~6 m au chapeau. À 1.13 u il était plus
+        // petit que le colon — le monument doit imposer sa silhouette.
+        for (const g of p) g.scale(4, 4, 4)
         return p
       }
       case 'clock': {
@@ -1681,6 +1708,9 @@ export class Village {
         p.push(part(new BoxGeometry(0.02, 0.09, 0.015), C.char, 0, 0.81, 0.2))
         p.push(part(new BoxGeometry(0.07, 0.02, 0.015), C.char, 0.025, 0.78, 0.2))
         p.push(part(new SphereGeometry(0.05, 6, 5), gold, 0, 0.99, 0))
+        // ×4.5 : un campanile de ~7 m. À 1.21 u la « tour » de l'horloge
+        // arrivait au menton du colon.
+        for (const g of p) g.scale(4.5, 4.5, 4.5)
         return p
       }
       case 'press': {
@@ -1816,6 +1846,9 @@ export class Village {
         p.push(part(new BoxGeometry(0.44, 0.14, 0.48), new Color(0.75, 0.95, 1.1), -0.1, 0.44, 0))
         for (const sx of [-0.38, 0.38]) for (const sz of [-0.28, 0.28]) p.push(part(new CylinderGeometry(0.11, 0.11, 0.07, 8).rotateX(Math.PI / 2), C.char, sx, 0.13, sz))
         for (const sz of [-0.17, 0.17]) p.push(part(new SphereGeometry(0.04, 5, 4), new Color(1.7, 1.55, 1.0), 0.58, 0.28, sz))
+        // ×2 : une auto fait ~4.2 m — à 1.15 u elle était plus COURTE que le
+        // cheval (1.25 u) posé deux cases plus loin.
+        for (const g of p) g.scale(2, 2, 2)
         return p
       }
       case 'radio': {

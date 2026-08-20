@@ -98,6 +98,10 @@ export class Caravan {
     this.sail.castShadow = true
 
     this.group.add(hull, this.sail)
+    // ×1.5 : un cargo côtier, même modeste, dépasse les 2.7 u — la barque
+    // marchande faisait la taille de la barque d'expédition du colon. L'échelle
+    // vit sur le groupe : la houle (position) et la voile animée n'y touchent pas.
+    this.group.scale.setScalar(1.5)
     this.group.visible = false
 
     this.spawn = new Vector3(Math.sin(APPROACH) * SPAWN_R, 0, Math.cos(APPROACH) * SPAWN_R)

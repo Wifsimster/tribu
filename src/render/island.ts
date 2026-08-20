@@ -997,6 +997,15 @@ export class Island {
     this.addBushes(take(Math.round(28 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
   }
 
+  // Audit échelles 2026-08 : les sapins plafonnaient à ~2,3 u, le colon (1,5 u)
+  // dépassait la mi-hauteur des arbres. On vise ~5 u de moyenne : encore sous le
+  // ratio réel d'un jeune pin (choix assumé — la lisibilité du village prime),
+  // mais nettement au-dessus des toits des huttes (1,9 u) et tipis (4,7 u max).
+  // Hauteur et rayon sont découplés : gonfler le rayon d'autant noierait le sol
+  // et les clairières, on garde une silhouette de pin élancée.
+  private static readonly TREE_H = 2.2
+  private static readonly TREE_R = 1.5
+
   private addTrees(cells: Cell[], rnd: () => number): void {
     const trunkGeo = new CylinderGeometry(0.11, 0.16, 0.9, 6)
     const trunkMat = new MeshToonMaterial({ color: PALETTE.trunk })
@@ -1010,16 +1019,20 @@ export class Island {
 
     const d = new Object3D()
     const leafColors = [PALETTE.leafA, PALETTE.leafB, PALETTE.leafC]
+    const { TREE_H, TREE_R } = Island
     cells.forEach((c, i) => {
-      const s = 0.72 + rnd() * 0.45
+      // Variance élargie (0,72–1,27) : à cette échelle, un semis uniforme se
+      // lirait comme une plantation. Même nombre d'appels à rnd() qu'avant
+      // pour garder les positions (jitter, faune, treeDist) stables.
+      const s = 0.72 + rnd() * 0.55
       const jx = (rnd() - 0.5) * 0.5
       const jz = (rnd() - 0.5) * 0.5
-      d.position.set(c.x + jx, c.height + 0.45 * s, c.z + jz)
+      d.position.set(c.x + jx, c.height + 0.45 * s * TREE_H, c.z + jz)
       d.rotation.set(0, rnd() * Math.PI, 0)
-      d.scale.setScalar(s)
+      d.scale.set(s * TREE_R, s * TREE_H, s * TREE_R)
       d.updateMatrix()
       trunks.setMatrixAt(i, d.matrix)
-      d.position.y = c.height + 1.65 * s
+      d.position.y = c.height + 1.65 * s * TREE_H
       d.updateMatrix()
       leaves.setMatrixAt(i, d.matrix)
       const leaf = tint(leafColors[i % 3]!, i, 0.08)
@@ -1064,7 +1077,8 @@ export class Island {
     const d = new Object3D()
     const berry = new Color('#4a7340')
     cells.forEach((c, i) => {
-      const s = 0.7 + rnd() * 0.5
+      // Audit échelles : ×1,5 pour viser ~1 m réel (le colon = 1,5 u ≙ 1,75 m).
+      const s = (0.7 + rnd() * 0.5) * 1.5
       d.position.set(c.x + (rnd() - 0.5) * 0.7, c.height + 0.22 * s, c.z + (rnd() - 0.5) * 0.7)
       d.rotation.set(0, rnd() * Math.PI, 0)
       d.scale.set(s, s * 0.8, s)

@@ -41,6 +41,7 @@ export class ExpeditionBoat {
   readonly group = new Group()
   private readonly tiers: Mesh[] = []
   private readonly sail: Mesh
+  private readonly rider: Mesh
   private state: State = 'hidden'
   private t = 0
   private from = new Vector3()
@@ -69,6 +70,9 @@ export class ExpeditionBoat {
       tinted(new CylinderGeometry(0.03, 0.03, 1.0, 5).rotateZ(0.9), wood, 0.35, 0.55, 0.2),
       tinted(new BoxGeometry(0.06, 0.24, 0.14), woodDark, 0.75, 0.32, 0.38),
     ]
+    // ×1.2 : une pirogue de ~4 m — à 1.89 u elle flottait à peine plus long que
+    // le radeau de rondins.
+    for (const g of canoe) g.scale(1.2, 1.2, 1.2)
 
     // Tier 2 — barque à voile : coque, mât, voile rayée (parente de la barque
     // marchande, en plus modeste).
@@ -79,6 +83,8 @@ export class ExpeditionBoat {
       tinted(new CylinderGeometry(0.04, 0.05, 1.35, 6), wood, 0, 1.0, 0),
       tinted(new CylinderGeometry(0.03, 0.03, 0.9, 5).rotateX(Math.PI / 2), wood, 0, 1.55, 0),
     ]
+    // ×1.3 : une barque à voile de ~5 m, franchement plus grosse que la pirogue.
+    for (const g of boat) g.scale(1.3, 1.3, 1.3)
 
     // Tier 3 — caravelle : coque haute, deux mâts, voiles carrées crème.
     const cream = new Color('#efe4c8')
@@ -91,6 +97,9 @@ export class ExpeditionBoat {
       tinted(new BoxGeometry(0.92, 0.7, 0.03), cream, 0.25, 1.35, 0),
       tinted(new BoxGeometry(0.7, 0.55, 0.03), cream, -0.7, 1.25, 0),
     ]
+    // ×1.8 : une caravelle de ~8 m au moins — à 2.61 u elle faisait la taille
+    // d'une chaloupe et la Renaissance n'imposait rien.
+    for (const g of caravel) g.scale(1.8, 1.8, 1.8)
     // Tier 4 — vapeur : coque métal, roue à aubes, cheminée qui fume.
     const hullGrey = new Color('#5e6a72')
     const steam: BufferGeometry[] = [
@@ -102,6 +111,8 @@ export class ExpeditionBoat {
       tinted(new SphereGeometry(0.14, 6, 5), new Color('#b9c2c6'), -0.45, 1.35, 0),
       tinted(new SphereGeometry(0.1, 6, 5), new Color('#c9d0d3'), -0.6, 1.55, 0.05),
     ]
+    // ×2 : un vapeur côtier de ~9 m — il doit dominer la caravelle d'époque.
+    for (const g of steam) g.scale(2, 2, 2)
     // Tier 5 — hors-bord : coque blanche effilée, cabine, moteur.
     const motor: BufferGeometry[] = [
       tinted(new BoxGeometry(2.0, 0.3, 0.7), new Color('#f2f4f0'), 0, 0.24, 0),
@@ -111,6 +122,8 @@ export class ExpeditionBoat {
       tinted(new BoxGeometry(0.2, 0.3, 0.18), new Color('#33383e'), -1.0, 0.35, 0),
       tinted(new BoxGeometry(0.5, 0.05, 0.6), new Color('#c96f4e'), -0.3, 0.42, 0),
     ]
+    // ×1.4 : un hors-bord de ~6 m.
+    for (const g of motor) g.scale(1.4, 1.4, 1.4)
 
     for (const parts of [raft, canoe, boat, caravel, steam, motor]) {
       const m = new Mesh(mergeGeometries(parts) ?? new BufferGeometry(), mat)
@@ -134,7 +147,10 @@ export class ExpeditionBoat {
     }
     sailGeo.setAttribute('color', new BufferAttribute(stripes, 3))
     this.sail = new Mesh(sailGeo, new MeshToonMaterial({ vertexColors: true, side: DoubleSide }))
-    this.sail.position.set(0, 1.1, 0)
+    // La voile suit la coque ×1.3 : mise à l'échelle du MESH, pas de la
+    // géométrie — les rayures sont calculées sur les y d'origine.
+    this.sail.scale.setScalar(1.3)
+    this.sail.position.set(0, 1.47, 0)
     this.sail.visible = false
     this.group.add(this.sail)
 
@@ -149,16 +165,22 @@ export class ExpeditionBoat {
     )
     rider.position.set(-0.2, 0.1, 0)
     rider.castShadow = true
+    this.rider = rider
     this.group.add(rider)
 
     this.group.visible = false
   }
+
+  /** Hauteur d'assise du passager par tier : le colon garde SA taille (c'est
+   *  l'étalon), mais le pont monte avec la coque remise à l'échelle. */
+  private static readonly RIDER_Y = [0.1, 0.15, 0.2, 0.59, 0.66, 0.29]
 
   /** 0 radeau, 1 pirogue, 2 barque à voile, 3 caravelle, 4 vapeur, 5 hors-bord. */
   setTier(tier: number): void {
     const t = Math.min(tier, 5)
     this.tiers.forEach((m, i) => (m.visible = i === t))
     this.sail.visible = t === 2
+    this.rider.position.y = ExpeditionBoat.RIDER_Y[t]!
   }
 
   get active(): boolean {
