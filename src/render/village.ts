@@ -1907,6 +1907,11 @@ export class Village {
     this.group.add(this.propsMesh)
   }
 
+  /** Emprises au sol de tout ce qui est posé — la faune les évite. */
+  get obstaclePoints(): { x: number; z: number }[] {
+    return this.propPlacements.map((p) => ({ x: p.x, z: p.z }))
+  }
+
   /** Quel savoir vit ici ? Le plus proche du point touché, feu compris. */
   identifyAt(x: number, z: number): string | null {
     let best: string | null = null

@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.5.0',
+    title: "L'île s'anime",
+    items: [
+      "La faune suit les époques : cerfs en lisière dès le début (ils fuient le chasseur), moutons avec l'agriculture, poules avec le grenier, chevaux avec le collier d'épaule, mouettes avec la voile. La nuit, tout ce petit monde dort.",
+      'Rendu optimisé : les bâtiments fondus dans un mesh unique — le village complet plus la faune tiennent sous le budget mobile.',
+    ],
+  },
+  {
     version: '1.4.2',
     title: 'Grand audit et confort',
     items: [

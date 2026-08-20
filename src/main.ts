@@ -54,7 +54,7 @@ function buildWorld(): void {
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
-  fauna = new Fauna(island)
+  fauna = new Fauna(island, village.obstaclePoints)
   stage.scene.add(island.group, village.group, settler.group, fauna.group)
   stage.islandRadius = island.radius
   village.sync(game.buildings)

@@ -261,7 +261,10 @@ export class Fauna {
   private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16 }
   private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8 }
 
-  constructor(private readonly island: Island) {
+  constructor(
+    private readonly island: Island,
+    private readonly obstacles: { x: number; z: number }[] = [],
+  ) {
     this.group.name = 'fauna'
     // Positions des sapins : la « lisière » se mesure contre eux, pas contre
     // une carte de forêt qui n'existe pas.
@@ -289,6 +292,16 @@ export class Fauna {
       return false
     }
     const fireDist = (x: number, z: number): number => Math.hypot(x - CAMP_FIRE.x, z - CAMP_FIRE.z)
+    // Le village entier est un obstacle : le verdict du jury était unanime —
+    // moutons contre le tipi, cerf à une tuile du feu, clipping d'atelier.
+    const objDist = (x: number, z: number): number => {
+      let best = Infinity
+      for (const o of this.obstacles) {
+        const d = (o.x - x) ** 2 + (o.z - z) ** 2
+        if (d < best) best = d
+      }
+      return Math.sqrt(best)
+    }
 
     const land = island.cells.filter((c) => !c.beach && !inCamp(c.x, c.z, 0.3))
     const pick = (...filters: ((c: (typeof land)[number]) => boolean)[]): Spot[] => {
@@ -302,20 +315,20 @@ export class Fauna {
     }
 
     this.deerSpots = pick(
-      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 7 && treeDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) < 3.2,
-      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 6 && treeDist(c.x, c.z) < 4.5,
+      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 10 && objDist(c.x, c.z) > 2 && treeDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) < 3.2,
+      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 8 && objDist(c.x, c.z) > 1.6 && treeDist(c.x, c.z) < 4.5,
     )
     this.sheepSpots = pick(
-      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 5.2 && fireDist(c.x, c.z) < 9.5 && treeDist(c.x, c.z) > 1.2,
-      (c) => !c.trod && fireDist(c.x, c.z) < 11 && treeDist(c.x, c.z) > 1,
+      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 9.5 && fireDist(c.x, c.z) < 14 && objDist(c.x, c.z) > 2 && treeDist(c.x, c.z) > 1.2,
+      (c) => !c.trod && fireDist(c.x, c.z) > 8 && fireDist(c.x, c.z) < 16 && objDist(c.x, c.z) > 1.6 && treeDist(c.x, c.z) > 1,
     )
     this.henSpots = pick(
-      (c) => fireDist(c.x, c.z) > 1.8 && fireDist(c.x, c.z) < 4.6,
-      (c) => fireDist(c.x, c.z) < 6,
+      (c) => fireDist(c.x, c.z) > 2.2 && fireDist(c.x, c.z) < 4.6 && objDist(c.x, c.z) > 1.2,
+      (c) => fireDist(c.x, c.z) < 6 && objDist(c.x, c.z) > 1,
     )
     this.horseSpots = pick(
-      (c) => !c.trod && c.inland > 2.2 && fireDist(c.x, c.z) > 8.5 && treeDist(c.x, c.z) > 2.4,
-      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 6 && treeDist(c.x, c.z) > 1.6,
+      (c) => !c.trod && c.inland > 2.2 && fireDist(c.x, c.z) > 11 && objDist(c.x, c.z) > 2.2 && treeDist(c.x, c.z) > 2.4,
+      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 9 && objDist(c.x, c.z) > 1.8 && treeDist(c.x, c.z) > 1.6,
     )
 
     // Le troupeau de moutons reste groupé : ses cibles se limitent au voisinage
@@ -453,6 +466,16 @@ export class Fauna {
       }
 
       // Jamais dans le camp : poussée radiale hors des emprises pleines.
+      for (const o of this.obstacles) {
+        const dx = b.x - o.x
+        const dz = b.z - o.z
+        const d2 = dx * dx + dz * dz
+        if (d2 > 0.0001 && d2 < 1.5 * 1.5) {
+          const d = Math.sqrt(d2)
+          b.x = o.x + (dx / d) * 1.5
+          b.z = o.z + (dz / d) * 1.5
+        }
+      }
       for (let k = 0; k < CAMP_BLOCKERS.length; k++) {
         const bl = CAMP_BLOCKERS[k]!
         const dx = b.x - bl.x
