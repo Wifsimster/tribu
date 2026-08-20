@@ -192,6 +192,13 @@ export class Game {
 
     if (offlineSeconds > 60) this.creditAbsence(offlineSeconds)
     this.catchUpAge()
+
+    // Les tribus d'avant la Chronique ouvrent leur registre en cours de route.
+    if (this.save.chronicle.length === 0 && this.save.techs.length > 0)
+      this.record(
+        'age',
+        `La Chronique s'ouvre — la tribu porte déjà ${this.save.techs.length} découverte${this.save.techs.length > 1 ? 's' : ''}`,
+      )
   }
 
   /** Crédite une absence : au CHARGEMENT (constructeur) mais aussi au RETOUR
@@ -441,6 +448,7 @@ export class Game {
     if (!this.save.seenFacts.includes(tech.id)) this.save.seenFacts.push(tech.id)
     this.lastFact = tech
     this.recompute()
+    this.record('tech', `Découverte : ${tech.name}`)
     this.emit({ type: 'tech', tech })
     this.checkAge()
     return true
@@ -450,6 +458,7 @@ export class Game {
     const { done, needed } = this.ageProgress()
     if (done >= needed && this.save.age < AGES.length - 1) {
       this.save.age += 1
+      this.record('age', `Nouvel âge : ${this.age.name}`)
       this.emit({ type: 'age', age: this.age })
     }
   }
@@ -563,8 +572,23 @@ export class Game {
     if (setback)
       journal += ` Mais ${SETBACKS[Math.floor(Math.random() * SETBACKS.length)]}.`
     this.save.expedition = null
+    this.record('exp', `Expédition — ${journal}`)
+    if (relic) this.record('relic', `Relique rapportée : ${relic.name.toLowerCase()}`)
     this.refreshRates()
     this.emit({ type: 'expeditionEnd', loot, find, journal, relic, setback })
+  }
+
+  /** Une ligne de plus à la Chronique — datée du jour de jeu, dans le monde
+   *  courant. Bornée : la saga tient dans le localStorage, pas l'inverse. */
+  private record(kind: string, text: string): void {
+    const c = this.save.chronicle
+    c.push({
+      w: this.save.legacy + 1,
+      d: Math.floor(this.save.totalPlaySeconds / DAY_SECONDS) + 1,
+      k: kind,
+      x: text,
+    })
+    if (c.length > 600) c.splice(0, c.length - 600)
   }
 
   /** L'arbre entier est-il su ? C'est la porte de l'Exode. */
@@ -584,7 +608,10 @@ export class Game {
     if (!this.treeComplete) return false
     const relics = this.save.relics
     const legacy = this.save.legacy + 1
-    this.save = { ...emptySave(Date.now()), relics, legacy }
+    this.record('exodus', "L'Exode : la tribu largue les amarres, l'île retourne au silence")
+    const chronicle = this.save.chronicle
+    this.save = { ...emptySave(Date.now()), relics, legacy, chronicle }
+    this.record('exodus', 'La tribu débarque sur une île inconnue')
     this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
     this.buildings = new Set()
     this.encourageLeft = 0
@@ -623,6 +650,7 @@ export class Game {
       const insight = Math.round(8 * (1 + this.save.age))
       this.save.res.wood = this.amount('wood') + wood
       this.save.res.insight = this.amount('insight') + insight
+      this.record('event', "Une épave s'est échouée sur la rive")
       this.emit({ type: 'worldEvent', kind, fact: EVENT_FACTS.wreck, loot: { wood, insight } })
       return
     }
@@ -630,6 +658,16 @@ export class Game {
       this.save.caravan.nextIn = Math.min(this.save.caravan.nextIn, 1)
       this.goldenTrade = true
     }
+    this.record(
+      'event',
+      kind === 'migration'
+        ? "Un grand troupeau a traversé l'île"
+        : kind === 'eclipse'
+          ? 'Une éclipse a assombri le plein jour'
+          : kind === 'aurora'
+            ? 'Une aurore a dansé dans la nuit'
+            : 'Un grand marchand est passé au village',
+    )
     this.emit({ type: 'worldEvent', kind, fact: EVENT_FACTS[kind] })
   }
 

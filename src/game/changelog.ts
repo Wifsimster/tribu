@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.4.0',
+    title: 'La Chronique',
+    items: [
+      "La tribu tient registre : chaque découverte, chaque passage d'âge, chaque expédition, chaque relique, chaque humeur du monde s'écrit dans la Chronique — datée en jours de jeu, dans le menu.",
+      "La Chronique survit aux Exodes : monde après monde, c'est la même saga qui continue, sectionnée par bandeaux Monde I, II, III…",
+      'Les parties déjà avancées ouvrent leur registre en cours de route.',
+    ],
+  },
+  {
     version: '2.3.1',
     title: 'Petit correctif de cap',
     items: [

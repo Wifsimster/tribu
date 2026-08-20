@@ -1032,3 +1032,26 @@ body.night .age-bar {
   filter: saturate(0.4);
   cursor: default;
 }
+
+
+/* La Chronique : une ligne par souvenir, le jour en retrait doré. */
+.chronicle-list { max-height: 46vh; overflow-y: auto; }
+.chron-day {
+  display: inline-block;
+  min-width: 58px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #b98a2e;
+}
+.chron-age { font-weight: 700; }
+.chron-exodus { font-weight: 700; color: #b98a2e; }
+.chron-world {
+  margin-top: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+  opacity: 0.7;
+  list-style: none;
+}

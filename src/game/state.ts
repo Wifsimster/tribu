@@ -33,6 +33,9 @@ export interface SaveV1 {
   relics: string[]
   /** Secondes avant le prochain événement rare du monde (live uniquement). */
   eventIn: number
+  /** La Chronique : chaque ligne de l'histoire de CETTE tribu — monde (w),
+   *  jour (d), genre (k) et texte (x). Survit aux Exodes. */
+  chronicle: { w: number; d: number; k: string; x: string }[]
   /** Nombre d'Exodes accomplis : la constellation de la tribu. */
   legacy: number
 }
@@ -60,6 +63,7 @@ export function emptySave(now: number): SaveV1 {
     totalPlaySeconds: 0,
     relics: [],
     eventIn: 420,
+    chronicle: [],
     legacy: 0,
   }
 }

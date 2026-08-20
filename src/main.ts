@@ -459,6 +459,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     confirm.hidden = true
     tuto.hidden = true
     menuEl('menu-news').hidden = true
+    menuEl('menu-chronicle').hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -525,6 +526,40 @@ function menuEl<T extends HTMLElement>(id: string): T {
       list.appendChild(li)
     }
   }
+  // La Chronique : la saga de la tribu, du plus récent au plus ancien, avec
+  // un bandeau par monde traversé.
+  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+  menuEl('menu-chronicle-open').addEventListener('click', () => {
+    const list = menuEl('chronicle-list')
+    list.textContent = ''
+    const entries = game.save.chronicle
+    if (entries.length === 0) {
+      const li = document.createElement('li')
+      li.textContent =
+        "La chronique s'écrira d'elle-même : chaque découverte, chaque expédition, chaque humeur du monde y laissera une ligne."
+      list.appendChild(li)
+    }
+    let lastWorld = -1
+    const manyWorlds = (entries[entries.length - 1]?.w ?? 1) > 1
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]!
+      if (manyWorlds && e.w !== lastWorld) {
+        lastWorld = e.w
+        const head = document.createElement('li')
+        head.className = 'chron-world'
+        head.textContent = `Monde ${ROMAN[e.w - 1] ?? e.w}`
+        list.appendChild(head)
+      }
+      const li = document.createElement('li')
+      li.className = `chron chron-${e.k}`
+      li.innerHTML = `<span class="chron-day">Jour ${e.d}</span> ${e.x}`
+      list.appendChild(li)
+    }
+    home.hidden = true
+    menuEl('menu-chronicle').hidden = false
+  })
+  menuEl('menu-chronicle-close').addEventListener('click', showHome)
+
   menuEl('menu-news-open').addEventListener('click', () => {
     home.hidden = true
     news.hidden = false
