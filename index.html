@@ -166,6 +166,9 @@
           <button class="btn ghost" id="menu-news-open" type="button">
             <span class="label">Nouveautés</span>
           </button>
+          <button class="btn ghost" id="menu-transfer-open" type="button">
+            <span class="label">Transférer ma tribu</span>
+          </button>
           <button class="btn ghost" id="menu-notif" type="button" hidden>
             <span class="label" id="menu-notif-label">Notifications : coupées</span>
           </button>
@@ -192,6 +195,51 @@
         <div class="menu-tuto" id="menu-news" hidden>
           <ul class="tuto-list" id="news-list"></ul>
           <button class="btn" id="menu-news-close" type="button">
+            <span class="label">Retour</span>
+          </button>
+        </div>
+
+        <div class="menu-tuto" id="menu-transfer" hidden>
+          <ul class="tuto-list transfer-list">
+            <li>
+              <b>Ta tribu vit dans ce navigateur.</b> Vider les données du site,
+              changer de téléphone ou réinstaller l'application, et elle disparaît.
+              Emporte-la : le fichier ci-dessous contient toute la partie — île,
+              savoirs, reliques, Chronique et constellation.
+            </li>
+            <li>
+              <b>Rien ne sort d'ici.</b> Le transfert se fait de ton appareil à ton
+              fichier, sans serveur ni compte.
+            </li>
+          </ul>
+          <div class="transfer-actions">
+            <button class="btn primary" id="transfer-download" type="button">
+              <span class="label">Télécharger ma tribu</span>
+            </button>
+            <button class="btn" id="transfer-copy" type="button">
+              <span class="label">Copier le code</span>
+            </button>
+          </div>
+          <p class="transfer-sep">Restaurer une tribu</p>
+          <div class="transfer-actions">
+            <button class="btn" id="transfer-file" type="button">
+              <span class="label">Ouvrir un fichier…</span>
+            </button>
+            <input type="file" id="transfer-input" accept=".txt,text/plain" hidden />
+          </div>
+          <textarea
+            class="transfer-code"
+            id="transfer-code"
+            rows="3"
+            spellcheck="false"
+            placeholder="…ou colle ici le code d'une tribu"
+            aria-label="Code de transfert d'une tribu"
+          ></textarea>
+          <button class="btn" id="transfer-restore" type="button">
+            <span class="label">Restaurer cette tribu</span>
+          </button>
+          <p class="transfer-status" id="transfer-status" hidden></p>
+          <button class="btn ghost" id="menu-transfer-close" type="button">
             <span class="label">Retour</span>
           </button>
         </div>

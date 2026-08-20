@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.12.0',
+    title: 'Transférer sa tribu',
+    items: [
+      "Ta partie ne dépend plus d'un seul navigateur : « Transférer ma tribu » dans le menu télécharge toute la sauvegarde — île, savoirs, reliques, Chronique, constellation — dans un fichier, ou la copie en un code.",
+      "Sur un autre appareil, ouvre le fichier ou colle le code : la tribu reprend exactement où elle en était. Tout reste local, aucun serveur ne voit la partie.",
+      'La partie remplacée est mise de côté en secours, et un code tronqué à la copie est refusé plutôt que chargé à moitié.',
+    ],
+  },
+  {
     version: '2.11.0',
     title: 'Les hauts faits',
     items: [

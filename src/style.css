@@ -901,6 +901,68 @@ body.night .age-bar {
   width: 100%;
 }
 
+/* Transfert de tribu : la sauvegarde s'emporte en fichier ou en code. */
+.transfer-list {
+  max-height: 22dvh;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+}
+
+.transfer-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.transfer-sep {
+  margin: 14px 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  border-top: 1px solid rgba(217, 164, 65, 0.25);
+  padding-top: 12px;
+}
+
+.transfer-code {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 164, 65, 0.35);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.transfer-code:focus {
+  outline: none;
+  border-color: var(--gold-deep);
+}
+
+.transfer-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.transfer-status[hidden] {
+  display: none;
+}
+
+.transfer-status.ok {
+  color: var(--gold-deep);
+}
+
+.transfer-status.bad {
+  color: #b0432e;
+}
+
 /* Prix composé d'une techno : chaque composant dit s'il est couvert. */
 .tech .cost {
   flex-wrap: wrap;

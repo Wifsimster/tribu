@@ -16,6 +16,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
+import { decodeSave, encodeSave, transferFilename } from './game/transfer'
 import { CHANGELOG } from './game/changelog'
 import { FEATS, WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
@@ -613,6 +614,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('menu-news').hidden = true
     menuEl('menu-chronicle').hidden = true
     menuEl('menu-feats').hidden = true
+    menuEl('menu-transfer').hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -733,6 +735,119 @@ function menuEl<T extends HTMLElement>(id: string): T {
     news.hidden = false
   })
   menuEl('menu-news-close').addEventListener('click', showHome)
+
+  // Transfert de tribu : la partie s'emporte en fichier ou en code, et se
+  // rouvre ailleurs. Sans ça, vider les données du navigateur efface tout.
+  {
+    const panel = menuEl('menu-transfer')
+    const status = menuEl('transfer-status')
+    const codeBox = menuEl<HTMLTextAreaElement>('transfer-code')
+    const fileInput = menuEl<HTMLInputElement>('transfer-input')
+    let restoreStep = 0
+
+    const say = (text: string, kind: 'ok' | 'bad' | '' = '') => {
+      status.textContent = text
+      status.className = `transfer-status${kind ? ` ${kind}` : ''}`
+      status.hidden = false
+    }
+
+    /** Le code décrit l'état À CET INSTANT : on écrit la sauvegarde d'abord. */
+    const currentCode = async () => {
+      game.flush(Date.now())
+      return encodeSave(game.save)
+    }
+
+    menuEl('menu-transfer-open').addEventListener('click', () => {
+      restoreStep = 0
+      status.hidden = true
+      codeBox.value = ''
+      home.hidden = true
+      panel.hidden = false
+    })
+    menuEl('menu-transfer-close').addEventListener('click', showHome)
+
+    menuEl('transfer-download').addEventListener('click', () => {
+      void currentCode().then((code) => {
+        const day = Math.floor(game.save.totalPlaySeconds / DAY_SECONDS) + 1
+        const blob = new Blob([code], { type: 'text/plain' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = transferFilename(game.age.name, day)
+        a.click()
+        URL.revokeObjectURL(url)
+        say('Tribu enregistrée. Garde ce fichier : il la fera renaître partout.', 'ok')
+      })
+    })
+
+    menuEl('transfer-copy').addEventListener('click', () => {
+      void currentCode().then(async (code) => {
+        try {
+          await navigator.clipboard.writeText(code)
+          say('Code copié — colle-le où tu veux le garder.', 'ok')
+        } catch {
+          // Presse-papiers refusé (http, permission) : on montre le code, le
+          // joueur le sélectionne lui-même.
+          codeBox.value = code
+          codeBox.select()
+          say('Copie impossible depuis la page : le code est ci-dessous, sélectionne-le.', 'bad')
+        }
+      })
+    })
+
+    menuEl('transfer-file').addEventListener('click', () => fileInput.click())
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0]
+      if (!file) return
+      void file.text().then((text) => {
+        codeBox.value = text.trim()
+        restoreStep = 0
+        say('Fichier chargé. Tape « Restaurer cette tribu » pour l’ouvrir.')
+      })
+      fileInput.value = ''
+    })
+
+    menuEl('transfer-restore').addEventListener('click', () => {
+      const raw = codeBox.value.trim()
+      if (!raw) {
+        say('Colle d’abord un code, ou ouvre un fichier de tribu.', 'bad')
+        return
+      }
+      void decodeSave(raw).then((res) => {
+        if (!res.ok) {
+          say(
+            res.reason === 'tronque'
+              ? 'Ce code est incomplet — il a dû être coupé à la copie. Reprends-le en entier.'
+              : 'Ce texte n’est pas une tribu lisible.',
+            'bad',
+          )
+          restoreStep = 0
+          return
+        }
+        if (restoreStep === 0 && hasProgress) {
+          restoreStep = 1
+          say(
+            `Cette tribu compte ${res.save.techs.length} découvertes. La restaurer remplacera ta partie en cours. Tape encore pour confirmer.`,
+            'bad',
+          )
+          return
+        }
+        try {
+          // Filet de sécurité : la partie remplacée reste récupérable une fois.
+          const previous = localStorage.getItem(SAVE_KEY)
+          if (previous) localStorage.setItem(`${SAVE_KEY}.bak`, previous)
+          // Horodatée à maintenant : un transfert ne doit pas créditer
+          // l'absence entre l'export et l'import.
+          localStorage.setItem(SAVE_KEY, JSON.stringify({ ...res.save, t: Date.now() }))
+        } catch {
+          say('Le stockage du navigateur refuse d’écrire — restauration impossible.', 'bad')
+          return
+        }
+        say('Tribu restaurée. On rouvre le monde…', 'ok')
+        setTimeout(() => location.reload(), 600)
+      })
+    })
+  }
 
   menuEl('menu-erase').addEventListener('click', () => {
     if (confirmMode === 'exode') {
