@@ -29,11 +29,6 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { PALETTE, rampTexture, smoothstep, tint } from './palette'
 import type { Island } from './island'
 
-interface Pending {
-  object: Object3D
-  age: number
-}
-
 /** Le foyer est posé à côté du point de dépôt, pas dessus, et perpendiculairement
  *  à l'axe de la caméra par défaut: sinon le colon rentre dans les flammes et sa
  *  silhouette se noie dedans. */
@@ -721,13 +716,227 @@ function masonry(
   }
 }
 
+/** Les quatre bâtiments hérités (hutte, champ, grenier, aqueduc) vivaient en
+ *  Object3D séparés : quatre meshes, huit draw calls avec la passe d'ombre.
+ *  Ils sont désormais des générateurs de pièces comme les ateliers, fondus dans
+ *  le mesh unique — leur géométrie est inchangée au sommet près. */
+function hutParts(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2
+    p.push(
+      part(
+        new DodecahedronGeometry(0.17 + (i % 3) * 0.03, 0).rotateY(i * 1.3).scale(1, 0.72, 1),
+        tint(i % 4 === 0 ? PALETTE.rockDark : PALETTE.rock, i * 5, 0.09),
+        Math.sin(a) * 1.03,
+        0.08,
+        Math.cos(a) * 1.03,
+      ),
+    )
+  }
+  p.push(part(new ConeGeometry(1.02, 1.75, 10), C.hideDark, 0, 0.87, 0))
+  // Rangs de peaux cousues, en gradins débordants: l'équivalent primitif des
+  // rangs de tuiles, et la seule façon de faire lire une paroi conique.
+  for (let i = 0; i < 5; i++) {
+    const y = 0.06 + i * 0.31
+    const r = 1.02 * (1 - y / 1.75)
+    p.push(
+      part(
+        new CylinderGeometry(1.02 * (1 - (y + 0.33) / 1.75) - 0.01, r + 0.09, 0.33, 10, 1, true),
+        i % 2 === 0 ? tint(C.hide, i * 9, 0.05) : tint(C.hideDark, i * 4, 0.05),
+        0,
+        y + 0.165,
+        0,
+      ),
+    )
+  }
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + 0.25
+    p.push(
+      part(
+        new CylinderGeometry(0.038, 0.055, 1.55, 5).rotateZ(-0.52).rotateY(a),
+        C.woodDark,
+        Math.cos(a) * 0.34,
+        1.25,
+        -Math.sin(a) * 0.34,
+      ),
+    )
+  }
+  p.push(part(new BoxGeometry(0.5, 0.74, 0.34), C.char, 0, 0.37, 0.74))
+  p.push(part(new CylinderGeometry(0.055, 0.07, 0.92, 6), C.bone, -0.31, 0.46, 0.83))
+  p.push(part(new CylinderGeometry(0.055, 0.07, 0.92, 6), C.bone, 0.31, 0.46, 0.83))
+  p.push(
+    part(new CylinderGeometry(0.05, 0.05, 0.74, 6).rotateZ(Math.PI / 2), C.bone, 0, 0.9, 0.8),
+  )
+  // Trophée au-dessus de la porte: une tache claire à hauteur d'œil.
+  p.push(part(new SphereGeometry(0.14, 8, 6).scale(1, 0.9, 1.15), C.bone, 0, 1.16, 0.63))
+  p.push(part(new ConeGeometry(0.05, 0.3, 4).rotateZ(0.9), C.bone, -0.2, 1.26, 0.6))
+  p.push(part(new ConeGeometry(0.05, 0.3, 4).rotateZ(-0.9), C.bone, 0.2, 1.26, 0.6))
+  return p
+}
+
+function fieldParts(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  p.push(part(new BoxGeometry(1.9, 0.2, 1.8), C.soil, -0.5, 0.1, 0))
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2
+    p.push(
+      part(
+        new BoxGeometry(0.2, 0.16, 0.2).rotateY(i),
+        tint(i % 3 === 0 ? PALETTE.rockDark : PALETTE.rock, i * 4, 0.08),
+        -0.5 + Math.sin(a) * 1.0,
+        0.13,
+        Math.cos(a) * 0.94,
+      ),
+    )
+  }
+  for (let i = 0; i < 5; i++) {
+    const z = -0.7 + i * 0.35
+    p.push(part(new BoxGeometry(1.76, 0.1, 0.13), C.soilDark, -0.5, 0.22, z))
+    for (let j = 0; j < 6; j++) {
+      p.push(
+        part(
+          new ConeGeometry(0.095, 0.34, 4).rotateY(i + j),
+          tint(C.wheat, i * 6 + j, 0.09),
+          -1.24 + j * 0.3,
+          0.37,
+          z,
+        ),
+      )
+    }
+  }
+  // Clôture: quelques traits sombres qui donnent une échelle au champ.
+  for (let i = 0; i < 6; i++) {
+    p.push(
+      part(new CylinderGeometry(0.035, 0.04, 0.5, 5), C.woodDark, -1.4 + i * 0.36, 0.31, -0.98),
+    )
+  }
+  p.push(part(new BoxGeometry(1.94, 0.05, 0.05), C.wood, -0.5, 0.44, -0.98))
+  p.push(part(new BoxGeometry(1.94, 0.05, 0.05), C.wood, -0.5, 0.29, -0.98))
+
+  // Une vraie petite maison: socle froid, mur clair, toit de tuiles. C'est là que
+  // le vocabulaire de la barre entre dans le jeu.
+  const sx = 1.16
+  masonry(p, 1.0, 1.06, 2, 0.13, sx, 0, 0.06, 3)
+  p.push(part(new BoxGeometry(0.92, 0.78, 0.98), C.plaster, sx, 0.65, 0.06))
+  p.push(part(new BoxGeometry(0.07, 0.8, 0.07), C.woodDark, sx - 0.45, 0.65, 0.53))
+  p.push(part(new BoxGeometry(0.07, 0.8, 0.07), C.woodDark, sx + 0.45, 0.65, 0.53))
+  p.push(part(new BoxGeometry(0.94, 0.08, 0.07), C.woodDark, sx, 0.7, 0.53))
+  p.push(part(new BoxGeometry(0.3, 0.5, 0.06), C.woodDark, sx - 0.19, 0.51, 0.56))
+  p.push(part(new BoxGeometry(0.26, 0.26, 0.05), C.bone, sx + 0.23, 0.78, 0.56))
+  p.push(part(new BoxGeometry(0.16, 0.16, 0.07), C.glass, sx + 0.23, 0.78, 0.57))
+  const roof: BufferGeometry[] = []
+  gableRoof(roof, 1.14, 0.62, 0.46, 1.04, 5)
+  for (const g of roof) p.push(g.translate(sx, 0, 0.06))
+  return p
+}
+
+function granaryParts(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  for (const [x, z] of [
+    [-0.55, -0.55],
+    [0.55, -0.55],
+    [-0.55, 0.55],
+    [0.55, 0.55],
+  ] as const) {
+    p.push(part(new BoxGeometry(0.34, 0.2, 0.34), C.stoneDark, x, 0.1, z))
+    p.push(part(new CylinderGeometry(0.08, 0.09, 0.62, 6), C.wood, x, 0.51, z))
+    // Rondelle anti-rongeurs: le petit disque clair qui fait "grenier sur pilotis".
+    p.push(part(new CylinderGeometry(0.24, 0.24, 0.06, 10), C.bone, x, 0.84, z))
+  }
+  p.push(part(new BoxGeometry(1.52, 0.14, 1.52), C.woodDark, 0, 0.94, 0))
+  p.push(part(new BoxGeometry(1.34, 0.86, 1.34), C.wall, 0, 1.44, 0))
+  // Colombage: montants sombres sur mur clair, la densité chaude de la barre.
+  for (const [ox, oz, rot] of [
+    [0, 0.68, 0],
+    [0, -0.68, 0],
+    [0.68, 0, 1],
+    [-0.68, 0, 1],
+  ] as const) {
+    for (let i = 0; i < 4; i++) {
+      const t = -0.5 + i * 0.335
+      const g = new BoxGeometry(0.08, 0.88, 0.06)
+      if (rot) g.rotateY(Math.PI / 2)
+      p.push(part(g, C.woodDark, ox + (rot ? 0 : t), 1.44, oz + (rot ? t : 0)))
+    }
+    const rail = new BoxGeometry(1.38, 0.09, 0.06)
+    if (rot) rail.rotateY(Math.PI / 2)
+    p.push(part(rail, C.woodDark, ox, 1.62, oz))
+  }
+  p.push(part(new BoxGeometry(0.42, 0.56, 0.08), C.woodDark, 0, 1.3, 0.7))
+  p.push(part(new BoxGeometry(0.52, 0.08, 0.1), C.bone, 0, 1.62, 0.71))
+  gableRoof(p, 1.66, 0.86, 0.66, 1.87, 6)
+  // Échelle vers la porte.
+  for (let i = 0; i < 4; i++) {
+    p.push(
+      part(
+        new CylinderGeometry(0.028, 0.028, 0.34, 5).rotateZ(Math.PI / 2),
+        C.wood,
+        0,
+        0.34 + i * 0.24,
+        0.92 - i * 0.05,
+      ),
+    )
+  }
+  p.push(
+    part(new CylinderGeometry(0.035, 0.035, 1.25, 5).rotateX(0.22), C.wood, -0.17, 0.72, 0.98),
+  )
+  p.push(
+    part(new CylinderGeometry(0.035, 0.035, 1.25, 5).rotateX(0.22), C.wood, 0.17, 0.72, 0.98),
+  )
+  return p
+}
+
+function aqueductParts(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  // Naissance de l'arc à mi-hauteur: si la pile monte trop haut, il ne reste
+  // qu'un trou de souris et l'aqueduc redevient un mur.
+  const spring = 0.95
+  const radius = 0.52
+  // Pierre CHAUDE (grès/enduit): le gris bleu d'acier faisait lire l'ouvrage
+  // comme un pont cassé abandonné, hors palette du village. Les assises
+  // sombres restent au-dessus du rockDark: à l'ombre, tout ce qui est plus
+  // sombre vire au bleu.
+  const warm = tint(C.plaster, 3, 0.04)
+  const warmDark = PALETTE.rock
+  const warmLight = C.ridge
+  for (let i = 0; i < 3; i++) {
+    const x = -1.32 + i * 1.32
+    masonry(p, 0.5, 0.62, 7, 0.226, x, 0, 0, i * 11, warm, warmDark)
+    if (i < 2) {
+      // Claveaux: neuf blocs le long de l'arc, c'est ce qui fait "taillé" plutôt
+      // que "moulé".
+      for (let k = 0; k <= 8; k++) {
+        const a = (k / 8) * Math.PI
+        p.push(
+          part(
+            new BoxGeometry(0.21, 0.22, 0.64).rotateZ(Math.PI / 2 - a),
+            tint(k % 2 === 0 ? warm : warmLight, k * 7 + i, 0.06),
+            x + 0.66 - Math.cos(a) * radius,
+            spring + Math.sin(a) * radius,
+            0,
+          ),
+        )
+      }
+    }
+  }
+  masonry(p, 3.14, 0.56, 2, 0.22, 0, 1.58, 0, 21, warm, warmDark)
+  p.push(part(new BoxGeometry(3.34, 0.12, 0.92), warm, 0, 2.08, 0))
+  p.push(part(new BoxGeometry(3.18, 0.14, 0.78), warm, 0, 2.21, 0))
+  p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, 0.29))
+  p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, -0.29))
+  p.push(part(new BoxGeometry(3.06, 0.16, 0.38), C.water, 0, 2.4, 0))
+  p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, 0.29))
+  p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, -0.29))
+  return p
+}
+
 /** Everything the tribe builds. Buildings pop in when their technology lands, so
  *  research has an immediate, physical consequence on screen. */
 export class Village {
   readonly group = new Group()
   private readonly solid = new MeshToonMaterial({ vertexColors: true })
   private readonly placed = new Set<string>()
-  private readonly growing: Pending[] = []
   private readonly taken: Vector3[] = []
   private readonly dummy = new Object3D()
   private readonly scratch = new Color()
@@ -747,15 +956,6 @@ export class Village {
     // miroir du terrain — comme « posée sur du verre poli ». L'eau de ce round
     // ne renvoie rien : la fondation CONTINUE sous la surface (island.ts,
     // buildFoundation) et les objets posés dessus n'ont pas d'image.
-  }
-
-  private mesh(p: BufferGeometry[]): Mesh {
-    const geo = mergeGeometries(p) ?? new BufferGeometry()
-    grain(geo)
-    const m = new Mesh(geo, this.solid)
-    m.castShadow = true
-    m.receiveShadow = true
-    return m
   }
 
   private buildCampfire(): void {
@@ -1111,28 +1311,25 @@ export class Village {
     hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 1.6,
     railway: 1.2, villa: 1.0, threefield: 0.8, milestone: 0.8,
   }
+  /** Les quatre bâtiments v1 gardent les règles d'espacement de l'époque où ils
+   *  étaient des Object3D séparés : les slots choisis — donc le plan du village
+   *  entier — ne bougent pas d'un centimètre. */
+  private static readonly LEGACY = new Set(['hut', 'field', 'granary', 'aqueduct'])
 
   sync(buildings: Set<string>): void {
+    let dirty = false
     for (const b of buildings) {
       if (this.placed.has(b)) continue
-      const obj = this.make(b)
-      if (!obj) {
-        // Pas un bâtiment : un atelier de savoir, fondu dans le mesh unique.
-        const s = this.nextSlot(2.0, Village.FOOTPRINT[b] ?? 0.5, Village.MONUMENTS.has(b))
-        this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot: Math.atan2(-s.x, -s.z) })
-        this.rebuildProps()
-        this.placed.add(b)
-        continue
-      }
-      const slot = this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
-      this.propPlacements.push({ id: b, x: slot.x, y: slot.y, z: slot.z, rot: 0 })
-      obj.position.set(slot.x, slot.y, slot.z)
-      obj.rotation.y = Math.atan2(-slot.x, -slot.z)
-      obj.scale.setScalar(0.001)
-      this.group.add(obj)
-      this.growing.push({ object: obj, age: 0 })
+      const s = Village.LEGACY.has(b)
+        ? this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
+        : this.nextSlot(2.0, Village.FOOTPRINT[b] ?? 0.5, Village.MONUMENTS.has(b))
+      this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot: Math.atan2(-s.x, -s.z) })
       this.placed.add(b)
+      dirty = true
     }
+    // Une seule refonte du mesh par lot : au chargement d'une partie avancée,
+    // reconstruire après chaque savoir rendait le coût quadratique.
+    if (dirty) this.rebuildProps()
   }
 
 
@@ -1665,6 +1862,20 @@ export class Village {
         for (const g of p) g.scale(1.5, 1.5, 1.5)
         return p
       }
+      // Bâtiments hérités : générés en local puis fondus comme les ateliers.
+      // grain() s'applique AVANT la pose, sur la géométrie fusionnée du seul
+      // bâtiment — exactement ce que faisait leur ancien mesh dédié, pour que
+      // le moucheté de matière reste identique au sommet près.
+      case 'hut':
+      case 'field':
+      case 'granary':
+      case 'aqueduct': {
+        const parts =
+          id === 'hut' ? hutParts() : id === 'field' ? fieldParts() : id === 'granary' ? granaryParts() : aqueductParts()
+        const merged = mergeGeometries(parts) ?? new BufferGeometry()
+        grain(merged)
+        return [merged]
+      }
       default:
         return null
     }
@@ -1689,6 +1900,10 @@ export class Village {
     if (!merged) return
     this.propsMesh = new Mesh(merged, this.solid)
     this.propsMesh.castShadow = true
+    // Les bâtiments hérités recevaient les ombres (avant-toits, arches, nuages)
+    // quand ils étaient des meshes séparés : le mesh fusionné doit continuer,
+    // sinon leurs murs sous corniche s'éclaircissent.
+    this.propsMesh.receiveShadow = true
     this.group.add(this.propsMesh)
   }
 
@@ -1708,233 +1923,7 @@ export class Village {
     return best
   }
 
-  private make(kind: string): Object3D | null {
-    switch (kind) {
-      case 'hut':
-        return this.makeHut()
-      case 'field':
-        return this.makeField()
-      case 'granary':
-        return this.makeGranary()
-      case 'aqueduct':
-        return this.makeAqueduct()
-      default:
-        return null
-    }
-  }
-
-  private makeHut(): Object3D {
-    const p: BufferGeometry[] = []
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2
-      p.push(
-        part(
-          new DodecahedronGeometry(0.17 + (i % 3) * 0.03, 0).rotateY(i * 1.3).scale(1, 0.72, 1),
-          tint(i % 4 === 0 ? PALETTE.rockDark : PALETTE.rock, i * 5, 0.09),
-          Math.sin(a) * 1.03,
-          0.08,
-          Math.cos(a) * 1.03,
-        ),
-      )
-    }
-    p.push(part(new ConeGeometry(1.02, 1.75, 10), C.hideDark, 0, 0.87, 0))
-    // Rangs de peaux cousues, en gradins débordants: l'équivalent primitif des
-    // rangs de tuiles, et la seule façon de faire lire une paroi conique.
-    for (let i = 0; i < 5; i++) {
-      const y = 0.06 + i * 0.31
-      const r = 1.02 * (1 - y / 1.75)
-      p.push(
-        part(
-          new CylinderGeometry(1.02 * (1 - (y + 0.33) / 1.75) - 0.01, r + 0.09, 0.33, 10, 1, true),
-          i % 2 === 0 ? tint(C.hide, i * 9, 0.05) : tint(C.hideDark, i * 4, 0.05),
-          0,
-          y + 0.165,
-          0,
-        ),
-      )
-    }
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2 + 0.25
-      p.push(
-        part(
-          new CylinderGeometry(0.038, 0.055, 1.55, 5).rotateZ(-0.52).rotateY(a),
-          C.woodDark,
-          Math.cos(a) * 0.34,
-          1.25,
-          -Math.sin(a) * 0.34,
-        ),
-      )
-    }
-    p.push(part(new BoxGeometry(0.5, 0.74, 0.34), C.char, 0, 0.37, 0.74))
-    p.push(part(new CylinderGeometry(0.055, 0.07, 0.92, 6), C.bone, -0.31, 0.46, 0.83))
-    p.push(part(new CylinderGeometry(0.055, 0.07, 0.92, 6), C.bone, 0.31, 0.46, 0.83))
-    p.push(
-      part(new CylinderGeometry(0.05, 0.05, 0.74, 6).rotateZ(Math.PI / 2), C.bone, 0, 0.9, 0.8),
-    )
-    // Trophée au-dessus de la porte: une tache claire à hauteur d'œil.
-    p.push(part(new SphereGeometry(0.14, 8, 6).scale(1, 0.9, 1.15), C.bone, 0, 1.16, 0.63))
-    p.push(part(new ConeGeometry(0.05, 0.3, 4).rotateZ(0.9), C.bone, -0.2, 1.26, 0.6))
-    p.push(part(new ConeGeometry(0.05, 0.3, 4).rotateZ(-0.9), C.bone, 0.2, 1.26, 0.6))
-    return this.mesh(p)
-  }
-
-  private makeField(): Object3D {
-    const p: BufferGeometry[] = []
-    p.push(part(new BoxGeometry(1.9, 0.2, 1.8), C.soil, -0.5, 0.1, 0))
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2
-      p.push(
-        part(
-          new BoxGeometry(0.2, 0.16, 0.2).rotateY(i),
-          tint(i % 3 === 0 ? PALETTE.rockDark : PALETTE.rock, i * 4, 0.08),
-          -0.5 + Math.sin(a) * 1.0,
-          0.13,
-          Math.cos(a) * 0.94,
-        ),
-      )
-    }
-    for (let i = 0; i < 5; i++) {
-      const z = -0.7 + i * 0.35
-      p.push(part(new BoxGeometry(1.76, 0.1, 0.13), C.soilDark, -0.5, 0.22, z))
-      for (let j = 0; j < 6; j++) {
-        p.push(
-          part(
-            new ConeGeometry(0.095, 0.34, 4).rotateY(i + j),
-            tint(C.wheat, i * 6 + j, 0.09),
-            -1.24 + j * 0.3,
-            0.37,
-            z,
-          ),
-        )
-      }
-    }
-    // Clôture: quelques traits sombres qui donnent une échelle au champ.
-    for (let i = 0; i < 6; i++) {
-      p.push(
-        part(new CylinderGeometry(0.035, 0.04, 0.5, 5), C.woodDark, -1.4 + i * 0.36, 0.31, -0.98),
-      )
-    }
-    p.push(part(new BoxGeometry(1.94, 0.05, 0.05), C.wood, -0.5, 0.44, -0.98))
-    p.push(part(new BoxGeometry(1.94, 0.05, 0.05), C.wood, -0.5, 0.29, -0.98))
-
-    // Une vraie petite maison: socle froid, mur clair, toit de tuiles. C'est là que
-    // le vocabulaire de la barre entre dans le jeu.
-    const sx = 1.16
-    masonry(p, 1.0, 1.06, 2, 0.13, sx, 0, 0.06, 3)
-    p.push(part(new BoxGeometry(0.92, 0.78, 0.98), C.plaster, sx, 0.65, 0.06))
-    p.push(part(new BoxGeometry(0.07, 0.8, 0.07), C.woodDark, sx - 0.45, 0.65, 0.53))
-    p.push(part(new BoxGeometry(0.07, 0.8, 0.07), C.woodDark, sx + 0.45, 0.65, 0.53))
-    p.push(part(new BoxGeometry(0.94, 0.08, 0.07), C.woodDark, sx, 0.7, 0.53))
-    p.push(part(new BoxGeometry(0.3, 0.5, 0.06), C.woodDark, sx - 0.19, 0.51, 0.56))
-    p.push(part(new BoxGeometry(0.26, 0.26, 0.05), C.bone, sx + 0.23, 0.78, 0.56))
-    p.push(part(new BoxGeometry(0.16, 0.16, 0.07), C.glass, sx + 0.23, 0.78, 0.57))
-    const roof: BufferGeometry[] = []
-    gableRoof(roof, 1.14, 0.62, 0.46, 1.04, 5)
-    for (const g of roof) p.push(g.translate(sx, 0, 0.06))
-    return this.mesh(p)
-  }
-
-  private makeGranary(): Object3D {
-    const p: BufferGeometry[] = []
-    for (const [x, z] of [
-      [-0.55, -0.55],
-      [0.55, -0.55],
-      [-0.55, 0.55],
-      [0.55, 0.55],
-    ] as const) {
-      p.push(part(new BoxGeometry(0.34, 0.2, 0.34), C.stoneDark, x, 0.1, z))
-      p.push(part(new CylinderGeometry(0.08, 0.09, 0.62, 6), C.wood, x, 0.51, z))
-      // Rondelle anti-rongeurs: le petit disque clair qui fait "grenier sur pilotis".
-      p.push(part(new CylinderGeometry(0.24, 0.24, 0.06, 10), C.bone, x, 0.84, z))
-    }
-    p.push(part(new BoxGeometry(1.52, 0.14, 1.52), C.woodDark, 0, 0.94, 0))
-    p.push(part(new BoxGeometry(1.34, 0.86, 1.34), C.wall, 0, 1.44, 0))
-    // Colombage: montants sombres sur mur clair, la densité chaude de la barre.
-    for (const [ox, oz, rot] of [
-      [0, 0.68, 0],
-      [0, -0.68, 0],
-      [0.68, 0, 1],
-      [-0.68, 0, 1],
-    ] as const) {
-      for (let i = 0; i < 4; i++) {
-        const t = -0.5 + i * 0.335
-        const g = new BoxGeometry(0.08, 0.88, 0.06)
-        if (rot) g.rotateY(Math.PI / 2)
-        p.push(part(g, C.woodDark, ox + (rot ? 0 : t), 1.44, oz + (rot ? t : 0)))
-      }
-      const rail = new BoxGeometry(1.38, 0.09, 0.06)
-      if (rot) rail.rotateY(Math.PI / 2)
-      p.push(part(rail, C.woodDark, ox, 1.62, oz))
-    }
-    p.push(part(new BoxGeometry(0.42, 0.56, 0.08), C.woodDark, 0, 1.3, 0.7))
-    p.push(part(new BoxGeometry(0.52, 0.08, 0.1), C.bone, 0, 1.62, 0.71))
-    gableRoof(p, 1.66, 0.86, 0.66, 1.87, 6)
-    // Échelle vers la porte.
-    for (let i = 0; i < 4; i++) {
-      p.push(
-        part(
-          new CylinderGeometry(0.028, 0.028, 0.34, 5).rotateZ(Math.PI / 2),
-          C.wood,
-          0,
-          0.34 + i * 0.24,
-          0.92 - i * 0.05,
-        ),
-      )
-    }
-    p.push(
-      part(new CylinderGeometry(0.035, 0.035, 1.25, 5).rotateX(0.22), C.wood, -0.17, 0.72, 0.98),
-    )
-    p.push(
-      part(new CylinderGeometry(0.035, 0.035, 1.25, 5).rotateX(0.22), C.wood, 0.17, 0.72, 0.98),
-    )
-    return this.mesh(p)
-  }
-
-  private makeAqueduct(): Object3D {
-    const p: BufferGeometry[] = []
-    // Naissance de l'arc à mi-hauteur: si la pile monte trop haut, il ne reste
-    // qu'un trou de souris et l'aqueduc redevient un mur.
-    const spring = 0.95
-    const radius = 0.52
-    // Pierre CHAUDE (grès/enduit): le gris bleu d'acier faisait lire l'ouvrage
-    // comme un pont cassé abandonné, hors palette du village. Les assises
-    // sombres restent au-dessus du rockDark: à l'ombre, tout ce qui est plus
-    // sombre vire au bleu.
-    const warm = tint(C.plaster, 3, 0.04)
-    const warmDark = PALETTE.rock
-    const warmLight = C.ridge
-    for (let i = 0; i < 3; i++) {
-      const x = -1.32 + i * 1.32
-      masonry(p, 0.5, 0.62, 7, 0.226, x, 0, 0, i * 11, warm, warmDark)
-      if (i < 2) {
-        // Claveaux: neuf blocs le long de l'arc, c'est ce qui fait "taillé" plutôt
-        // que "moulé".
-        for (let k = 0; k <= 8; k++) {
-          const a = (k / 8) * Math.PI
-          p.push(
-            part(
-              new BoxGeometry(0.21, 0.22, 0.64).rotateZ(Math.PI / 2 - a),
-              tint(k % 2 === 0 ? warm : warmLight, k * 7 + i, 0.06),
-              x + 0.66 - Math.cos(a) * radius,
-              spring + Math.sin(a) * radius,
-              0,
-            ),
-          )
-        }
-      }
-    }
-    masonry(p, 3.14, 0.56, 2, 0.22, 0, 1.58, 0, 21, warm, warmDark)
-    p.push(part(new BoxGeometry(3.34, 0.12, 0.92), warm, 0, 2.08, 0))
-    p.push(part(new BoxGeometry(3.18, 0.14, 0.78), warm, 0, 2.21, 0))
-    p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, 0.29))
-    p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, -0.29))
-    p.push(part(new BoxGeometry(3.06, 0.16, 0.38), C.water, 0, 2.4, 0))
-    p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, 0.29))
-    p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, -0.29))
-    return this.mesh(p)
-  }
-
-  update(dt: number, t: number): void {
+  update(_dt: number, t: number): void {
     // Flame flicker — cheap, and the only thing moving when the settler is away.
     const f = 1 + Math.sin(t * 11) * 0.12 + Math.sin(t * 6.3) * 0.08
     this.flame.scale.set(1, f, 1)
@@ -1983,18 +1972,5 @@ export class Village {
     }
     this.smoke.instanceMatrix.needsUpdate = true
     if (this.smoke.instanceColor) this.smoke.instanceColor.needsUpdate = true
-
-    for (let i = this.growing.length - 1; i >= 0; i--) {
-      const p = this.growing[i]!
-      p.age += dt * 1.6
-      // Overshoot then settle: the building lands with a bit of weight.
-      const k = Math.min(1, p.age)
-      const scale = k < 1 ? 1.12 * (1 - Math.pow(1 - k, 3)) - 0.12 * Math.pow(1 - k, 2) : 1
-      p.object.scale.setScalar(Math.max(0.001, scale))
-      if (k >= 1) {
-        p.object.scale.setScalar(1)
-        this.growing.splice(i, 1)
-      }
-    }
   }
 }

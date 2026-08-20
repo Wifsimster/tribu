@@ -9,6 +9,7 @@ import { Stage } from './render/scene'
 import { Island, growthForAge } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
+import { Fauna } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
@@ -29,10 +30,11 @@ let expPhase: 'none' | 'walking' | 'sailed' = 'none'
 let island!: Island
 let village!: Village
 let settler!: Settler
+let fauna!: Fauna
 const nodeSpots = new Map<string, Vector3[]>()
 
 function disposeWorld(): void {
-  for (const g of [island?.group, village?.group, settler?.group]) {
+  for (const g of [island?.group, village?.group, settler?.group, fauna?.group]) {
     if (!g) continue
     stage.scene.remove(g)
     g.traverse((o) => {
@@ -50,7 +52,10 @@ function buildWorld(): void {
   island = new Island(game.save.seed, growthForAge(game.save.age))
   village = new Village(island)
   settler = new Settler(island)
-  stage.scene.add(island.group, village.group, settler.group)
+  // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
+  // du rivage de CETTE île-là.
+  fauna = new Fauna(island)
+  stage.scene.add(island.group, village.group, settler.group, fauna.group)
   stage.islandRadius = island.radius
   village.sync(game.buildings)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
@@ -406,6 +411,8 @@ function frame(now: number): void {
     expPhase = 'none'
   }
   village.update(dt, elapsed)
+  fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
+  fauna.update(dt, elapsed, settler.group.position, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
   const daylight = stage.setDaylight(
@@ -442,6 +449,9 @@ requestAnimationFrame((t) => {
   ready: true,
   stage,
   game,
+  // Recréés à chaque buildWorld : le harnais passe par des getters.
+  fauna: () => fauna,
+  settler: () => settler,
 }
 
 // Credit real elapsed time when the tab comes back, and never lose a session.
