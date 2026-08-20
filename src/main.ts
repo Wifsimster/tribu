@@ -416,7 +416,6 @@ function frame(now: number): void {
     expPhase = 'none'
   }
   village.update(dt, elapsed)
-  island.tickWater(elapsed)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure

@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.7.2',
+    title: "L'eau calme retrouvée",
+    items: [
+      "Retour à la mer de la 1.6 : l'aplat profond et uniforme, sans taches sombres ni voile laiteux — la houle de maillage de la 1.7.0 créait des artefacts, elle est retirée.",
+      'Le chemin de lumière garde son scintillement dérivant ; les vaguelettes et reflets restent.',
+    ],
+  },
+  {
     version: '1.7.1',
     title: 'Des conifères dignes de ce nom',
     items: [
