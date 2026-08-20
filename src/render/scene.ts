@@ -1,7 +1,9 @@
 import {
   ACESFilmicToneMapping,
   AdditiveBlending,
+  BackSide,
   Color,
+  CylinderGeometry,
   BoxGeometry,
   IcosahedronGeometry,
   InstancedMesh,
@@ -231,7 +233,10 @@ export class Stage {
     this.moonDisc.position.z = 1
     this.moonGlow.add(this.moonDisc)
     this.moonGlow.renderOrder = 989
-    this.camera.add(this.moonGlow)
+    // Astre-monde : il se lève, traverse et se couche à son propre azimut —
+    // orbiter le déplace dans le cadre au lieu de l'y épingler.
+    this.moonGlow.scale.setScalar(2.1)
+    this.scene.add(this.moonGlow)
 
     // Étoiles : un semis déterministe cuit dans une texture, sur un quad qui
     // ne couvre que la bande de ciel au-dessus de l'île. Légères — elles
@@ -262,13 +267,17 @@ export class Stage {
       toneMapped: false,
       opacity: 0,
     })
-    // La texture se répète horizontalement pour garder des cellules CARRÉES à
-    // l'écran : plaquée telle quelle sur un quad six fois plus large que haut,
-    // chaque étoile devenait une traînée floue.
+    // Voûte ancrée au MONDE : un cylindre autour de la scène, vu de
+    // l'intérieur. Orbiter fait défiler les étoiles comme un vrai ciel — le
+    // quad écran d'avant les collait à la caméra. Répétition horizontale pour
+    // des cellules carrées, et une lente dérive sidérale.
     ;(starMat.map as DataTexture).wrapS = RepeatWrapping
-    this.stars = new Mesh(new PlaneGeometry(1, 1), starMat)
-    this.stars.renderOrder = 988
-    this.camera.add(this.stars)
+    ;(starMat.map as DataTexture).repeat.set(7, 1)
+    starMat.side = BackSide
+    starMat.depthWrite = false
+    this.stars = new Mesh(new CylinderGeometry(320, 320, 130, 48, 1, true), starMat)
+    this.stars.position.y = -14
+    this.scene.add(this.stars)
 
     // Nuages : des blobs facettés dans le style du jeu, une seule géométrie
     // instanciée (un draw call), éclairés par la scène — blancs le jour,
@@ -754,24 +763,23 @@ export class Stage {
     // écran propre, hauteur plafonnée.
     const nightPhase = this.dayU >= 0.5 ? (this.dayU - 0.5) * 2 : 0
     const moonAzWorld = NOON_AZ - ARC - 0.3 + nightPhase * 0.6
-    let mAz = moonAzWorld - (this.azimuth + Math.PI)
-    while (mAz > Math.PI) mAz -= Math.PI * 2
-    while (mAz < -Math.PI) mAz += Math.PI * 2
     const moonElev = Math.max(0, -this.sunElev)
-    const mx = D * Math.tan(Math.max(-1.2, Math.min(1.2, mAz)))
-    const my = halfH * (0.52 + Math.min(moonElev, 0.5) * 0.6)
-    this.moonGlow.position.set(mx, my, -D)
-    this.moonGlow.scale.setScalar((halfH * 1.7) / 72)
-    const mEdge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(mx))
-    ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase * mEdge
-    ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase * mEdge
-    this.moonGlow.visible = this.moonDiscBase * mEdge > 0.01
+    // La lune vit dans le monde : elle se lève bas au col d'horizon, culmine,
+    // et l'orbite du joueur la déplace naturellement dans le cadre.
+    this.moonGlow.position.set(
+      Math.sin(moonAzWorld) * 300,
+      // Course basse : vue plongeante oblige, le ciel visible est sous
+      // l'horizontale — culmination à −27 pour rester dans le cadre.
+      -60 + Math.min(moonElev, 0.55) * 60,
+      Math.cos(moonAzWorld) * 300,
+    )
+    this.moonGlow.lookAt(this.camera.position)
+    ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase
+    ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase
+    this.moonGlow.visible = this.moonDiscBase > 0.01
 
-    // Bande de ciel : du haut du cadre jusqu'au-dessus de l'île, jamais dessus.
-    this.stars.position.set(0, halfH * 0.68, -D + 0.5)
-    this.stars.scale.set(halfW * 2.4, halfH * 0.66, 1)
-    ;((this.stars.material as MeshBasicMaterial).map as DataTexture).repeat.x =
-      (halfW * 2.4) / (halfH * 0.66)
+    // La voûte tourne imperceptiblement : le ciel vit même sans orbiter.
+    this.stars.rotation.y = this.skyTime * 0.006
     ;(this.stars.material as MeshBasicMaterial).opacity = this.starsBase
     this.stars.visible = this.starsBase > 0.02
     // La brume ne commence qu'au-delà de l'île entière. À 0,95·d elle mordait
