@@ -284,7 +284,10 @@ export class Stage {
     const top = PALETTE.sky.clone().lerp(new Color(sky), 0.35)
     const bottom = this.hazeFor(sky)
     return rampTexture(2, 64, (_u, v, out) => {
-      out.copy(bottom).lerp(top, smoothstep(0, 0.85, v))
+      // v=0 est rendu EN HAUT de l'écran (convention DataTexture en fond de
+      // scène) : bleu profond au sommet, brume vers l'horizon, transition
+      // large pour ne jamais lire comme une barre.
+      out.copy(top).lerp(bottom, smoothstep(0.12, 1, v))
       return 1
     })
   }
@@ -372,7 +375,10 @@ export class Stage {
       // fait le point chaud, le dégradé fait la nappe.
       const bottom = haze.clone().lerp(SUN_LOW, w * 0.62)
       this.sky = rampTexture(2, 64, (_u, v, out) => {
-        out.copy(bottom).lerp(top, smoothstep(0, 0.85, v))
+        // v=0 est rendu EN HAUT de l'écran (convention DataTexture en fond de
+      // scène) : bleu profond au sommet, brume vers l'horizon, transition
+      // large pour ne jamais lire comme une barre.
+      out.copy(top).lerp(bottom, smoothstep(0.12, 1, v))
         return 1
       })
       this.scene.background = this.sky
