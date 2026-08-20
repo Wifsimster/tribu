@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.3.1',
+    title: 'Petit correctif de cap',
+    items: [
+      "Le choix de destination se referme bien une fois l'expédition lancée — il restait affiché à l'écran pendant tout le voyage.",
+    ],
+  },
+  {
     version: '2.3.0',
     title: 'La mer se mérite',
     items: [

@@ -279,7 +279,12 @@ export class Hud {
     this.destOpen = open
     const host = el('dest-chooser')
     host.hidden = !open
-    if (!open) return
+    if (!open) {
+      // Ceinture et bretelles : vidé, le panneau ne peut rien montrer même si
+      // une règle CSS lui rendait un jour son display.
+      host.textContent = ''
+      return
+    }
     host.textContent = ''
     for (const d of DESTINATIONS) {
       const sec = this.game.expeditionDuration(d.id)

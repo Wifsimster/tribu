@@ -982,6 +982,11 @@ body.night .age-bar {
 .res.more:active { transform: scale(0.94); }
 
 /* Choix de destination : trois tempéraments au-dessus du bouton Expédition. */
+/* Le sélecteur de classe bat la règle UA pour [hidden] : sans cette ligne,
+ * le panneau ne se fermait JAMAIS une fois rempli (retour joueur v2.3.0). */
+.dest-chooser[hidden] {
+  display: none;
+}
 .dest-chooser {
   display: flex;
   flex-direction: column;
