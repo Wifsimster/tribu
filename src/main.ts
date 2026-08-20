@@ -317,6 +317,7 @@ function frame(now: number): void {
     forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
   )
   island.setDaylight(daylight)
+  stage.driftSky(dt)
   // Hystérésis : l'encre du HUD ne doit pas clignoter pendant tout un crépuscule.
   if (hudNight ? daylight > 0.55 : daylight < 0.4) {
     hudNight = !hudNight

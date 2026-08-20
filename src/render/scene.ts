@@ -2,6 +2,11 @@ import {
   ACESFilmicToneMapping,
   AdditiveBlending,
   Color,
+  BoxGeometry,
+  IcosahedronGeometry,
+  InstancedMesh,
+  MeshToonMaterial,
+  Object3D,
   DirectionalLight,
   Fog,
   HemisphereLight,
@@ -16,6 +21,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import type { DataTexture } from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
 import { PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
@@ -259,6 +265,61 @@ export class Stage {
     this.stars.renderOrder = 988
     this.camera.add(this.stars)
 
+    // Nuages : des blobs facettés dans le style du jeu, une seule géométrie
+    // instanciée (un draw call), éclairés par la scène — blancs le jour,
+    // cuivrés au couchant, éteints la nuit — et qui PORTENT OMBRE : leur
+    // passage devant le soleil glisse sur l'île.
+    const puff = (r: number, sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
+      const g = new IcosahedronGeometry(r, 0)
+      g.scale(sx, sy, sz)
+      g.translate(x, y, z)
+      return g
+    }
+    const cloudGeo = mergeGeometries([
+      puff(1.6, 1.4, 0.55, 1.0, 0, 0, 0),
+      puff(1.1, 1.2, 0.5, 0.9, 1.6, 0.15, 0.3),
+      puff(0.9, 1.1, 0.45, 0.9, -1.5, 0.1, -0.2),
+      puff(0.7, 1.0, 0.4, 0.8, 0.4, 0.45, -0.6),
+    ])!
+    const cloudMat = new MeshToonMaterial({ color: '#f6fbff', transparent: true, opacity: 0.62 })
+    this.clouds = new InstancedMesh(cloudGeo, cloudMat, 7)
+    this.clouds.castShadow = true
+    this.clouds.frustumCulled = false
+    for (let i = 0; i < 7; i++) {
+      // Semis déterministe : anneau large au-dessus de l'île, tailles variées.
+      const h = (n: number) => {
+        const s = Math.sin(i * 37.7 + n * 91.3) * 43758.5453
+        return s - Math.floor(s)
+      }
+      // Bas et proches : au-dessus de l'île ils restent dans le cadre de la
+      // caméra plongeante ET dans le frustum d'ombre — leurs ombres glissent.
+      this.cloudState.push({
+        x: (h(1) - 0.5) * 72,
+        y: 16 + h(2) * 6,
+        z: (h(3) - 0.5) * 72,
+        s: 0.9 + h(4) * 1.0,
+        v: 0.55 + h(5) * 0.7,
+        rot: h(6) * Math.PI * 2,
+      })
+    }
+    this.scene.add(this.clouds)
+
+    // Oiseaux : cinq silhouettes en V qui traversent le ciel par vols
+    // aléatoires, de jour seulement — la nuit ils se perchent. Un draw call.
+    const wing = (sign: number) => {
+      const g = new BoxGeometry(0.1, 0.02, 0.4)
+      g.translate(0, 0, sign * 0.22)
+      g.rotateX(sign * 0.42)
+      return g
+    }
+    const body = new BoxGeometry(0.2, 0.05, 0.09)
+    const birdGeo = mergeGeometries([wing(1), wing(-1), body])!
+    const birdMat = new MeshToonMaterial({ color: '#39404a' })
+    this.birds = new InstancedMesh(birdGeo, birdMat, 5)
+    this.birds.frustumCulled = false
+    this.birds.visible = false
+    this.scene.add(this.birds)
+
     this.resize()
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('orientationchange', () => this.resize())
@@ -269,6 +330,86 @@ export class Stage {
   private readonly moonGlow: Mesh
   private readonly moonDisc: Mesh
   private readonly stars: Mesh
+  private readonly clouds: InstancedMesh
+  private readonly cloudState: { x: number; y: number; z: number; s: number; v: number; rot: number }[] = []
+  private readonly cloudDummy = new Object3D()
+
+  private readonly birds: InstancedMesh
+  private skyTime = 0
+  private flock = { active: false, t: 0, cooldown: 6, dir: 0.9, y: 18, side: 1 }
+
+  /** Vie du ciel : dérive des nuages, vols d'oiseaux. Appelé chaque frame. */
+  driftSky(dt: number): void {
+    this.skyTime += dt
+    this.driftClouds(dt)
+    this.updateBirds(dt)
+  }
+
+  private updateBirds(dt: number): void {
+    const f = this.flock
+    if (!f.active) {
+      f.cooldown -= dt
+      this.birds.visible = false
+      // Ils ne décollent qu'en plein jour.
+      if (f.cooldown <= 0 && this.lastDaylight > 0.6) {
+        f.active = true
+        f.t = 0
+        f.dir = Math.random() * Math.PI * 2
+        f.y = 9 + Math.random() * 5
+        f.side = Math.random() < 0.5 ? 1 : -1
+      }
+      return
+    }
+    f.t += dt / 26
+    if (f.t >= 1 || this.lastDaylight < 0.35) {
+      f.active = false
+      f.cooldown = 18 + Math.random() * 45
+      this.birds.visible = false
+      return
+    }
+    this.birds.visible = true
+    const cx = Math.cos(f.dir)
+    const sx = Math.sin(f.dir)
+    const along = -46 + f.t * 92
+    for (let i = 0; i < 5; i++) {
+      // Formation en V lâche : décalés derrière et de part et d'autre du guide.
+      const rank = Math.ceil(i / 2)
+      const lateral = (i % 2 === 0 ? 1 : -1) * rank * 2.1 * f.side
+      const back = rank * 2.6
+      const px = cx * (along - back) - sx * lateral
+      const pz = sx * (along - back) + cx * lateral
+      const flap = Math.sin(this.skyTime * 9 + i * 1.7)
+      this.cloudDummy.position.set(px, f.y + Math.sin(this.skyTime * 2.2 + i) * 0.4, pz)
+      this.cloudDummy.rotation.set(flap * 0.45, -f.dir + Math.PI / 2, 0)
+      this.cloudDummy.scale.setScalar(1)
+      this.cloudDummy.updateMatrix()
+      this.birds.setMatrixAt(i, this.cloudDummy.matrix)
+    }
+    this.birds.instanceMatrix.needsUpdate = true
+  }
+
+  /** Dérive lente sous un vent diagonal constant ; réapparition de l'autre côté. */
+  private driftClouds(dt: number): void {
+    const wx = 0.82
+    const wz = 0.44
+    for (let i = 0; i < this.cloudState.length; i++) {
+      const c = this.cloudState[i]!
+      c.x += wx * c.v * dt
+      c.z += wz * c.v * dt
+      if (c.x > 42) {
+        c.x = -42
+        c.z = ((Math.sin(c.rot * 12.9) * 43758.5453) % 1) * 34
+      }
+      if (c.z > 42) c.z = -42
+      this.cloudDummy.position.set(c.x, c.y, c.z)
+      this.cloudDummy.rotation.y = c.rot
+      // Aplatis : des voiles, pas des cumulus.
+      this.cloudDummy.scale.set(c.s, c.s * 0.62, c.s)
+      this.cloudDummy.updateMatrix()
+      this.clouds.setMatrixAt(i, this.cloudDummy.matrix)
+    }
+    this.clouds.instanceMatrix.needsUpdate = true
+  }
   private sunAz = 0
   private sunElev = 1
   private dayU = 0.32
