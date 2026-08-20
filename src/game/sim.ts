@@ -405,11 +405,15 @@ export class Game {
     }
   }
 
-  /** Plancher à 30 s : les vitesses cumulées de fin de partie réduisaient le
-   *  voyage à 17 s, et le butin fixe en faisait la stratégie dominante (8× la
-   *  récolte focalisée en le spammant). */
+  /** Les voyages s'allongent avec les âges — le monde à explorer grandit —
+   *  et la vitesse AMORTIT au lieu de diviser : cumulées, les technos de
+   *  vitesse atteignent ×63 et réduisaient tout voyage tardif au plancher,
+   *  les rendant inutiles. Ici : ~90 s au Paléolithique, ~2 min à l'âge du
+   *  fer équipé, ~4 min à l'ère contemporaine — et le butin suit la durée. */
   expeditionDuration(): number {
-    return Math.max(30, EXPEDITION_SECONDS / this.expeditionSpeed)
+    const base = EXPEDITION_SECONDS + this.save.age * 45
+    const damp = 0.45 + 0.55 / this.expeditionSpeed
+    return Math.max(45, base * damp)
   }
 
   /** Les provisions suivent l'économie réelle : ~30 secondes de récolte de
