@@ -238,6 +238,68 @@ export class Stage {
     this.moonGlow.scale.setScalar(2.1)
     this.scene.add(this.moonGlow)
 
+    // La traînée de lumière sur l'eau : le chemin scintillant vers l'astre —
+    // soleil le jour (embrasé aux heures basses), lune la nuit. Un quad posé
+    // sur la mer, strie longitudinale + scintillements cuits, additif.
+    const glintHash = (n: number): number => {
+      const s = Math.sin(n) * 43758.5453
+      return s - Math.floor(s)
+    }
+    const glintMat = new MeshBasicMaterial({
+      map: rampTexture(96, 256, (u, v, out) => {
+        const across = Math.pow(Math.max(0, 1 - Math.abs(u - 0.5) * 2), 2.6)
+        const along = smoothstep(0, 0.18, v) * (1 - smoothstep(0.6, 1, v))
+        const cell = Math.floor(u * 24) * 57.3 + Math.floor(v * 90) * 131.7
+        const sparkle = 0.45 + 0.55 * glintHash(cell)
+        out.set('#ffffff')
+        return across * along * sparkle
+      }),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      opacity: 0,
+    })
+    this.glint = new Mesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2), glintMat)
+    this.glint.position.y = 0.06
+    this.glint.renderOrder = 2
+    this.scene.add(this.glint)
+
+    // Houle : des vaguelettes qui naissent, dérivent sous le vent des nuages
+    // et se dissolvent. Un seul draw call, la respiration de la mer.
+    const waveMat = new MeshBasicMaterial({
+      map: rampTexture(64, 16, (u, v, out) => {
+        const across = Math.pow(Math.max(0, 1 - Math.abs(v - 0.5) * 2), 1.8)
+        const along = Math.sin(Math.min(1, Math.max(0, u)) * Math.PI)
+        out.set('#dff2f6')
+        return across * along
+      }),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      opacity: 0.11,
+    })
+    this.waves = new InstancedMesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2), waveMat, 14)
+    this.waves.frustumCulled = false
+    for (let i = 0; i < 14; i++) {
+      const h = (n: number) => {
+        const s = Math.sin(i * 43.7 + n * 91.1) * 43758.5453
+        return s - Math.floor(s)
+      }
+      const r = 27 + h(1) * 65
+      const a = h(2) * Math.PI * 2
+      this.waveState.push({
+        x: Math.cos(a) * r,
+        z: Math.sin(a) * r,
+        len: 3 + h(3) * 4,
+        rot: h(4) * 0.6 - 0.3,
+        t: h(5) * 1,
+        life: 5 + h(6) * 5,
+      })
+    }
+    this.scene.add(this.waves)
+
     // Étoiles : un semis déterministe cuit dans une texture, sur un quad qui
     // ne couvre que la bande de ciel au-dessus de l'île. Légères — elles
     // habillent la nuit, elles ne la signent pas.
@@ -359,6 +421,9 @@ export class Stage {
   private readonly sunDisc: Mesh
   private readonly moonGlow: Mesh
   private readonly moonDisc: Mesh
+  private readonly glint: Mesh
+  private readonly waves: InstancedMesh
+  private readonly waveState: { x: number; z: number; len: number; rot: number; t: number; life: number }[] = []
   private readonly stars: Mesh
   private readonly clouds: InstancedMesh
   private readonly cloudState: { x: number; y: number; z: number; s: number; v: number; rot: number; phase: 'in' | 'live' | 'out' | 'wait'; t: number; life: number; wait: number }[] = []
@@ -379,9 +444,42 @@ export class Stage {
   driftSky(dt: number): void {
     this.skyTime += dt
     this.tickWeather(dt)
+    this.updateWaves(dt)
     this.driftClouds(dt)
     this.updateBirds(dt)
     this.updateRain(dt)
+  }
+
+  private updateWaves(dt: number): void {
+    const wx = 0.82
+    const wz = 0.44
+    // Plus marquées par vent couvert, presque lisses la nuit calme.
+    const mat = this.waves.material as MeshBasicMaterial
+    mat.opacity = (0.07 + 0.1 * this.wCur.grey) * (0.45 + 0.55 * this.lastDaylight)
+    this.waves.visible = mat.opacity > 0.015
+    if (!this.waves.visible) return
+    for (let i = 0; i < this.waveState.length; i++) {
+      const w = this.waveState[i]!
+      w.t += dt / w.life
+      w.x += wx * 0.5 * dt
+      w.z += wz * 0.5 * dt
+      if (w.t >= 1) {
+        w.t = 0
+        const a = Math.random() * Math.PI * 2
+        const r = 27 + Math.random() * 65
+        w.x = Math.cos(a) * r
+        w.z = Math.sin(a) * r
+        w.len = 3 + Math.random() * 4
+        w.life = 5 + Math.random() * 5
+      }
+      const grow = Math.sin(w.t * Math.PI)
+      this.cloudDummy.position.set(w.x, 0.05, w.z)
+      this.cloudDummy.rotation.set(0, Math.atan2(wx, wz) + w.rot, 0)
+      this.cloudDummy.scale.set(w.len * (0.6 + grow * 0.4), 1, 0.5 + grow * 0.3)
+      this.cloudDummy.updateMatrix()
+      this.waves.setMatrixAt(i, this.cloudDummy.matrix)
+    }
+    this.waves.instanceMatrix.needsUpdate = true
   }
 
   private tickWeather(dt: number): void {
@@ -777,6 +875,28 @@ export class Stage {
     ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase
     ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase
     this.moonGlow.visible = this.moonDiscBase > 0.01
+
+    // Traînée sur l'eau : vers le soleil tant qu'il fait jour, vers la lune
+    // la nuit. Large et ardente aux heures basses, fine et froide sous la lune.
+    const night = this.moonDiscBase > 0.05
+    const gAz = night ? moonAzWorld : this.sunAz
+    const gMat = this.glint.material as MeshBasicMaterial
+    if (night) {
+      gMat.color.set('#9fc0e6')
+      gMat.opacity = this.moonDiscBase * 0.34
+    } else {
+      const w = 1 - smoothstep(0.05, 0.42, this.sunElev)
+      gMat.color.set('#ffe9b8').lerp(SUN_LOW, w)
+      gMat.opacity = this.lastDaylight * (0.14 + 0.4 * w)
+    }
+    const gLen = 92
+    const gWidth = night ? 6 : 7 + 8 * (1 - smoothstep(0.05, 0.42, this.sunElev))
+    this.glint.scale.set(gWidth, 1, gLen)
+    this.glint.rotation.y = gAz
+    this.glint.position.set(Math.sin(gAz) * (26 + gLen / 2), 0.06, Math.cos(gAz) * (26 + gLen / 2))
+    // Il scintille : une respiration lente suffit à faire vivre l'eau.
+    gMat.opacity *= 0.86 + 0.14 * Math.sin(this.skyTime * 2.6)
+    this.glint.visible = gMat.opacity > 0.015
 
     // La voûte tourne imperceptiblement : le ciel vit même sans orbiter.
     this.stars.rotation.y = this.skyTime * 0.006

@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.5.1',
+    title: 'La mer vivante et le village vrai',
+    items: [
+      "Le village pousse en hameaux organiques sur toute l'île — fini la couronne géométrique autour du feu.",
+      "La lumière se reflète sur l'eau : chemin doré vers le soleil couchant, traînée bleutée sous la lune.",
+      'Une houle légère anime la mer, plus marquée par temps couvert.',
+      "Les étoiles ne transpercent plus l'île en vue rasante.",
+    ],
+  },
+  {
     version: '1.5.0',
     title: "L'île s'anime",
     items: [

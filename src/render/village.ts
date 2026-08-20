@@ -33,6 +33,7 @@ import type { Island } from './island'
  *  à l'axe de la caméra par défaut: sinon le colon rentre dans les flammes et sa
  *  silhouette se noie dedans. */
 const HEARTH = { x: -1.15, z: 1.15 }
+const tmpSlot = new Vector3()
 
 /** Le campement de départ, en coordonnées locales au foyer. Il est composé dans
  *  l'espace de l'écran et non dans celui du monde: à la vue par défaut, l'axe
@@ -1259,49 +1260,84 @@ export class Village {
    *  dégagement) empêche seulement les toits de s'interpénétrer.
    *  `central` est réservé aux monuments (campanile, moulin, aqueduc): un
    *  ouvrage urbain relégué seul en rase campagne lit comme une ruine. */
+  /** Un hachage stable par rang de placement : le plan du village est
+   *  déterministe pour une île donnée, mais jamais géométrique. */
+  private static jitter(n: number, k: number): number {
+    const s = Math.sin(n * 127.1 + k * 311.7) * 43758.5453
+    return s - Math.floor(s)
+  }
+
+  /** Croissance organique en hameaux, sur toute l'île. Le verdict du joueur
+   *  était sans appel : la couronne régulière autour du feu lisait comme un
+   *  cercle de pierres, pas comme un village. Ici, chaque bâtiment s'installe
+   *  près d'un voisin (distance de ruelle ~3,5), un nouveau hameau s'ouvre
+   *  tous les cinq bâtiments un peu plus loin, et le terrain doit être dégagé
+   *  (ni arbre, ni camp, ni pente). */
   private nextSlot(spacing = 3.4, footprint = 0, central = false): Vector3 {
+    const n = this.taken.length
+    const newHamlet = !central && n > 2 && n % 5 === 4
     let best: Vector3 | null = null
     let bestScore = Infinity
-    for (const slot of this.island.buildSlots) {
-      const r = Math.hypot(slot.x, slot.z)
-      if (r < 4) continue
+    for (const c of this.island.cells) {
+      if (c.beach || c.trod) continue
+      const r = Math.hypot(c.x, c.z)
+      if (r < 4.2) continue
+      const slot = tmpSlot.set(c.x, c.height, c.z)
       if (this.taken.some((t) => t.distanceToSquared(slot) < spacing * spacing)) continue
-      // Le campement de départ tient sa place, chacun selon son emprise: un
-      // écart uniforme aurait soit laissé une hutte dans la tente, soit épuisé
-      // les emplacements et renvoyé le quatrième bâtiment sur le tas de bois.
-      if (
-        CAMP_BLOCKERS.some(
-          (b) => Math.hypot(slot.x - b.x, slot.z - b.z) < b.r + 1.9,
-        )
-      ) {
-        continue
-      }
+      if (CAMP_BLOCKERS.some((b) => Math.hypot(c.x - b.x, c.z - b.z) < b.r + 1.9)) continue
+      if (this.treeDist(c.x, c.z) < 1.25) continue
       if (!this.flatEnough(slot, footprint)) continue
-      // L'axe (+x, +z) est celui de la caméra au premier chargement.
-      const toward = (slot.x + slot.z) / (Math.SQRT2 * r)
-      const score = central
-        ? r * 2.2 + Math.max(0, toward) * 3
-        : r + Math.max(0, toward) * 7 + (r > 6.2 ? 40 : 0)
+
+      let dNear = Infinity
+      for (const t of this.taken) dNear = Math.min(dNear, t.distanceTo(slot))
+      const j = Village.jitter(n, c.gx * 131 + c.gz) * 2.2
+      let score: number
+      if (central) {
+        score = r * 2.2 + j
+      } else if (this.taken.length === 0) {
+        // Premier bâtiment : à portée du feu, sans le toucher.
+        score = Math.abs(r - 6) * 2 + j
+      } else if (newHamlet) {
+        // Fondation d'un nouveau hameau : à l'écart des autres, pas en exil.
+        score = Math.abs(dNear - 8.5) * 1.6 + Math.max(0, r - 16) * 2 + j
+      } else {
+        // Extension du bâti : à distance de ruelle du voisin le plus proche.
+        score = Math.abs(dNear - 3.5) * 2.4 + Math.max(0, r - 15) * 1.2 + j
+      }
       if (score < bestScore) {
         bestScore = score
-        best = slot
+        best = slot.clone()
       }
     }
-    // Aucun sol plat de cette taille: mieux vaut un léger dénivelé qu'un exil.
     if (!best && footprint > 0) return this.nextSlot(spacing, 0, central)
     if (!best && spacing > 1.4) return this.nextSlot(spacing * 0.65, 0, central)
-    // Plus une seule case libre : spirale d'or vers l'extérieur plutôt qu'un
-    // point fixe — vingt-et-un savoirs empilés au même endroit, c'était ça le
-    // « village vide » : tout existait, tout se cachait dans le même mètre.
-    // Le rayon est PLAFONNÉ: la spirale qui grandissait sans fin expédiait les
-    // époques récentes dans la forêt, hors du cadrage par défaut.
-    const n = this.taken.length
-    const fr = 5.2 + Math.min(n * 0.3, 2.4)
+    const fr = 6 + Math.min(n * 0.4, 6)
     const fallback = new Vector3(Math.cos(n * 2.4) * fr, 0, Math.sin(n * 2.4) * fr)
     fallback.y = this.island.heightAt(fallback.x, fallback.z)
-    const picked = best ? best.clone() : fallback
+    const picked = best ?? fallback
     this.taken.push(picked)
     return picked
+  }
+
+  /** Distance au sapin le plus proche : un bâtiment ne pousse pas dans un arbre. */
+  private treeXZ: number[] | null = null
+  private treeDist(x: number, z: number): number {
+    if (!this.treeXZ) {
+      this.treeXZ = []
+      for (const m of this.island.pickables) {
+        if (this.island.kindFor(m) !== 'wood') continue
+        for (let i = 0; i < m.count; i++) {
+          const p = this.island.instancePosition(m, i)
+          this.treeXZ.push(p.x, p.z)
+        }
+      }
+    }
+    let bestD = Infinity
+    for (let i = 0; i < this.treeXZ.length; i += 2) {
+      const d = (this.treeXZ[i]! - x) ** 2 + (this.treeXZ[i + 1]! - z) ** 2
+      if (d < bestD) bestD = d
+    }
+    return Math.sqrt(bestD)
   }
 
   /** Monuments urbains: ils réclament un slot proche du centre, pas la lisière. */

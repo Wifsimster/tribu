@@ -924,7 +924,10 @@ export class Island {
 
     // Couche opaque : même texture, même mapping, donc aucun décalage de
     // parallaxe avec la surface — ce qui n'est pas reflété reste invisible.
-    const bedMat = new MeshBasicMaterial({ map: tex, depthWrite: false })
+    // depthWrite ACTIF : le fond est opaque et doit occulter ce qui est
+    // derrière lui — sans ça, la voûte étoilée (r=320, sous le niveau de la
+    // mer) transperçait toute la zone d'eau en vue rasante.
+    const bedMat = new MeshBasicMaterial({ map: tex, depthWrite: true })
     this.unlit.push(bedMat)
     const bed = new Mesh(disc, bedMat)
     bed.rotation.x = -Math.PI / 2
