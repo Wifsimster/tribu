@@ -10,6 +10,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.6.0',
+    title: 'Le monde à la bonne échelle',
+    items: [
+      'Audit métrique complet : chaque objet mesuré et recalé sur le colon (1,5 u ≈ 1,75 m).',
+      'La forêt domine enfin le camp — sapins portés à ~10 m, le tipi passe sous la canopée.',
+      "Les monuments gagnent leur stature : campanile ×4,5, moulin à vent ×5,5, moulin à eau ×2,5, villa et aqueduc agrandis.",
+      "La flotte est recalée : pirogue, voilier, caravelle, vapeur, hors-bord et barque marchande à l'échelle.",
+      "L'automobile redevient plus longue que le cheval, les moutons retrouvent la taille mouton.",
+      'Le smartphone-monolithe cède la place à une antenne relais, vrai repère contemporain.',
+    ],
+  },
+  {
     version: '1.5.1',
     title: 'La mer vivante et le village vrai',
     items: [
