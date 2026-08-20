@@ -997,14 +997,15 @@ export class Island {
     this.addBushes(take(Math.round(28 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
   }
 
-  // Audit échelles 2026-08 : les sapins plafonnaient à ~2,3 u, le colon (1,5 u)
-  // dépassait la mi-hauteur des arbres. On vise ~5 u de moyenne : encore sous le
-  // ratio réel d'un jeune pin (choix assumé — la lisibilité du village prime),
-  // mais nettement au-dessus des toits des huttes (1,9 u) et tipis (4,7 u max).
-  // Hauteur et rayon sont découplés : gonfler le rayon d'autant noierait le sol
-  // et les clairières, on garde une silhouette de pin élancée.
-  private static readonly TREE_H = 2.2
-  private static readonly TREE_R = 1.5
+  // Audit échelles 2026-08, round 2 : à ~5 u de moyenne les cimes rasaient
+  // l'apex du grand tipi (4,7 u) — le camp dominait la forêt. On vise ~9 u de
+  // moyenne (cimes ≈ 7–12 u) : la canopée domine nettement tipis et huttes,
+  // tout en restant sous le ratio réel d'un pin adulte (choix assumé — la
+  // lisibilité du village prime). Hauteur et rayon restent découplés : gonfler
+  // le rayon d'autant noierait le sol et les clairières, on garde une
+  // silhouette de pin élancée (rayon +13 % seulement pour éviter l'aiguille).
+  private static readonly TREE_H = 4.0
+  private static readonly TREE_R = 1.7
 
   private addTrees(cells: Cell[], rnd: () => number): void {
     const trunkGeo = new CylinderGeometry(0.11, 0.16, 0.9, 6)

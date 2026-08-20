@@ -68,8 +68,8 @@ export const CAMP_FIRE = { x: HEARTH.x, z: HEARTH.z }
  *  vient de donner au campement. */
 export const CAMP_BLOCKERS: readonly { x: number; z: number; r: number }[] = (
   [
-    [CAMP.tent, 2.3],
-    [CAMP.lean, 1.5],
+    [CAMP.tent, 1.8],
+    [CAMP.lean, 1.25],
     [CAMP.rack, 1.02],
     [CAMP.wood, 1.0],
     [CAMP.frame, 0.75],
@@ -1171,8 +1171,13 @@ export class Village {
 
     // Deux loges, une grande et une petite, dont les silhouettes se recouvrent à
     // l'écran: c'est une masse bâtie, pas deux objets posés côte à côte.
-    put(hideTent(2.04, 3.88), CAMP.tent, TENT_YAW)
-    put(hideTent(1.24, 2.32), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
+    // Round 2 : la grande tente culminait à 4,66 u monde (3,1 colons) — elle
+    // dominait les sapins voisins et, à l'âge urbain, dépassait le moulin. Un
+    // tipi réel fait ~4,5 m : apex ramené à ~3,5 u (2,3 colons), sous la
+    // canopée (sapins ≈ 3,8–6,2 u). La petite loge suit pour garder la
+    // hiérarchie grande/petite.
+    put(hideTent(1.55, 2.9), CAMP.tent, TENT_YAW)
+    put(hideTent(1.0, 1.9), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
     put(dryingRack(2.0, 1.82), CAMP.rack, CAMERA_YAW + 0.3)
     put(woodPile(1.75), CAMP.wood)
     put(hideFrame(1.15, 1.4), CAMP.frame, CAMERA_YAW - 0.2)
@@ -1351,12 +1356,12 @@ export class Village {
   /** Monuments urbains: ils réclament un slot proche du centre, pas la lisière. */
   private static readonly MONUMENTS = new Set(['clock', 'windmill', 'aqueduct'])
   /** Emprise au sol des gros objets: le slot doit être plat sous toute la base.
-   *  Les valeurs suivent les remises à l'échelle du round 1 (villa ×2,
-   *  aqueduc ×1.7, moulins ×2.5/×4, campanile ×4.5, garage ×2). */
+   *  Les valeurs suivent les remises à l'échelle des rounds 1 et 2 (villa ×2,
+   *  aqueduc ×1.7, moulins ×2.5/×5.5, campanile ×4.5, garage ×2, antenne). */
   private static readonly FOOTPRINT: Record<string, number> = {
     hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2,
     railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
-    clock: 0.8, windmill: 1.0, watermill: 1.2, garage: 1.0,
+    clock: 0.8, windmill: 1.7, watermill: 1.2, garage: 1.0, phone: 0.6,
   }
   /** Les quatre bâtiments v1 gardent les règles d'espacement de l'époque où ils
    *  étaient des Object3D séparés : les slots choisis — donc le plan du village
@@ -1695,9 +1700,10 @@ export class Village {
           p.push(part(new BoxGeometry(0.09, 0.5, 0.02).rotateZ(a), C.wood, Math.sin(a) * -0.28, 0.78 + Math.cos(a) * 0.28, 0.26))
         }
         p.push(part(new CylinderGeometry(0.03, 0.03, 0.14, 5).rotateX(Math.PI / 2), C.woodDark, 0, 0.78, 0.2))
-        // ×4 : un moulin-pivot fait ~6 m au chapeau. À 1.13 u il était plus
-        // petit que le colon — le monument doit imposer sa silhouette.
-        for (const g of p) g.scale(4, 4, 4)
+        // ×5.5 (round 2) : à ×4 le chapeau restait à 4,5 u (3 colons), au
+        // coude à coude avec le tipi du camp. Un moulin-pivot fait ~6 m au
+        // chapeau : 6,2 u (~4,1 colons), le monument domine le bâti bas.
+        for (const g of p) g.scale(5.5, 5.5, 5.5)
         return p
       }
       case 'clock': {
@@ -1924,11 +1930,31 @@ export class Village {
         return p
       }
       case 'phone': {
-        // Le totem final ×1.5 : un écran dressé qui luit FRANCHEMENT.
-        p.push(part(new BoxGeometry(0.24, 0.48, 0.05), C.char, 0, 0.32, 0))
-        p.push(part(new BoxGeometry(0.2, 0.42, 0.012), new Color(1.7, 2.0, 2.3), 0, 0.33, 0.028))
-        p.push(part(new BoxGeometry(0.32, 0.08, 0.22), C.stoneDark, 0, 0.04, 0))
-        for (const g of p) g.scale(1.5, 1.5, 1.5)
+        // Round 2 : le « smartphone-monolithe » de 0,77 u dépassait le mouton
+        // voisin — un objet de main n'a rien à faire posé dans l'herbe. Le
+        // repère d'époque devient une antenne relais qui ASSUME l'échelle
+        // monument : dalle béton, armoire technique, mât effilé de 5,6 u
+        // (~3,7 colons, fin donc sans écraser le cadrage), trois panneaux,
+        // faisceau hertzien et balise rouge émissive.
+        p.push(part(new BoxGeometry(0.95, 0.14, 0.95), C.stoneLight, 0, 0.07, 0))
+        p.push(part(new BoxGeometry(0.4, 0.34, 0.28), C.stoneDark, 0.42, 0.31, 0.3))
+        p.push(part(new BoxGeometry(0.36, 0.05, 0.3), C.char, 0.42, 0.5, 0.3))
+        // Mât carré effilé (4 segments = treillis lu de loin, quasi gratuit).
+        p.push(part(new CylinderGeometry(0.075, 0.2, 5.3, 4), iron, 0, 2.79, 0))
+        // Colliers de renfort qui suivent le fruit du mât.
+        p.push(part(new BoxGeometry(0.38, 0.05, 0.38), C.char, 0, 1.5, 0))
+        p.push(part(new BoxGeometry(0.31, 0.05, 0.31), C.char, 0, 2.9, 0))
+        p.push(part(new BoxGeometry(0.25, 0.05, 0.25), C.char, 0, 4.2, 0))
+        // Trois panneaux sectoriels à 120° en tête de mât.
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 + 0.5
+          p.push(part(new BoxGeometry(0.07, 0.62, 0.2).rotateY(a), C.bone, Math.sin(a) * 0.26, 5.05, Math.cos(a) * 0.26))
+        }
+        // Tambour de faisceau hertzien.
+        p.push(part(new CylinderGeometry(0.13, 0.13, 0.09, 8).rotateZ(Math.PI / 2), iron, 0.18, 4.5, 0))
+        // Balise aérienne : le point rouge qui luit la nuit, comme les diodes
+        // de la baie de serveurs.
+        p.push(part(new SphereGeometry(0.07, 6, 5), new Color(2.4, 0.4, 0.35), 0, 5.52, 0))
         return p
       }
       // Bâtiments hérités : générés en local puis fondus comme les ateliers.

@@ -80,7 +80,9 @@ function sheepGeo(): BufferGeometry {
   for (const sx of [-1, 1])
     for (const sz of [-1, 1])
       p.push(part(new CylinderGeometry(0.024, 0.028, 0.28, 4), dark, sx * 0.1, 0.14, sz * 0.15))
-  return weld(p)
+  // Round 2 : à 0,63 u la toison arrivait à la taille du colon — un mouton
+  // s'arrête au genou. ×0.62 → ~0,39 u, et le troupeau redevient du bétail.
+  return weld(p).scale(0.62, 0.62, 0.62)
 }
 
 function henGeo(): BufferGeometry {
