@@ -1,5 +1,6 @@
 import {
   ACESFilmicToneMapping,
+  AdditiveBlending,
   Color,
   DirectionalLight,
   Fog,
@@ -15,7 +16,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import type { DataTexture } from 'three'
-import { AGES, DAY_START } from '../game/content'
+import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
 import { PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
 
@@ -38,9 +39,13 @@ const BASE_ZOOM = 34
 const FILL_WIDTH = 0.76
 const FILL_HEIGHT = 0.5
 
-/** Le jeu démarre en milieu de matinée : l'azimut du soleil y coïncide avec
- *  SUN_DIR, la direction cuite dans l'ombre de contact de la texture d'eau. */
-const SUN_AZ0 = Math.atan2(SUN_DIR.x, SUN_DIR.z) - DAY_START * Math.PI * 2
+/** Trajet du soleil : un arc de haute latitude. Il se lève au col d'horizon
+ *  arrière-gauche — pile dans le cadrage par défaut, même en portrait —, monte
+ *  jusqu'à SUN_DIR à midi (la direction cuite dans les ombres de contact, et
+ *  tous les dosages des rounds), puis redescend au même col. Un cercle complet
+ *  faisait se coucher le soleil derrière la caméra : personne ne le voyait. */
+const NOON_AZ = Math.atan2(SUN_DIR.x, SUN_DIR.z)
+const ARC = 1.45
 const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
 const SUN_DAY = new Color('#fff1d8')
@@ -136,10 +141,59 @@ export class Stage {
     this.camera.add(this.vignette)
     this.scene.add(this.camera)
 
+    // Le soleil visible : un halo chaud et un disque posés sur l'horizon dans
+    // la direction réelle de l'azimut. C'est lui qui fait EXISTER le lever et
+    // le coucher — sans lui, l'aube n'était qu'un fondu global de lumière.
+    const glowMat = new MeshBasicMaterial({
+      map: rampTexture(64, 64, (u, v, out) => {
+        const d = Math.hypot(u - 0.5, v - 0.5) * 2
+        out.set('#ff9a4a')
+        return Math.pow(Math.max(0, 1 - d), 2.2)
+      }),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+      opacity: 0,
+    })
+    this.sunGlow = new Mesh(new PlaneGeometry(72, 72), glowMat)
+    const discMat = new MeshBasicMaterial({
+      map: rampTexture(48, 48, (u, v, out) => {
+        const d = Math.hypot(u - 0.5, v - 0.5) * 2
+        out.set('#fff3d2')
+        return Math.pow(Math.max(0, 1 - d), 0.55)
+      }),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+      opacity: 0,
+    })
+    this.sunDisc = new Mesh(new PlaneGeometry(13, 13), discMat)
+    this.sunDisc.position.z = 1
+    this.sunGlow.add(this.sunDisc)
+    // Enfant de la caméra, comme le vignettage : le vrai horizon est HORS
+    // CADRE avec cette caméra plongeante (NDC y ≈ 1,3) — celui que le joueur
+    // voit est le dégradé de fond. Le soleil se place donc en espace écran,
+    // sur l'horizon perçu, à l'azimut réel près.
+    glowMat.depthTest = false
+    discMat.depthTest = false
+    this.sunGlow.renderOrder = 990
+    this.camera.add(this.sunGlow)
+
     this.resize()
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('orientationchange', () => this.resize())
   }
+
+  private readonly sunGlow: Mesh
+  private readonly sunDisc: Mesh
+  private sunAz = 0
+  private sunElev = 1
+  private glowBase = 0
+  private discBase = 0
 
   /** Le ciel n'apparaît qu'en vue rasante : un dégradé vertical suffit, et sa
    *  base est exactement la couleur de brume pour que l'horizon disparaisse. */
@@ -173,7 +227,10 @@ export class Stage {
   setDaylight(u: number): number {
     const age = AGES[this.ageId]!
     const elev = Math.sin(u * Math.PI * 2)
-    const az = SUN_AZ0 + u * Math.PI * 2
+    // cos² : période d'une demi-journée — le soleil se lève ET se couche au
+    // même col d'horizon arrière (cos simple l'envoyait se coucher dans le dos
+    // de la caméra), en passant par NOON_AZ au zénith.
+    const az = NOON_AZ - ARC * Math.cos(u * Math.PI * 2) ** 2
 
     // k : part de jour (0 la nuit, 1 en plein jour) ; w : chaleur d'horizon.
     const k = smoothstep(-0.06, 0.2, elev)
@@ -181,11 +238,27 @@ export class Stage {
 
     const r = 52
     const cosE = Math.max(0.25, Math.cos(elev * 0.9))
+    // Plancher abaissé : aux heures basses le soleil rase vraiment, et les
+    // ombres s'allongent — c'est la moitié du spectacle du soir.
     this.sun.position.set(
       Math.sin(az) * r * cosE,
-      10 + Math.max(0.03, elev) * 50,
+      6 + Math.max(0.03, elev) * 54,
       Math.cos(az) * r * cosE,
     )
+
+    // Halo et disque : visibles à l'aube et au crépuscule, fondus en plein
+    // jour, éteints la nuit noire. La POSITION se règle dans updateCamera —
+    // l'horizon à l'écran dépend de la caméra, pas du monde.
+    this.sunAz = az
+    this.sunElev = elev
+    const glowA = smoothstep(-0.14, 0.02, elev) * (1 - smoothstep(0.16, 0.42, elev))
+    const discA = smoothstep(-0.03, 0.05, elev) * (1 - smoothstep(0.28, 0.5, elev))
+    this.glowBase = glowA * 0.5
+    this.discBase = discA
+    // Blanc au zénith, cuivré à l'horizon — c'est la couleur qui dit l'heure.
+    ;(this.sunDisc.material as MeshBasicMaterial).color
+      .set('#fff3d2')
+      .lerp(SUN_LOW, 1 - smoothstep(0.02, 0.35, elev))
     this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
     this.sun.intensity = 2.35 * k
     // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
@@ -203,7 +276,9 @@ export class Stage {
       this.lastWarmth = w
       this.sky.dispose()
       const top = PALETTE.sky.clone().lerp(new Color(age.sky), 0.35).lerp(NIGHT_SKY, 1 - k)
-      const bottom = haze.clone().lerp(SUN_LOW, w * 0.4)
+      // L'horizon s'embrase davantage aux heures basses : le halo directionnel
+      // fait le point chaud, le dégradé fait la nappe.
+      const bottom = haze.clone().lerp(SUN_LOW, w * 0.62)
       this.sky = rampTexture(2, 64, (_u, v, out) => {
         out.copy(bottom).lerp(top, smoothstep(0, 0.85, v))
         return 1
@@ -251,6 +326,27 @@ export class Stage {
       this.target.z + d * sinP * Math.cos(this.azimuth),
     )
     this.camera.lookAt(this.target)
+
+    // Décalage horizontal = écart entre l'azimut du soleil et le centre de
+    // l'horizon arrière visible ; vertical = horizon perçu + montée avec
+    // l'élévation. Il glisse hors du cadre (et s'y fond) quand on orbite.
+    const D = 30
+    let dAz = this.sunAz - (this.azimuth + Math.PI)
+    while (dAz > Math.PI) dAz -= Math.PI * 2
+    while (dAz < -Math.PI) dAz += Math.PI * 2
+    const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * D
+    const halfW = halfH * this.camera.aspect
+    const gx = D * Math.tan(Math.max(-1.2, Math.min(1.2, dAz)))
+    const gy = halfH * (0.52 + Math.max(0, this.sunElev) * 0.75)
+    this.sunGlow.position.set(gx, gy, -D)
+    // Taille relative au cadre, pas au monde : ~120 % de la demi-hauteur pour
+    // le halo, le disque suit (enfant). Sans ça, le quad de 72 unités à 30
+    // unités de la caméra avalait la scène entière.
+    this.sunGlow.scale.setScalar((halfH * 1.7) / 72)
+    // Fondu quand le soleil sort du cadre en orbite.
+    const edge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(gx))
+    ;(this.sunGlow.material as MeshBasicMaterial).opacity = this.glowBase * edge
+    ;(this.sunDisc.material as MeshBasicMaterial).opacity = this.discBase * edge
     // La brume ne commence qu'au-delà de l'île entière. À 0,95·d elle mordait
     // sur le bord éloigné : les faces basses se dissolvaient exactement là où
     // la ligne d'eau doit trancher.

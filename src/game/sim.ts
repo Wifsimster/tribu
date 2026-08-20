@@ -9,7 +9,7 @@ import {
   type ResourceId,
   type TechDef,
 } from './content'
-import { emptySave, loadSave, writeSave, type SaveV1 } from './state'
+import { OFFLINE_CAP_SECONDS, emptySave, loadSave, writeSave, type SaveV1 } from './state'
 
 export type GameEvent =
   | { type: 'tech'; tech: TechDef }
@@ -131,41 +131,50 @@ export class Game {
     this.rates = { ...BASE_RATE, insight: 0 }
     this.recompute()
 
-    if (offlineSeconds > 60) {
-      const before = { ...this.save.res }
-      // Une expédition en cours se poursuit sans le joueur ; le camp ne produit
-      // qu'une fois le colon rentré.
-      let workSeconds = offlineSeconds
-      const exp = this.save.expedition
-      if (exp) {
-        if (offlineSeconds >= exp.remaining) {
-          workSeconds = offlineSeconds - exp.remaining
-          this.finishExpedition()
-        } else {
-          exp.remaining -= offlineSeconds
-          workSeconds = 0
-        }
+    if (offlineSeconds > 60) this.creditAbsence(offlineSeconds)
+  }
+
+  /** Crédite une absence : au CHARGEMENT (constructeur) mais aussi au RETOUR
+   *  D'ONGLET — sur mobile la page reste vivante en arrière-plan pendant des
+   *  heures sans jamais repasser par le constructeur, et le dt plafonné du
+   *  frame suivant effaçait tout le temps caché. C'était ça, « l'idle ne
+   *  marche pas quand l'application ne tourne pas ». */
+  creditAbsence(rawSeconds: number): void {
+    const seconds = Math.min(rawSeconds, OFFLINE_CAP_SECONDS)
+    if (seconds <= 60) return
+    const before = { ...this.save.res }
+    // Une expédition en cours se poursuit sans le joueur ; le camp ne produit
+    // qu'une fois le colon rentré.
+    let workSeconds = seconds
+    const exp = this.save.expedition
+    if (exp) {
+      if (seconds >= exp.remaining) {
+        workSeconds = seconds - exp.remaining
+        this.finishExpedition()
+      } else {
+        exp.remaining -= seconds
+        workSeconds = 0
       }
-      if (workSeconds > 0) {
-        // Une absence couvre des cycles entiers : on produit au facteur moyen
-        // (moitié jour, moitié nuit au plancher).
-        this.lightFactor = (1 + this.nightFloor) / 2
-        this.refreshRates()
-        this.produce(workSeconds)
-      }
-      // Le commerce continue sans le joueur : quelques passages de barque sont
-      // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
-      if (this.save.age >= CARAVAN_AGE) {
-        const visits = Math.min(CARAVAN_OFFLINE_MAX, Math.floor(offlineSeconds / CARAVAN_PERIOD))
-        for (let i = 0; i < visits; i++) this.doTrade(1, true)
-      }
-      const gained: Partial<Record<ResourceId, number>> = {}
-      for (const id of Object.keys(this.save.res) as ResourceId[]) {
-        const delta = (this.save.res[id] ?? 0) - (before[id] ?? 0)
-        if (delta > 0.5) gained[id] = delta
-      }
-      this.emit({ type: 'offline', seconds: offlineSeconds, gained })
     }
+    if (workSeconds > 0) {
+      // Une absence couvre des cycles entiers : on produit au facteur moyen
+      // (moitié jour, moitié nuit au plancher).
+      this.lightFactor = (1 + this.nightFloor) / 2
+      this.refreshRates()
+      this.produce(workSeconds)
+    }
+    // Le commerce continue sans le joueur : quelques passages de barque sont
+    // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
+    if (this.save.age >= CARAVAN_AGE) {
+      const visits = Math.min(CARAVAN_OFFLINE_MAX, Math.floor(seconds / CARAVAN_PERIOD))
+      for (let i = 0; i < visits; i++) this.doTrade(1, true)
+    }
+    const gained: Partial<Record<ResourceId, number>> = {}
+    for (const id of Object.keys(this.save.res) as ResourceId[]) {
+      const delta = (this.save.res[id] ?? 0) - (before[id] ?? 0)
+      if (delta > 0.5) gained[id] = delta
+    }
+    this.emit({ type: 'offline', seconds, gained })
   }
 
   static fresh(now: number): Game {

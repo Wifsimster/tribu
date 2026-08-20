@@ -344,11 +344,22 @@ requestAnimationFrame((t) => {
     textures: stage.renderer.info.memory.textures,
   }),
   ready: true,
+  stage,
+  game,
 }
 
 // Credit real elapsed time when the tab comes back, and never lose a session.
+// Sur mobile la page vit en arrière-plan sans repasser par le constructeur :
+// le temps caché doit être crédité ici, par le même chemin que le hors-ligne.
+let hiddenAt = 0
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') game.flush(Date.now())
-  else last = performance.now()
+  if (document.visibilityState === 'hidden') {
+    hiddenAt = Date.now()
+    game.flush(Date.now())
+  } else {
+    if (hiddenAt > 0) game.creditAbsence((Date.now() - hiddenAt) / 1000)
+    hiddenAt = 0
+    last = performance.now()
+  }
 })
 window.addEventListener('pagehide', () => game.flush(Date.now()))
