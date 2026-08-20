@@ -17,6 +17,7 @@ import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { CHANGELOG } from './game/changelog'
+import { Ambience } from './audio/ambience'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
@@ -105,6 +106,11 @@ function spotFor(resource: ResourceId): Vector3 {
 }
 
 const hud = new Hud(game)
+
+// L'ambiance sonore : coupée par défaut, activée au menu, reprise au premier
+// geste si la préférence est déjà « on » (l'audio exige un geste utilisateur).
+const ambience = new Ambience()
+document.addEventListener('pointerdown', () => ambience.resumeIfOn(), { once: true })
 
 // Chaque objet posé remonte à sa découverte : taper un bâtiment rouvre son
 // fait historique.
@@ -239,6 +245,7 @@ game.on((e) => {
       }
       break
     case 'nightfall':
+      if (game.knows('clock')) ambience.bell()
       // Le même crépuscule ne se raconte pas pareil selon les siècles.
       hud.toast(
         game.knows('electricity')
@@ -255,6 +262,7 @@ game.on((e) => {
       )
       break
     case 'daybreak':
+      if (game.knows('clock')) ambience.bell()
       hud.toast(
         game.save.age >= 6
           ? 'Le jour se lève — la ville s’étire, le travail reprend'
@@ -532,6 +540,12 @@ function menuEl<T extends HTMLElement>(id: string): T {
     if (e.key === 'Escape' && menu.classList.contains('open') && hasProgress) close()
   })
 
+  const soundLabel = menuEl('menu-sound-label')
+  soundLabel.textContent = ambience.isEnabled ? 'Son : activé' : 'Son : coupé'
+  menuEl('menu-sound').addEventListener('click', () => {
+    soundLabel.textContent = ambience.toggle() ? 'Son : activé' : 'Son : coupé'
+  })
+
   menuEl('menu-version').textContent = `v${__APP_VERSION__}`
 
   // ?nomenu=1 : le harnais de capture juge le jeu, pas l'écran d'accueil.
@@ -613,6 +627,13 @@ function frame(now: number): void {
     hudNight = !hudNight
     document.body.classList.toggle('night', hudNight)
   }
+  ambience.update(
+    dt,
+    daylight,
+    stage.rainLevel,
+    game.knows('electricity') ? 'lamp' : game.save.age >= 4 ? 'brazier' : 'open',
+    settler.isAway,
+  )
   stage.updateCamera()
   hud.update()
   stage.render()

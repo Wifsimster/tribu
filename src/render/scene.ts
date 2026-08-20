@@ -485,6 +485,11 @@ export class Stage {
   private wCur = { clouds: 5, grey: 0.2, sun: 0.92, rain: 0 }
   private flock = { active: false, t: 0, cooldown: 6, dir: 0.9, y: 18, side: 1 }
 
+  /** Intensité de pluie courante (0..1) — l'ambiance sonore s'y accroche. */
+  get rainLevel(): number {
+    return this.wCur.rain
+  }
+
   /** Vie du ciel : dérive des nuages, vols d'oiseaux. Appelé chaque frame. */
   private tickAurora(dt: number): void {
     if (!this.auroraMesh || this.auroraLife <= 0) return

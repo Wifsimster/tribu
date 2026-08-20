@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.1.0',
+    title: "L'île a une voix",
+    items: [
+      "Une ambiance sonore, entièrement synthétisée : le ressac respire, le feu crépite (le brasero aussi, le lampadaire bourdonne), les oiseaux pépient le jour, les grillons stridulent la nuit, la pluie chuinte quand elle tombe.",
+      "Dès l'horloge mécanique, la cloche du campanile sonne l'aube et le crépuscule.",
+      'Le son est coupé par défaut — active-le dans le menu, la préférence est retenue.',
+    ],
+  },
+  {
     version: '2.0.0',
     title: "L'Exode",
     items: [
