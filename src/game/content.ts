@@ -873,6 +873,11 @@ export interface DestinationDef {
   relicChance: number
   /** Azimut monde de la silhouette à l'horizon — la destination se VOIT. */
   azimuth: number
+  /** Palier de bateau minimal (0 radeau, 1 pirogue, 2 voile…) : on ne
+   *  traverse pas le grand large sur trois rondins. */
+  minTier: number
+  /** Ce qu'il faut construire pour y aller, en toutes lettres. */
+  needs: string
 }
 
 export const DESTINATIONS: DestinationDef[] = [
@@ -885,6 +890,8 @@ export const DESTINATIONS: DestinationDef[] = [
     risk: 0,
     relicChance: 0.18,
     azimuth: 3.95,
+    minTier: 0,
+    needs: '',
   },
   {
     id: 'cote',
@@ -895,6 +902,8 @@ export const DESTINATIONS: DestinationDef[] = [
     risk: 0.14,
     relicChance: 0.34,
     azimuth: 4.7,
+    minTier: 1,
+    needs: 'la pirogue',
   },
   {
     id: 'large',
@@ -905,6 +914,8 @@ export const DESTINATIONS: DestinationDef[] = [
     risk: 0.28,
     relicChance: 0.55,
     azimuth: 5.35,
+    minTier: 2,
+    needs: 'la barque à voile',
   },
 ]
 

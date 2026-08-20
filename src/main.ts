@@ -143,6 +143,7 @@ for (const t of TECHS)
 game.on((e) => {
   switch (e.type) {
     case 'tech':
+      ambience.chime()
       hud.showFact(e.tech)
       if (game.treeComplete)
         hud.toast("Les 51 savoirs sont réunis — l'Exode attend dans le menu")
@@ -163,14 +164,7 @@ game.on((e) => {
       break
     case 'expeditionStart':
       settler.departExpedition(game.knows('cordage'))
-      boat.setTier(
-        game.knows('automobile') ? 5
-        : game.knows('steamengine') ? 4
-        : game.knows('caravel') ? 3
-        : game.knows('sail') ? 2
-        : game.knows('polished_axe') ? 1
-        : 0,
-      )
+      boat.setTier(game.boatTier)
       expPhase = 'walking'
       hud.toast(
         game.knows('automobile')
@@ -364,12 +358,16 @@ attachControls(stage, canvas, (x, y) => {
   raycaster.setFromCamera(pointer, stage.camera)
 
   if (caravan.group.visible && raycaster.intersectObject(caravan.group, true).length > 0) {
-    if (game.haggle()) hud.toast('Tu marchandes : le marchand cédera un meilleur prix')
+    if (game.haggle()) {
+      ambience.coin()
+      hud.toast('Tu marchandes : le marchand cédera un meilleur prix')
+    }
     else hud.toast('Le marchand te salue de la main')
     return
   }
 
   if (wreck && raycaster.intersectObject(wreck, true).length > 0) {
+    ambience.chime()
     hud.showStory('Sur la rive', 'Les restes d’un navire', wreckFact)
     return
   }
@@ -390,6 +388,7 @@ attachControls(stage, canvas, (x, y) => {
     const hp = onVillage[0]!.point
     const id = village.identifyAt(hp.x, hp.z)
     if (id === 'museum') {
+      ambience.chime()
       hud.showMuseum(game.relics)
       return
     }
@@ -415,6 +414,7 @@ attachControls(stage, canvas, (x, y) => {
   if (!kind) return
   const resource: ResourceId = kind
   if (!game.unlocked.has(resource)) return
+  ambience.knock()
   game.setFocus(resource)
   settler.sendTo(island.instancePosition(hit.object as InstancedMesh, hit.instanceId))
   hud.toast(`Le colon s’occupe de : ${RESOURCES[resource].name.toLowerCase()}`)

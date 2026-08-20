@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.3.0',
+    title: 'La mer se mérite',
+    items: [
+      "La flotte ouvre la mer : la côte lointaine exige la pirogue, le grand large la barque à voile — le radeau n'ira pas si loin. Les destinations hors de portée restent visibles, éteintes.",
+      'Un bateau au-dessus du minimum requis affronte mieux la mer : le risque de revers diminue avec chaque palier de flotte.',
+      "Le tap a une voix : toc de bois sur les ressources, carillon des découvertes, du musée et de l'épave, tintement de pièces au marchandage (si le son est activé).",
+    ],
+  },
+  {
     version: '2.2.0',
     title: 'Tribu dans la poche',
     items: [

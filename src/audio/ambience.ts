@@ -210,6 +210,63 @@ export class Ambience {
     }
   }
 
+  /** Toc de bois : le retour du doigt quand on désigne un arbre, un rocher. */
+  knock(): void {
+    if (!this.enabled || !this.ctx || !this.master) return
+    const ctx = this.ctx
+    const t0 = ctx.currentTime
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(220 + Math.random() * 60, t0)
+    osc.frequency.exponentialRampToValueAtTime(90, t0 + 0.07)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.14, t0)
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.09)
+    osc.connect(g).connect(this.master)
+    osc.start(t0)
+    osc.stop(t0 + 0.1)
+  }
+
+  /** Carillon de découverte : deux notes claires, une tierce au-dessus. */
+  chime(): void {
+    if (!this.enabled || !this.ctx || !this.master) return
+    const ctx = this.ctx
+    const t0 = ctx.currentTime
+    for (const [f, at] of [
+      [660, 0],
+      [830, 0.11],
+    ] as const) {
+      const osc = ctx.createOscillator()
+      const g = ctx.createGain()
+      osc.frequency.value = f
+      g.gain.setValueAtTime(0, t0 + at)
+      g.gain.linearRampToValueAtTime(0.07, t0 + at + 0.012)
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + at + 0.5)
+      osc.connect(g).connect(this.master)
+      osc.start(t0 + at)
+      osc.stop(t0 + at + 0.55)
+    }
+  }
+
+  /** Tintement de pièces : le marchand est passé par là. */
+  coin(): void {
+    if (!this.enabled || !this.ctx || !this.master) return
+    const ctx = this.ctx
+    const t0 = ctx.currentTime
+    for (let n = 0; n < 3; n++) {
+      const osc = ctx.createOscillator()
+      const g = ctx.createGain()
+      const at = n * (0.05 + Math.random() * 0.04)
+      osc.frequency.value = 2300 + Math.random() * 1600
+      g.gain.setValueAtTime(0, t0 + at)
+      g.gain.linearRampToValueAtTime(0.05, t0 + at + 0.006)
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + at + 0.16)
+      osc.connect(g).connect(this.master)
+      osc.start(t0 + at)
+      osc.stop(t0 + at + 0.2)
+    }
+  }
+
   /** La cloche du campanile : une fondamentale et deux partiels inharmoniques. */
   bell(): void {
     if (!this.enabled || !this.ctx || !this.master) return

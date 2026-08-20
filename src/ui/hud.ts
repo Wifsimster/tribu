@@ -285,11 +285,18 @@ export class Hud {
       const sec = this.game.expeditionDuration(d.id)
       const dur = sec < 100 ? `${Math.round(sec / 10) * 10} s` : `${Math.round(sec / 60)} min`
       const risk = d.risk === 0 ? 'sans risque' : d.risk < 0.2 ? 'risque modéré' : 'risque élevé'
+      const reachable = this.game.canReach(d.id)
       const row = document.createElement('button')
       row.type = 'button'
-      row.className = 'dest'
-      row.innerHTML = `<span class="dest-name">${d.name}</span><span class="dest-blurb">${d.blurb}</span><span class="dest-meta">~${dur} · ${risk}</span>`
+      row.className = reachable ? 'dest' : 'dest locked'
+      row.innerHTML = `<span class="dest-name">${d.name}</span><span class="dest-blurb">${
+        reachable ? d.blurb : `Nécessite ${d.needs} — le radeau n'ira pas si loin.`
+      }</span><span class="dest-meta">${reachable ? `~${dur} · ${risk}` : 'hors de portée'}</span>`
       row.addEventListener('click', () => {
+        if (!reachable) {
+          this.toast(`Il faut ${d.needs} pour atteindre ${d.name.toLowerCase()}`)
+          return
+        }
         this.toggleDest(false)
         if (!this.game.startExpedition(d.id)) this.toast('Pas assez de nourriture pour partir')
       })

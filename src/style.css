@@ -1020,3 +1020,10 @@ body.night .age-bar {
   color: #f3d98a;
   opacity: 0.9;
 }
+
+/* Destination hors de portée de la flotte : visible mais éteinte. */
+.dest.locked {
+  opacity: 0.55;
+  filter: saturate(0.4);
+  cursor: default;
+}

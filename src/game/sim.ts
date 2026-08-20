@@ -486,12 +486,31 @@ export class Game {
     return Math.max(EXPEDITION_FOOD_COST + this.save.age * 10, Math.round(focusedFood * 30))
   }
 
+  /** Palier de la flotte : le même barème que le rendu du bateau. */
+  get boatTier(): number {
+    return this.knows('automobile')
+      ? 5
+      : this.knows('steamengine')
+        ? 4
+        : this.knows('caravel')
+          ? 3
+          : this.knows('sail')
+            ? 2
+            : this.knows('polished_axe')
+              ? 1
+              : 0
+  }
+
+  canReach(destId: string): boolean {
+    return this.boatTier >= (DESTINATION_BY_ID.get(destId)?.minTier ?? 0)
+  }
+
   canExpedition(): boolean {
     return !this.save.expedition && this.amount('food') >= this.expeditionCost()
   }
 
   startExpedition(destId: DestinationDef['id'] = 'cote'): boolean {
-    if (!this.canExpedition()) return false
+    if (!this.canExpedition() || !this.canReach(destId)) return false
     this.save.res.food = this.amount('food') - this.expeditionCost()
     const total = this.expeditionDuration(destId)
     this.save.expedition = { remaining: total, total, dest: destId }
@@ -516,8 +535,10 @@ export class Game {
     // Le tempérament de la destination joue sur le butin — la durée a déjà
     // payé sa part via ratio, lootK est le pari en plus.
     const lootBias = dest.lootK / dest.durationK
-    // Un revers abîme le butin, jamais le colon : l'idle ne punit pas, il raconte.
-    const setback = Math.random() < dest.risk
+    // Un revers abîme le butin, jamais le colon : l'idle ne punit pas, il
+    // raconte. Un bateau au-dessus du minimum requis affronte mieux la mer.
+    const seaworthy = Math.max(0.4, 1 - 0.12 * (this.boatTier - dest.minTier))
+    const setback = Math.random() < dest.risk * seaworthy
     const scale = (90 + this.save.age * 80) * ratio * carryBonus * lootBias * (setback ? 0.55 : 1)
     for (const id of this.unlocked) {
       if (id === 'insight') continue
