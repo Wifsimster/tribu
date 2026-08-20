@@ -134,7 +134,7 @@ game.on((e) => {
     case 'expeditionEnd': {
       const parts = Object.entries(e.loot)
         .filter(([, n]) => (n as number) > 0)
-        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
+        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
         .join('  ')
       boat.sailIn(settler.shorePoint)
       hud.toast(`De retour · ${parts}`)
@@ -155,8 +155,8 @@ game.on((e) => {
       break
     case 'caravanTrade': {
       hud.toast(
-        `Troc : ${RESOURCES[e.gave.res].icon} ${fmt(e.gave.amount)} contre ` +
-          `${RESOURCES[e.got.res].icon} ${fmt(e.got.amount)} + ✨ ${e.insight}`,
+        `Troc : ${RESOURCES[e.gave.res].icon}\u202F${fmt(e.gave.amount)} contre ` +
+          `${RESOURCES[e.got.res].icon}\u202F${fmt(e.got.amount)} + ✨\u202F${e.insight}`,
       )
       if (e.tale) hud.toast(`Le marchand raconte : ${e.tale}`)
       break

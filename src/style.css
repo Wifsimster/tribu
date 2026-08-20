@@ -932,3 +932,12 @@ body.night .age-bar {
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* Dans un toast, les glyphes coulent avec le texte : le display:block global
+   (pensé pour le bandeau de ressources) transformait chaque butin en une tour
+   verticale qui masquait l'île. */
+.toast .glyph {
+  display: inline-block;
+  vertical-align: -3px;
+  margin: 0 1px;
+}
