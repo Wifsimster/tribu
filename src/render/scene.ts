@@ -402,7 +402,10 @@ export class Stage {
       }
       if (c.z > 42) c.z = -42
       this.cloudDummy.position.set(c.x, c.y, c.z)
-      this.cloudDummy.rotation.y = c.rot
+      // Rotation ENTIÈREMENT réinitialisée : le dummy est partagé avec les
+      // oiseaux, et sans ça les nuages héritaient de leur battement d'ailes —
+      // la « balançoire ».
+      this.cloudDummy.rotation.set(0, c.rot, 0)
       // Aplatis : des voiles, pas des cumulus.
       this.cloudDummy.scale.set(c.s, c.s * 0.62, c.s)
       this.cloudDummy.updateMatrix()
