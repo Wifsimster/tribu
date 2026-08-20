@@ -1095,6 +1095,7 @@ export class Village {
         continue
       }
       const slot = this.nextSlot()
+      this.propPlacements.push({ id: b, x: slot.x, y: slot.y, z: slot.z, rot: 0 })
       obj.position.set(slot.x, slot.y, slot.z)
       obj.rotation.y = Math.atan2(-slot.x, -slot.z)
       obj.scale.setScalar(0.001)
@@ -1295,6 +1296,22 @@ export class Village {
     this.propsMesh = new Mesh(merged, this.solid)
     this.propsMesh.castShadow = true
     this.group.add(this.propsMesh)
+  }
+
+  /** Quel savoir vit ici ? Le plus proche du point touché, feu compris. */
+  identifyAt(x: number, z: number): string | null {
+    let best: string | null = null
+    let bestD = 2.6 * 2.6
+    for (const pl of this.propPlacements) {
+      const d = (pl.x - x) ** 2 + (pl.z - z) ** 2
+      if (d < bestD) {
+        bestD = d
+        best = pl.id
+      }
+    }
+    const df = (HEARTH.x - x) ** 2 + (HEARTH.z - z) ** 2
+    if (df < bestD && df < 4) best = 'campfire'
+    return best
   }
 
   private make(kind: string): Object3D | null {

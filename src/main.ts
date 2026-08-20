@@ -12,7 +12,7 @@ import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
 import { Hud, fmt } from './ui/hud'
-import { RESOURCES } from './game/content'
+import { RESOURCES, TECHS } from './game/content'
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
@@ -82,6 +82,12 @@ function spotFor(resource: ResourceId): Vector3 {
 }
 
 const hud = new Hud(game)
+
+// Chaque objet posé remonte à sa découverte : taper un bâtiment rouvre son
+// fait historique.
+const techOfBuilding = new Map<string, (typeof TECHS)[number]>()
+for (const t of TECHS)
+  for (const e of t.effects) if (e.kind === 'building') techOfBuilding.set(e.building, t)
 
 game.on((e) => {
   switch (e.type) {
@@ -182,6 +188,25 @@ attachControls(stage, canvas, (x, y) => {
     if (game.encourage()) settler.celebrate()
     else hud.toast('Laisse-le souffler un instant')
     return
+  }
+
+  const onVillage = raycaster.intersectObject(village.group, true)
+  if (onVillage.length > 0) {
+    const hp = onVillage[0]!.point
+    const id = village.identifyAt(hp.x, hp.z)
+    if (id === 'campfire') {
+      const fire = TECHS.find((t) => t.id === 'fire')
+      if (fire && game.knows('fire')) hud.showFact(fire)
+      else hud.toast('Le feu du camp — le cœur de la tribu')
+      return
+    }
+    if (id) {
+      const tech = techOfBuilding.get(id)
+      if (tech && game.knows(tech.id)) {
+        hud.showFact(tech)
+        return
+      }
+    }
   }
 
   const hits = raycaster.intersectObjects(island.pickables, false)
