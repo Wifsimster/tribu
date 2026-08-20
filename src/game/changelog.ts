@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.10.0',
+    title: 'Le comptoir de l’îlot',
+    items: [
+      "Réponds enfin aux feux d'en face : avec la voile, une ambassade (provisions doublées, une seule fois) fonde un comptoir sur l'îlot voisin — cabane, ponton et mât apparaissent sur la silhouette lointaine.",
+      'Leur barque fait ensuite la navette et apporte un tribut périodique — regarde-la venir.',
+    ],
+  },
+  {
     version: '2.9.0',
     title: 'La Merveille de l’âge',
     items: [

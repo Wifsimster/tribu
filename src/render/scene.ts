@@ -567,6 +567,19 @@ export class Stage {
     return this.wCur.rain
   }
 
+  /** La navette du comptoir : une voile part de l'îlot vers notre rive. */
+  outpostRun(): void {
+    const sl = this.sailState[0]
+    if (!sl || sl.active) return
+    sl.active = true
+    sl.t = 0
+    sl.dur = 46
+    sl.x0 = Math.sin(3.95) * 78
+    sl.z0 = Math.cos(3.95) * 78
+    sl.x1 = Math.sin(3.95) * 26
+    sl.z1 = Math.cos(3.95) * 26
+  }
+
   /** Les signes de vie lointains : voiles, feux de côte, fumée d'îlot. */
   private tickFarWorld(dt: number): void {
     const dummy = this.cloudDummy

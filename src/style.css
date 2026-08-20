@@ -1082,3 +1082,7 @@ body.night .age-bar {
   background: #b98a2e;
   border-radius: 99px;
 }
+
+
+/* L'ambassade : la ligne dorée du sélecteur. */
+.dest.embassy { border: 1px solid rgba(185, 138, 46, 0.55); background: rgba(42, 36, 20, 0.85); }

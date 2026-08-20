@@ -29,6 +29,8 @@ export type GameEvent =
   | { type: 'season'; id: number; name: string; fact: string }
   | { type: 'wonderStage'; def: WonderDef; stage: number }
   | { type: 'wonderDone'; def: WonderDef }
+  | { type: 'outpostFounded' }
+  | { type: 'outpostTribute'; loot: Partial<Record<ResourceId, number>> }
   | {
       type: 'worldEvent'
       kind: 'wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant'
@@ -534,11 +536,14 @@ export class Game {
     return !this.save.expedition && this.amount('food') >= this.expeditionCost()
   }
 
-  startExpedition(destId: DestinationDef['id'] = 'cote'): boolean {
+  startExpedition(destId: DestinationDef['id'] = 'cote', embassy = false): boolean {
     if (!this.canExpedition() || !this.canReach(destId)) return false
-    this.save.res.food = this.amount('food') - this.expeditionCost()
+    if (embassy && (this.save.outpost || !this.knows('sail'))) return false
+    const cost = this.expeditionCost() * (embassy ? 2 : 1)
+    if (this.amount('food') < cost) return false
+    this.save.res.food = this.amount('food') - cost
     const total = this.expeditionDuration(destId)
-    this.save.expedition = { remaining: total, total, dest: destId }
+    this.save.expedition = { remaining: total, total, dest: destId, embassy }
     this.refreshRates()
     this.emit({ type: 'expeditionStart' })
     return true
@@ -581,6 +586,25 @@ export class Game {
       const pool = RELICS.filter((r) => !this.save.relics.includes(r.id))
       relic = pool[Math.floor(Math.random() * pool.length)] ?? null
       if (relic) this.save.relics.push(relic.id)
+    }
+    // L'ambassade fonde le comptoir : pas de butin d'exception, une relation.
+    if (this.save.expedition?.embassy) {
+      this.save.outpost = true
+      this.save.outpostIn = 60
+      this.save.expedition = null
+      this.record('outpost', "Un comptoir est fondé sur l'îlot voisin")
+      this.refreshRates()
+      this.emit({
+        type: 'expeditionEnd',
+        loot,
+        find: null,
+        journal:
+          "L'îlot voisin — les feux ont répondu aux nôtres. Un comptoir est fondé : leur barque viendra porter tribut.",
+        relic,
+        setback: false,
+      })
+      this.emit({ type: 'outpostFounded' })
+      return
     }
     const sights = SIGHTS[dest.id] ?? []
     const sight = sights[Math.floor(Math.random() * sights.length)] ?? 'la mer, longtemps'
@@ -793,6 +817,22 @@ export class Game {
     this.emit({ type: 'worldEvent', kind, fact: EVENT_FACTS[kind] })
   }
 
+  /** La navette du comptoir : un tribut périodique, tant que l'île écoute. */
+  private tickOutpost(dt: number): void {
+    if (!this.save.outpost) return
+    this.save.outpostIn -= dt
+    if (this.save.outpostIn > 0) return
+    this.save.outpostIn = 220 + Math.random() * 120
+    const loot: Partial<Record<ResourceId, number>> = {
+      food: Math.round(18 * (1 + this.save.age)),
+      wood: Math.round(10 * (1 + this.save.age)),
+      insight: Math.round(5 * (1 + this.save.age)),
+    }
+    for (const [id, n] of Object.entries(loot) as [ResourceId, number][])
+      this.save.res[id] = this.amount(id) + n
+    this.emit({ type: 'outpostTribute', loot })
+  }
+
   private tickCaravan(dt: number): void {
     if (this.save.age < CARAVAN_AGE) return
     const c = this.save.caravan
@@ -911,6 +951,7 @@ export class Game {
 
     this.tickEvents(dt)
     this.tickWonder(dt)
+    this.tickOutpost(dt)
     this.tickSeason()
 
     this.saveAccumulator += dt

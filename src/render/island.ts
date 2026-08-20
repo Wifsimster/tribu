@@ -1064,6 +1064,51 @@ export class Island {
     this.group.add(mesh)
   }
 
+  private outpostMesh: Mesh | null = null
+
+  /** Le comptoir fondé sur l'îlot : une cabane, un ponton, un mât — visibles
+   *  de loin, dans la même brume que la silhouette qui les porte. */
+  setOutpost(on: boolean): void {
+    if (!on || this.outpostMesh) {
+      if (!on && this.outpostMesh) {
+        this.group.remove(this.outpostMesh)
+        this.outpostMesh.geometry.dispose()
+        this.outpostMesh = null
+      }
+      return
+    }
+    const parts: BufferGeometry[] = []
+    const put = (src: BufferGeometry, color: Color, x: number, y: number, z: number): void => {
+      const g = src.index ? src.toNonIndexed() : src
+      g.translate(x, y, z)
+      const n = g.attributes.position!.count
+      const rgb = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        rgb[i * 3] = color.r
+        rgb[i * 3 + 1] = color.g
+        rgb[i * 3 + 2] = color.b
+      }
+      g.setAttribute('color', new BufferAttribute(rgb, 3))
+      parts.push(g)
+    }
+    const az = 3.95
+    const R = 85
+    const cx = Math.sin(az) * R
+    const cz = Math.cos(az) * R
+    const warm = new Color('#8a7563')
+    const roof = new Color('#9c6a4c')
+    put(new BoxGeometry(2.2, 1.4, 1.8), warm, cx + 3.6, 1.0, cz + 2.6)
+    put(new BoxGeometry(2.7, 0.5, 2.2).rotateZ(0.08), roof, cx + 3.6, 1.9, cz + 2.6)
+    put(new BoxGeometry(5.5, 0.3, 1.2).rotateY(0.5), warm, cx + 6.4, 0.25, cz + 4.6)
+    put(new CylinderGeometry(0.09, 0.12, 3.4, 5), warm, cx + 4.8, 1.7, cz + 3.4)
+    const geo = mergeGeometries(parts)
+    if (!geo) return
+    const mat = new MeshBasicMaterial({ vertexColors: true, fog: false })
+    this.unlit.push(mat)
+    this.outpostMesh = new Mesh(geo, mat)
+    this.group.add(this.outpostMesh)
+  }
+
   /** Trees, rocks and berry bushes: three instanced draw calls for the whole map,
    *  each one also serving as the tap target that sets the settler's focus. */
   private scatter(rnd: () => number): void {

@@ -335,6 +335,18 @@ export class Hud {
       })
       host.appendChild(row)
     }
+    // L'ambassade : fonder le comptoir de l'îlot, une seule fois, avec la voile.
+    if (this.game.knows('sail') && !this.game.save.outpost) {
+      const row = document.createElement('button')
+      row.type = 'button'
+      row.className = 'dest embassy'
+      row.innerHTML = `<span class="dest-name">L'ambassade</span><span class="dest-blurb">Répondre aux feux de l'îlot — fonder un comptoir (provisions doublées).</span><span class="dest-meta">une seule fois</span>`
+      row.addEventListener('click', () => {
+        this.toggleDest(false)
+        if (!this.game.startExpedition('ilot', true)) this.toast('Pas assez de nourriture pour une ambassade')
+      })
+      host.appendChild(row)
+    }
   }
 
   /** Les vitrines du musée : chaque relique et son histoire vraie. */

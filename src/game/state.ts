@@ -6,6 +6,8 @@ export interface Expedition {
   total: number
   /** Destination choisie — absente sur les vieilles saves (= côte lointaine). */
   dest?: string
+  /** Vrai si ce voyage est l'ambassade qui fonde le comptoir. */
+  embassy?: boolean
 }
 
 export interface CaravanState {
@@ -33,6 +35,9 @@ export interface SaveV1 {
   relics: string[]
   /** Secondes avant le prochain événement rare du monde (live uniquement). */
   eventIn: number
+  /** Comptoir établi sur l'îlot voisin, et minuterie de sa navette. */
+  outpost: boolean
+  outpostIn: number
   /** Chantier de Merveille en cours (âge + part déjà payée par ressource). */
   wonder: { age: number; paid: Partial<Record<ResourceId, number>> } | null
   /** Âges dont la Merveille est achevée sur CETTE île. */
@@ -68,6 +73,8 @@ export function emptySave(now: number): SaveV1 {
     relics: [],
     eventIn: 420,
     chronicle: [],
+    outpost: false,
+    outpostIn: 240,
     wonder: null,
     wonders: [],
     legacy: 0,

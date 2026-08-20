@@ -111,6 +111,7 @@ function buildWorld(): void {
   }
   village.sync(game.buildings)
   village.setRelics(game.save.relics.length)
+  island.setOutpost(game.save.outpost)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
   nodeSpots.clear()
@@ -309,6 +310,19 @@ game.on((e) => {
           break
       }
       break
+    case 'outpostFounded':
+      island.setOutpost(true)
+      ambience.chime()
+      break
+    case 'outpostTribute': {
+      stage.outpostRun()
+      const parts = Object.entries(e.loot)
+        .filter(([, n]) => (n as number) > 0)
+        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
+        .join('  ')
+      hud.toast(`La barque du comptoir apporte son tribut · ${parts}`)
+      break
+    }
     case 'wonderStage': {
       village.setWonder(e.def.age, e.stage)
       hud.refreshTechList()
