@@ -131,6 +131,18 @@ export class Hud {
         rate: root.querySelector('.rate') as HTMLElement,
       })
     }
+    // La pastille qui replie le bandeau : l'essentiel de l'époque d'abord,
+    // tout le grenier au tap.
+    const more = document.createElement('div')
+    more.className = 'res more'
+    more.id = 'res-more'
+    more.hidden = true
+    more.innerHTML = '<span class="val" id="res-more-label">+0</span>'
+    more.addEventListener('click', () => {
+      this.allRes = !this.allRes
+      this.update()
+    })
+    host.appendChild(more)
   }
 
   private wire(): void {
@@ -334,13 +346,39 @@ export class Hud {
     }
   }
 
+  /** Bandeau replié : montrer toutes les ressources, ou l'essentiel du moment. */
+  private allRes = false
+  private lastEssKey = ''
+  private essCache = new Set<ResourceId>()
+
+  /** Les ressources qui comptent MAINTENANT : le savoir (paie tout), le focus
+   *  du colon, et les matériaux des découvertes à portée dans l'époque. */
+  private essential(): Set<ResourceId> {
+    const g = this.game
+    const key = `${g.age.id}|${g.save.focus}|${g.save.techs.length}`
+    if (key === this.lastEssKey) return this.essCache
+    this.lastEssKey = key
+    const set = new Set<ResourceId>(['insight', g.save.focus])
+    for (const t of TECHS) {
+      if (t.age !== g.age.id || g.knows(t.id)) continue
+      if (t.requires.some((r) => !g.knows(r))) continue
+      for (const id of Object.keys(t.materials ?? {}) as ResourceId[]) set.add(id)
+    }
+    this.essCache = set
+    return set
+  }
+
   update(): void {
     this.updateDayDial()
     const g = this.game
 
+    const ess = this.essential()
+    let folded = 0
     for (const [id, node] of this.resNodes) {
       const amount = g.amount(id)
-      const visible = amount > 0 || !RESOURCES[id].hidden
+      const owned = amount > 0 || !RESOURCES[id].hidden
+      const visible = owned && (this.allRes || ess.has(id))
+      if (owned && !visible) folded++
       node.root.hidden = !visible
       if (!visible) continue
       const shown = fmt(amount)
@@ -364,6 +402,11 @@ export class Hud {
         this.lastValues.set(id, amount)
       }
     }
+
+    const more = el('res-more')
+    more.hidden = folded === 0 && !this.allRes
+    el('res-more-label').textContent = this.allRes ? '\u2212' : `+${folded}`
+    more.title = this.allRes ? "Replier les ressources" : 'Tout afficher'
 
     if (this.lastAge !== g.age.id) {
       el('age-name').textContent = g.age.name

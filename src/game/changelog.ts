@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.9.0',
+    title: "L'essentiel en haut",
+    items: [
+      "Le bandeau de ressources ne montre plus que ce qui compte maintenant : le savoir, la récolte en cours et les matériaux des découvertes à portée dans l'époque.",
+      'Le reste se replie derrière une pastille « +N » — un tap déplie tout le grenier, un autre le referme.',
+    ],
+  },
+  {
     version: '1.8.0',
     title: "L'horizon en poche",
     items: [
