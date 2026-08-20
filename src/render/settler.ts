@@ -1,6 +1,8 @@
 import {
   BackSide,
   BoxGeometry,
+  DodecahedronGeometry,
+  TorusGeometry,
   BufferAttribute,
   BufferGeometry,
   CapsuleGeometry,
@@ -142,6 +144,7 @@ export class Settler {
   private destination = new Vector3(3, 0, 3)
   private speed = 2.9
   private pack!: Mesh
+  private tool: Mesh | null = null
 
   constructor(private island: Island) {
     this.body = this.limb(this.torsoGeometry(), 0, HIP_Y, 0)
@@ -306,20 +309,63 @@ export class Settler {
       part(new CylinderGeometry(0.092, 0.092, 0.06, 8), C.bone, 0, -0.32, 0),
     ]
     const hull = [limb, hand]
-    if (spear) {
-      // L'épieu part de la main vers le sol en avant: une longue diagonale qui
-      // casse la verticale du corps et se repère avant le visage.
-      const shaft = part(new CylinderGeometry(0.026, 0.031, 1.32, 6).rotateX(-0.24), C.shaft, 0, -0.3, 0.03)
-      const flint = part(new ConeGeometry(0.068, 0.26, 5).rotateX(Math.PI - 0.24), C.flint, 0, -1.05, 0.21)
-      detail.push(
-        shaft,
-        flint,
-        part(new CylinderGeometry(0.036, 0.036, 0.05, 6).rotateX(-0.24), C.bone, 0, -0.9, 0.17),
-        part(new CylinderGeometry(0.034, 0.034, 0.05, 6).rotateX(-0.24), C.bone, 0, 0.29, -0.11),
-      )
-      hull.push(shaft, flint)
-    }
+    void spear // l'outil n'est plus soudé au bras : il se change (setTool)
     return { detail, hull }
+  }
+
+  // ── Outils ────────────────────────────────────────────────────────────────
+  // L'outil vit dans la main droite et se change selon la ressource travaillée
+  // et les savoirs : épieu ou faucille pour la nourriture, hache pour le bois,
+  // percuteur puis pic pour la pierre. La matière du tranchant suit les âges —
+  // silex, cuivre ou bronze, fer.
+  private toolKey = ''
+
+  setTool(kind: 'hand' | 'spear' | 'sickle' | 'axe' | 'pick', tier: number): void {
+    const key = kind + tier
+    if (key === this.toolKey) return
+    this.toolKey = key
+    if (this.tool) {
+      this.armR.remove(this.tool)
+      this.tool.geometry.dispose()
+      this.tool = null
+    }
+    if (kind === 'hand') return
+    const edge = tier >= 2 ? new Color('#8f959e') : tier >= 1 ? new Color('#c98a4b') : C.flint
+    const parts: BufferGeometry[] = []
+    switch (kind) {
+      case 'spear': {
+        parts.push(part(new CylinderGeometry(0.026, 0.031, 1.32, 6).rotateX(-0.24), C.shaft, 0, 0.12, 0.03))
+        parts.push(part(new ConeGeometry(0.068, 0.26, 5).rotateX(Math.PI - 0.24), edge, 0, -0.63, 0.18))
+        parts.push(part(new CylinderGeometry(0.036, 0.036, 0.05, 6).rotateX(-0.24), C.bone, 0, -0.48, 0.14))
+        break
+      }
+      case 'sickle': {
+        parts.push(part(new CylinderGeometry(0.024, 0.028, 0.34, 6), C.shaft, 0, 0.05, 0))
+        parts.push(part(new TorusGeometry(0.12, 0.028, 5, 8, Math.PI * 1.2).rotateZ(0.5), edge, 0.02, 0.28, 0))
+        break
+      }
+      case 'axe': {
+        parts.push(part(new CylinderGeometry(0.028, 0.034, 0.52, 6), C.shaft, 0, 0.1, 0))
+        parts.push(part(new BoxGeometry(0.2, 0.11, 0.05).rotateZ(0.08), edge, 0.1, 0.32, 0))
+        parts.push(part(new CylinderGeometry(0.04, 0.04, 0.06, 6), C.bone, 0, 0.26, 0))
+        break
+      }
+      case 'pick': {
+        if (tier === 0) {
+          // Simple percuteur : un galet en main.
+          parts.push(part(new DodecahedronGeometry(0.09, 0), PALETTE.rock, 0, 0.02, 0))
+        } else {
+          parts.push(part(new CylinderGeometry(0.028, 0.034, 0.5, 6), C.shaft, 0, 0.1, 0))
+          parts.push(part(new ConeGeometry(0.05, 0.22, 5).rotateZ(-Math.PI / 2), edge, 0.16, 0.32, 0))
+          parts.push(part(new ConeGeometry(0.05, 0.16, 5).rotateZ(Math.PI / 2), edge, -0.12, 0.32, 0))
+        }
+        break
+      }
+    }
+    this.tool = new Mesh(weld(parts), this.skin)
+    this.tool.position.set(0, -0.42, 0)
+    this.tool.castShadow = true
+    this.armR.add(this.tool)
   }
 
   private legGeometry(): Pair {

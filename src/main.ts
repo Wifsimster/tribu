@@ -345,6 +345,16 @@ function frame(now: number): void {
   // Nuit sans lampe à graisse : la tribu dort. Avec les lampes, elle veille.
   settler.setNight(game.isNight && game.nightLight < 0.85)
   const boost = game.encourageLeft > 0 ? 1.7 : 1
+  // L'outil suit la ressource travaillée et la matière suit les savoirs.
+  const metal = game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
+  if (game.save.focus === 'food') {
+    settler.setTool(game.knows('agriculture') ? 'sickle' : game.knows('spear') ? 'spear' : 'hand', metal)
+  } else if (game.save.focus === 'wood') {
+    settler.setTool(game.knows('flint') ? 'axe' : 'hand', metal)
+  } else {
+    // Galet percuteur, puis pic de cuivre, puis pic de fer.
+    settler.setTool('pick', game.knows('ironworking') ? 2 : game.knows('copper') ? 1 : 0)
+  }
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
   boat.update(dt, elapsed)
