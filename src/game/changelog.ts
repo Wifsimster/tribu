@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.8.0',
+    title: 'La tribu s’agrandit',
+    items: [
+      'Le colon n’est plus seul : une cueilleuse flâne de bâtiment en bâtiment dès le Néolithique, un enfant court dans le village dès l’Antiquité.',
+      'Ils vivent leur vie — et rentrent dormir au camp à la nuit tombée.',
+    ],
+  },
+  {
     version: '2.7.0',
     title: 'Les saisons',
     items: [

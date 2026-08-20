@@ -18,6 +18,7 @@ import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { CHANGELOG } from './game/changelog'
 import { Ambience } from './audio/ambience'
+import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
@@ -46,9 +47,15 @@ let island!: Island
 let village!: Village
 let settler!: Settler
 let fauna!: Fauna
+let villagers!: Villagers
 const nodeSpots = new Map<string, Vector3[]>()
 
 function disposeWorld(): void {
+  if (villagers) {
+    stage.scene.remove(villagers.mesh)
+    villagers.mesh.geometry.dispose()
+    ;(villagers.mesh.material as { dispose(): void }).dispose()
+  }
   for (const g of [island?.group, village?.group, settler?.group, fauna?.group]) {
     if (!g) continue
     stage.scene.remove(g)
@@ -81,7 +88,11 @@ function buildWorld(): void {
   fauna = new Fauna(island, village.obstaclePoints)
   fauna.onFishJump = () => ambience.plop()
   fishing = false
-  stage.scene.add(island.group, village.group, settler.group, fauna.group)
+  villagers = new Villagers(island, village.obstaclePoints)
+  // La tribu s'étoffe avec les âges : une cueilleuse au Néolithique, un
+  // enfant à l'Antiquité. Le colon n'est plus seul.
+  villagers.setPopulation(game.save.age >= 4 ? 2 : game.save.age >= 1 ? 1 : 0)
+  stage.scene.add(island.group, village.group, settler.group, fauna.group, villagers.mesh)
   stage.islandRadius = island.radius
   island.setSeason(game.season.id)
   stage.winter = game.season.id === 3
@@ -755,6 +766,7 @@ function frame(now: number): void {
   village.update(dt, elapsed)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
+  villagers.update(dt, elapsed, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
   if (wreckTimer > 0) {
