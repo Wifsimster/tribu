@@ -2,6 +2,7 @@ import { InstancedMesh, Raycaster, Vector2, Vector3 } from 'three'
 import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
+import { CHANGELOG } from './game/changelog'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
@@ -257,6 +258,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     confirmStep = 0
     confirm.hidden = true
     tuto.hidden = true
+    menuEl('menu-news').hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -298,6 +300,22 @@ function menuEl<T extends HTMLElement>(id: string): T {
   })
   menuEl('menu-tuto-close').addEventListener('click', showHome)
 
+  const news = menuEl('menu-news')
+  {
+    const list = menuEl('news-list')
+    for (const r of CHANGELOG) {
+      const li = document.createElement('li')
+      li.innerHTML =
+        `<b>v${r.version} — ${r.title}.</b> ` + r.items.map((i) => i).join(' ')
+      list.appendChild(li)
+    }
+  }
+  menuEl('menu-news-open').addEventListener('click', () => {
+    home.hidden = true
+    news.hidden = false
+  })
+  menuEl('menu-news-close').addEventListener('click', showHome)
+
   menuEl('menu-erase').addEventListener('click', () => {
     if (confirmStep === 1) {
       // Seconde confirmation : le libellé change, il faut re-taper en conscience.
@@ -331,6 +349,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
 }
 
 let last = performance.now()
+let lastWall = Date.now()
 let elapsed = 0
 
 function frame(now: number): void {
@@ -339,6 +358,13 @@ function frame(now: number): void {
   // animation would teleport. Clamp here and let the save handle real absence.
   const dt = Math.min((now - last) / 1000, 0.1)
   last = now
+  // Détection de suspension à l'horloge murale : verrouillage d'écran, gel
+  // d'onglet, throttling — tout écart réel est crédité au premier frame du
+  // retour, sans dépendre d'un événement de visibilité.
+  const wall = Date.now()
+  const gap = (wall - lastWall) / 1000
+  lastWall = wall
+  if (gap > 5 && !paused) game.creditAbsence(gap)
   elapsed += dt
 
   if (!paused) game.tick(dt, Date.now())
@@ -408,14 +434,12 @@ requestAnimationFrame((t) => {
 // Credit real elapsed time when the tab comes back, and never lose a session.
 // Sur mobile la page vit en arrière-plan sans repasser par le constructeur :
 // le temps caché doit être crédité ici, par le même chemin que le hors-ligne.
-let hiddenAt = 0
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
-    hiddenAt = Date.now()
     game.flush(Date.now())
   } else {
-    if (hiddenAt > 0) game.creditAbsence((Date.now() - hiddenAt) / 1000)
-    hiddenAt = 0
+    // Le crédit passe par la détection d'écart de la boucle : ici on ne fait
+    // que réarmer le chrono d'animation.
     last = performance.now()
   }
 })

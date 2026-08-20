@@ -141,7 +141,10 @@ export class Game {
    *  marche pas quand l'application ne tourne pas ». */
   creditAbsence(rawSeconds: number): void {
     const seconds = Math.min(rawSeconds, OFFLINE_CAP_SECONDS)
-    if (seconds <= 60) return
+    // Seuil bas : un téléphone verrouillé 30 s pendant une expédition doit
+    // compter. Seul le TOAST garde un seuil élevé, pour ne pas commenter
+    // chaque changement d'application.
+    if (seconds <= 3) return
     const before = { ...this.save.res }
     // Une expédition en cours se poursuit sans le joueur ; le camp ne produit
     // qu'une fois le colon rentré.
@@ -174,7 +177,7 @@ export class Game {
       const delta = (this.save.res[id] ?? 0) - (before[id] ?? 0)
       if (delta > 0.5) gained[id] = delta
     }
-    this.emit({ type: 'offline', seconds, gained })
+    if (seconds > 90) this.emit({ type: 'offline', seconds, gained })
   }
 
   static fresh(now: number): Game {
