@@ -183,6 +183,49 @@ export class Stage {
     this.sunGlow.renderOrder = 990
     this.camera.add(this.sunGlow)
 
+    // La lune : même système que le soleil — espace écran, horizon perçu —
+    // en froid et en discret. Elle culmine la nuit là où le soleil culmine à
+    // midi, décalée d'un quart de radian pour ne pas se superposer aux
+    // transitions de l'aube et du crépuscule.
+    const moonGlowMat = new MeshBasicMaterial({
+      map: rampTexture(64, 64, (u, v, out) => {
+        const d = Math.hypot(u - 0.5, v - 0.5) * 2
+        out.set('#9fc2e8')
+        return Math.pow(Math.max(0, 1 - d), 2.4)
+      }),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      fog: false,
+      toneMapped: false,
+      opacity: 0,
+    })
+    this.moonGlow = new Mesh(new PlaneGeometry(52, 52), moonGlowMat)
+    const moonDiscMat = new MeshBasicMaterial({
+      map: rampTexture(48, 48, (u, v, out) => {
+        const d = Math.hypot(u - 0.5, v - 0.5) * 2
+        // Légères mers lunaires : deux creux plus sombres cuits dans le disque.
+        const m1 = Math.hypot(u - 0.38, v - 0.42) * 3.2
+        const m2 = Math.hypot(u - 0.6, v - 0.62) * 4.2
+        const shade = 1 - 0.16 * Math.max(0, 1 - m1) - 0.12 * Math.max(0, 1 - m2)
+        out.set('#eef4ff').multiplyScalar(shade)
+        return Math.pow(Math.max(0, 1 - d), 0.5)
+      }),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      fog: false,
+      toneMapped: false,
+      opacity: 0,
+    })
+    this.moonDisc = new Mesh(new PlaneGeometry(9, 9), moonDiscMat)
+    this.moonDisc.position.z = 1
+    this.moonGlow.add(this.moonDisc)
+    this.moonGlow.renderOrder = 989
+    this.camera.add(this.moonGlow)
+
     this.resize()
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('orientationchange', () => this.resize())
@@ -190,10 +233,15 @@ export class Stage {
 
   private readonly sunGlow: Mesh
   private readonly sunDisc: Mesh
+  private readonly moonGlow: Mesh
+  private readonly moonDisc: Mesh
   private sunAz = 0
   private sunElev = 1
+  private dayU = 0.32
   private glowBase = 0
   private discBase = 0
+  private moonGlowBase = 0
+  private moonDiscBase = 0
 
   /** Le ciel n'apparaît qu'en vue rasante : un dégradé vertical suffit, et sa
    *  base est exactement la couleur de brume pour que l'horizon disparaisse. */
@@ -251,6 +299,7 @@ export class Stage {
     // l'horizon à l'écran dépend de la caméra, pas du monde.
     this.sunAz = az
     this.sunElev = elev
+    this.dayU = u
     const glowA = smoothstep(-0.14, 0.02, elev) * (1 - smoothstep(0.16, 0.42, elev))
     const discA = smoothstep(-0.03, 0.05, elev) * (1 - smoothstep(0.28, 0.5, elev))
     this.glowBase = glowA * 0.5
@@ -259,6 +308,12 @@ export class Stage {
     ;(this.sunDisc.material as MeshBasicMaterial).color
       .set('#fff3d2')
       .lerp(SUN_LOW, 1 - smoothstep(0.02, 0.35, elev))
+
+    // La lune monte quand le soleil descend : élévation opposée. Elle reste
+    // visible toute la nuit, s'efface à l'approche de l'aube.
+    const moonElev = -elev
+    this.moonDiscBase = smoothstep(-0.03, 0.1, moonElev) * 0.95
+    this.moonGlowBase = smoothstep(0.0, 0.2, moonElev) * 0.3
     this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
     this.sun.intensity = 2.35 * k
     // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
@@ -347,6 +402,26 @@ export class Stage {
     const edge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(gx))
     ;(this.sunGlow.material as MeshBasicMaterial).opacity = this.glowBase * edge
     ;(this.sunDisc.material as MeshBasicMaterial).opacity = this.discBase * edge
+    this.sunGlow.visible = this.glowBase * edge > 0.01
+
+    // La lune traverse lentement le col d'horizon arrière pendant la nuit —
+    // l'azimut de midi du soleil est latéral, hors de la fenêtre visible, et
+    // son zénith (élévation 1) sortait du cadre par le haut : trajectoire
+    // écran propre, hauteur plafonnée.
+    const nightPhase = this.dayU >= 0.5 ? (this.dayU - 0.5) * 2 : 0
+    const moonAzWorld = NOON_AZ - ARC - 0.3 + nightPhase * 0.6
+    let mAz = moonAzWorld - (this.azimuth + Math.PI)
+    while (mAz > Math.PI) mAz -= Math.PI * 2
+    while (mAz < -Math.PI) mAz += Math.PI * 2
+    const moonElev = Math.max(0, -this.sunElev)
+    const mx = D * Math.tan(Math.max(-1.2, Math.min(1.2, mAz)))
+    const my = halfH * (0.52 + Math.min(moonElev, 0.5) * 0.6)
+    this.moonGlow.position.set(mx, my, -D)
+    this.moonGlow.scale.setScalar((halfH * 1.7) / 72)
+    const mEdge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(mx))
+    ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase * mEdge
+    ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase * mEdge
+    this.moonGlow.visible = this.moonDiscBase * mEdge > 0.01
     // La brume ne commence qu'au-delà de l'île entière. À 0,95·d elle mordait
     // sur le bord éloigné : les faces basses se dissolvaient exactement là où
     // la ligne d'eau doit trancher.
