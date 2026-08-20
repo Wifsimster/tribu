@@ -49,7 +49,7 @@ export function attachControls(
       stage.polar = clamp(stage.polar - dy * k, MIN_POLAR, MAX_POLAR)
     } else if (pointers.size === 2) {
       const d = spread(pointers)
-      if (pinchDist > 0) stage.distance = clamp(stage.distance * (pinchDist / d), 16, 58)
+      if (pinchDist > 0) stage.distance = clamp(stage.distance * (pinchDist / d), 8, 58)
       pinchDist = d
     }
   })
@@ -72,7 +72,7 @@ export function attachControls(
     'wheel',
     (e) => {
       e.preventDefault()
-      stage.distance = clamp(stage.distance * (1 + Math.sign(e.deltaY) * 0.09), 16, 58)
+      stage.distance = clamp(stage.distance * (1 + Math.sign(e.deltaY) * 0.09), 8, 58)
     },
     { passive: false },
   )
