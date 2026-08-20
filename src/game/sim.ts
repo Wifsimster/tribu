@@ -412,10 +412,13 @@ export class Game {
     return Math.max(30, EXPEDITION_SECONDS / this.expeditionSpeed)
   }
 
-  /** Les provisions grandissent avec l'âge : 10 🍖 étaient triviales dès le
-   *  Néolithique. */
+  /** Les provisions suivent l'économie réelle : ~30 secondes de récolte de
+   *  nourriture focalisée, portage compris. Un barème fixe par âge devenait
+   *  dérisoire dès que les multiplicateurs s'empilaient. */
   expeditionCost(): number {
-    return EXPEDITION_FOOD_COST + this.save.age * 10
+    const carryBonus = 1 + this.carry * 0.02
+    const focusedFood = BASE_RATE.food * this.mult.food * carryBonus
+    return Math.max(EXPEDITION_FOOD_COST + this.save.age * 10, Math.round(focusedFood * 30))
   }
 
   canExpedition(): boolean {
@@ -439,7 +442,12 @@ export class Game {
     // taux (butin/seconde) reste constant et le spam n'est plus une stratégie.
     // Calibré ≈ 1,4× la récolte focalisée, sur toutes les ressources à la fois.
     const ratio = (this.save.expedition?.total ?? EXPEDITION_SECONDS) / EXPEDITION_SECONDS
-    const scale = (90 + this.save.age * 80) * ratio
+    // Le butin profite du portage en racine carrée : sans lui, l'expédition
+    // tardive devenait strictement moins bonne que rester au camp (le camp
+    // encaisse ×20 de portage, le voyage rien) ; en plein, elle redevenait
+    // dominante. La racine garde la tension.
+    const carryBonus = Math.sqrt(1 + this.carry * 0.02)
+    const scale = (90 + this.save.age * 80) * ratio * carryBonus
     for (const id of this.unlocked) {
       if (id === 'insight') continue
       loot[id] = Math.round(scale * BASE_RATE[id] * this.mult[id])

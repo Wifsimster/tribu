@@ -315,7 +315,7 @@ export class Hud {
       // (le coût varie avec l'âge, il fait donc partie de la clé).
       const key = `idle-${g.expeditionCost()}`
       if (this.lastExpLabel !== key) {
-        label.innerHTML = `Expédition <span class="cost">${icon('food', 14)}${g.expeditionCost()}</span>`
+        label.innerHTML = `Expédition <span class="cost">${icon('food', 14)}${fmt(g.expeditionCost())}</span>`
         this.lastExpLabel = key
       }
       el('expedition-fill').style.transform = 'scaleX(0)'

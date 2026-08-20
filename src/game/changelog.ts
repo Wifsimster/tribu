@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.4.1',
+    title: 'Expéditions rééquilibrées',
+    items: [
+      "Le coût d'une expédition suit ta production réelle (~30 s de récolte de nourriture) au lieu d'un barème fixe devenu dérisoire.",
+      'Le butin profite en partie du portage : partir reste un vrai choix, jamais une évidence ni un piège.',
+    ],
+  },
+  {
     version: '1.4.0',
     title: "Jusqu'à nos jours",
     items: [
