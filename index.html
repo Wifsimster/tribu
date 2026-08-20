@@ -54,6 +54,19 @@
         <div class="resources" id="resources"></div>
       </div>
 
+      <!-- Cadran d'horizon : où en est le soleil, quand tombe la nuit. -->
+      <button class="daydial" id="daydial" type="button" aria-label="Cycle jour et nuit">
+        <svg viewBox="0 0 48 28" width="48" height="28" fill="none" aria-hidden="true">
+          <path d="M6 21 A 18 16 0 0 1 42 21" stroke="rgba(255,255,255,0.4)" stroke-width="1.3" stroke-dasharray="1.5 3.2" stroke-linecap="round"/>
+          <line x1="2" y1="21" x2="46" y2="21" stroke="rgba(255,255,255,0.6)" stroke-width="1.6" stroke-linecap="round"/>
+          <g id="daydial-sun" transform="translate(6 21)"><circle r="3.4" fill="#ffd76a"/></g>
+          <g id="daydial-moon" transform="translate(6 21)" visibility="hidden">
+            <mask id="daydial-crescent"><rect x="-4" y="-4" width="8" height="8" fill="#fff"/><circle cx="1.8" cy="-1.2" r="2.4" fill="#000"/></mask>
+            <circle r="2.9" fill="#dbe7f8" mask="url(#daydial-crescent)"/>
+          </g>
+        </svg>
+      </button>
+
       <div class="bottom">
         <div class="actions">
           <button class="btn" id="btn-expedition" type="button">

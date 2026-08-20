@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.8.0',
+    title: "L'horizon en poche",
+    items: [
+      "Un cadran d'horizon sous le menu : le soleil parcourt son arc, cuivré aux heures basses, et la lune prend le relais la nuit. Un tap dit quand la nuit tombe ou quand le jour se lève.",
+      "Les étoiles ne descendent plus sur l'eau ni sur l'île quand on incline la caméra : la voûte s'éteint en fondu vers l'horizon.",
+    ],
+  },
+  {
     version: '1.7.2',
     title: "L'eau calme retrouvée",
     items: [

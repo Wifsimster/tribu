@@ -319,7 +319,11 @@ export class Stage {
         const sy = (cy + 0.2 + 0.6 * starHash(cx * 41.9 + cy * 73.1)) / cells
         const d = Math.hypot(u - sx, v - sy) * 256
         const bright = 0.25 + 0.75 * starHash(cx * 13.7 + cy * 219.4)
-        return bright * Math.pow(Math.max(0, 1 - d / 1.25), 1.6)
+        // Fondu vers le bas de la voûte : sans depth test (voulu — la voûte
+        // peint le ciel PAR-DESSUS la mer lointaine, indiscernable de nuit),
+        // les étoiles basses tapissaient l'eau proche et la silhouette de
+        // l'île dès qu'on inclinait la caméra. Elles meurent avant.
+        return bright * Math.pow(Math.max(0, 1 - d / 1.25), 1.6) * smoothstep(0.16, 0.44, v)
       }),
       transparent: true,
       blending: AdditiveBlending,

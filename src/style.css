@@ -951,3 +951,21 @@ body.night .age-bar {
 .res {
   cursor: pointer;
 }
+
+/* Cadran d'horizon : la course du soleil en un coup d'œil, sous le menu. */
+.daydial {
+  position: fixed;
+  top: 60px;
+  right: 13px;
+  width: 48px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  z-index: 6;
+  cursor: pointer;
+  opacity: 0.9;
+  filter: drop-shadow(0 1px 2px rgba(10, 25, 40, 0.45));
+  -webkit-tap-highlight-color: transparent;
+}
+.daydial:active { transform: scale(0.94); }

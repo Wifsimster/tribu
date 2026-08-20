@@ -1,4 +1,4 @@
-import { AGES, RESOURCES, TECHS, TECH_BY_ID, type ResourceId, type TechDef } from '../game/content'
+import { AGES, DAY_SECONDS, DAY_START, RESOURCES, TECHS, TECH_BY_ID, type ResourceId, type TechDef } from '../game/content'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -135,6 +135,7 @@ export class Hud {
 
   private wire(): void {
     el('btn-research').addEventListener('click', () => this.toggleSheet(!this.sheetOpen))
+    el('daydial').addEventListener('click', () => this.toast(this.dayDialHint()))
     el('sheet-close').addEventListener('click', () => this.toggleSheet(false))
     el('fact-close').addEventListener('click', () => this.closeFact())
     el('scrim').addEventListener('click', () => {
@@ -284,7 +285,57 @@ export class Hud {
     while (host.childElementCount > 3) host.firstElementChild?.remove()
   }
 
+  /** L'heure du monde, en tour de cadran (0 = lever, 0,5 = coucher). */
+  private dayU(): number {
+    return (DAY_START + this.game.save.totalPlaySeconds / DAY_SECONDS) % 1
+  }
+
+  /** La nuit commence quand la part de jour touche zéro (sin = −0,06). */
+  private static readonly DUSK = 0.515
+  private static readonly DAWN = 0.985
+
+  private dayDialHint(): string {
+    const u = this.dayU()
+    const dur = (s: number): string => (s < 75 ? `${Math.max(5, Math.round(s / 5) * 5)} s` : `${Math.round(s / 60)} min`)
+    if (u < Hud.DUSK) {
+      const s = (Hud.DUSK - u) * DAY_SECONDS
+      return u < 0.06
+        ? `Le soleil se lève — la nuit tombera dans ${dur(s)}`
+        : `Le soleil suit sa course — la nuit tombe dans ${dur(s)}`
+    }
+    const s = ((Hud.DAWN - u + 1) % 1) * DAY_SECONDS
+    return `La tribu dort — le jour se lève dans ${dur(s)}`
+  }
+
+  private lastDialKey = ''
+  private updateDayDial(): void {
+    const u = this.dayU()
+    const key = u.toFixed(3)
+    if (key === this.lastDialKey) return
+    this.lastDialKey = key
+    const day = u < Hud.DUSK
+    const sun = el('daydial-sun')
+    const moon = el('daydial-moon')
+    const place = (node: HTMLElement, p: number): void => {
+      const x = 24 - 18 * Math.cos(p * Math.PI)
+      const y = 21 - 16 * Math.sin(p * Math.PI)
+      node.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`)
+    }
+    sun.setAttribute('visibility', day ? 'visible' : 'hidden')
+    moon.setAttribute('visibility', day ? 'hidden' : 'visible')
+    if (day) {
+      const p = Math.min(1, u / 0.5)
+      place(sun, p)
+      // Deux teintes, façon toon : doré en journée, cuivré aux heures basses.
+      const low = Math.sin(p * Math.PI) < 0.35
+      sun.querySelector('circle')?.setAttribute('fill', low ? '#ff9a4e' : '#ffd76a')
+    } else {
+      place(moon, Math.min(1, Math.max(0, (u - 0.5) / 0.5)))
+    }
+  }
+
   update(): void {
+    this.updateDayDial()
     const g = this.game
 
     for (const [id, node] of this.resNodes) {
