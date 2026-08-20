@@ -18,8 +18,10 @@ import {
   MeshToonMaterial,
   Object3D,
   Quaternion,
+  RingGeometry,
   Vector3,
 } from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, SUN_DIR, ramp, rampTexture, smoothstep, tint } from './palette'
 
 /** Small deterministic PRNG — the island must look identical on every reload. */
@@ -78,6 +80,8 @@ export const GRID = 42
 
 /** Griffonnage partagé de setDaylight : une teinte par frame, zéro allocation. */
 const tmpTint = new Color()
+/** Ciel rasant nocturne rendu par le fresnel de l'eau. */
+const HORIZON_NIGHT = new Color('#22344c')
 
 /** Épaisseur de la couche d'herbe : le reste de la colonne est de la terre,
  *  c'est elle qui dessine les contre-marches des terrasses. */
@@ -220,6 +224,8 @@ export class Island {
   setDaylight(k: number): void {
     const c = tmpTint.setRGB(1, 1, 1).lerp(this.nightTint, 1 - k)
     for (const m of this.unlit) m.color.copy(c)
+    // Le fresnel rend le ciel du moment : pâle le jour, encre bleutée la nuit.
+    this.waterHorizon.value.set('#d8ecf4').lerp(HORIZON_NIGHT, 1 - k)
   }
 
   /** Les reflets construits ailleurs (tipis de village.ts) vivent dans la même
@@ -936,11 +942,75 @@ export class Island {
 
     const surfaceMat = new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
     this.unlit.push(surfaceMat)
-    const surface = new Mesh(disc, surfaceMat)
+    // La surface n'est plus le disque plat du fond : une couronne tessellée
+    // autour de l'île (là où la caméra regarde) fondue dans un anneau plat
+    // jusqu'au large. C'est elle que le vertex shader soulève — une houle de
+    // MAILLAGE, pas un sprite : les silhouettes de la rive et des bateaux se
+    // découpent sur une eau qui respire vraiment (poseidon, en version toon).
+    const inner = new RingGeometry(0.001, 62, 64, 20)
+    const outerRing = new RingGeometry(62, SPAN, 64, 1)
+    const surfGeo = mergeGeometries([inner, outerRing]) ?? disc
+    {
+      // Mêmes UV planaires que CircleGeometry : la texture de rive tombe juste.
+      const pos = surfGeo.attributes.position!
+      const uv = surfGeo.attributes.uv!
+      for (let i = 0; i < pos.count; i++)
+        uv.setXY(i, pos.getX(i) / (SPAN * 2) + 0.5, pos.getY(i) / (SPAN * 2) + 0.5)
+      uv.needsUpdate = true
+    }
+    // La houle meurt sous l'île (rien à voir) et au large (plus de sommets).
+    const swellFrom = maxEdge + 1.2
+    surfaceMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = this.waterTime
+      sh.uniforms.uHorizon = this.waterHorizon
+      sh.vertexShader = sh.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uTime;\nvarying vec3 vWorld;',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+      float wr = length(position.xy);
+      float wk = smoothstep(${swellFrom.toFixed(2)}, ${(swellFrom + 5).toFixed(2)}, wr) * (1.0 - smoothstep(44.0, 60.0, wr));
+      if (wk > 0.0) {
+        transformed.z += wk * (
+          sin(position.x * 0.42 + uTime * 0.9) * 0.032 +
+          sin(position.y * 0.31 - uTime * 0.7 + position.x * 0.12) * 0.027 +
+          sin((position.x + position.y) * 0.18 + uTime * 0.45) * 0.022);
+      }
+      vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+        )
+      sh.fragmentShader = sh.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform vec3 uHorizon;\nvarying vec3 vWorld;',
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+      // Fresnel d'eau (n≈1,34) réduit à son effet lisible : plus le regard
+      // rase la surface, plus elle rend le ciel au lieu de sa propre couleur.
+      float fres = pow(1.0 - clamp(normalize(cameraPosition - vWorld).y, 0.0, 1.0), 3.0);
+      diffuseColor.rgb = mix(diffuseColor.rgb, uHorizon, fres * 0.5);`,
+        )
+    }
+    surfaceMat.customProgramCacheKey = () => 'tribu-water-surface'
+    const surface = new Mesh(surfGeo, surfaceMat)
     surface.rotation.x = -Math.PI / 2
     surface.renderOrder = -1
+    surface.frustumCulled = false
 
     this.group.add(bed, surface)
+  }
+
+  /** Horloge de la houle, avancée par la boucle de rendu. */
+  private readonly waterTime = { value: 0 }
+  /** Couleur que l'eau rend au regard rasant — le ciel du moment. */
+  private readonly waterHorizon = { value: new Color('#d8ecf4') }
+
+  tickWater(t: number): void {
+    this.waterTime.value = t
   }
 
   /** Trees, rocks and berry bushes: three instanced draw calls for the whole map,

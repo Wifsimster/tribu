@@ -192,18 +192,31 @@ function turnToward(heading: number, want: number, max: number): number {
   return heading + Math.max(-max, Math.min(max, d))
 }
 
-function pickTarget(b: Beast, spots: Spot[], cfg: LandCfg): void {
-  let s = spots[(Math.random() * spots.length) | 0]!
-  // Quelques tirages pour trouver une cible proche : les animaux font des
-  // étapes courtes, ils ne traversent pas l'île d'une traite.
-  for (let k = 0; k < 8; k++) {
+function pickTarget(
+  b: Beast,
+  spots: Spot[],
+  cfg: LandCfg,
+  clear?: (x0: number, z0: number, x1: number, z1: number) => boolean,
+): void {
+  let s: Spot | null = null
+  // Quelques tirages pour trouver une cible proche ET d'accès dégagé : les
+  // animaux font des étapes courtes et contournent le bâti au lieu de le
+  // traverser en ligne droite.
+  for (let k = 0; k < 10; k++) {
     const c = spots[(Math.random() * spots.length) | 0]!
     const dx = c.x - b.x
     const dz = c.z - b.z
-    if (dx * dx + dz * dz <= cfg.step * cfg.step) {
+    if (dx * dx + dz * dz <= cfg.step * cfg.step && (!clear || clear(b.x, b.z, c.x, c.z))) {
       s = c
       break
     }
+  }
+  if (!s) {
+    // Aucun trajet propre : la bête reste brouter et retentera dans un instant,
+    // plutôt que de foncer dans un mur.
+    b.state = 2
+    b.timer = 0.8 + Math.random() * 1.2
+    return
   }
   b.tx = s.x + (Math.random() - 0.5) * 0.4
   b.tz = s.z + (Math.random() - 0.5) * 0.4
@@ -263,9 +276,13 @@ export class Fauna {
   private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16 }
   private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8 }
 
+  /** Un trajet est-il dégagé ? Vrai si le segment ne coupe l'emprise d'aucun
+   *  bâtiment ni du camp : les bêtes contournent, elles ne traversent plus. */
+  private readonly segClear: (x0: number, z0: number, x1: number, z1: number) => boolean
+
   constructor(
     private readonly island: Island,
-    private readonly obstacles: { x: number; z: number }[] = [],
+    private readonly obstacles: { x: number; z: number; r: number }[] = [],
   ) {
     this.group.name = 'fauna'
     // Positions des sapins : la « lisière » se mesure contre eux, pas contre
@@ -296,13 +313,30 @@ export class Fauna {
     const fireDist = (x: number, z: number): number => Math.hypot(x - CAMP_FIRE.x, z - CAMP_FIRE.z)
     // Le village entier est un obstacle : le verdict du jury était unanime —
     // moutons contre le tipi, cerf à une tuile du feu, clipping d'atelier.
+    // Distance au BORD de l'emprise, pas au centre : une hutte et un aqueduc
+    // n'ont pas le même rayon.
     const objDist = (x: number, z: number): number => {
       let best = Infinity
       for (const o of this.obstacles) {
-        const d = (o.x - x) ** 2 + (o.z - z) ** 2
+        const d = Math.hypot(o.x - x, o.z - z) - o.r
         if (d < best) best = d
       }
-      return Math.sqrt(best)
+      return best
+    }
+    this.segClear = (x0, z0, x1, z1) => {
+      const hits = (cx: number, cz: number, r: number): boolean => {
+        const dx = x1 - x0
+        const dz = z1 - z0
+        const l2 = dx * dx + dz * dz
+        let t = l2 > 0 ? ((cx - x0) * dx + (cz - z0) * dz) / l2 : 0
+        t = Math.max(0, Math.min(1, t))
+        const px = x0 + dx * t - cx
+        const pz = z0 + dz * t - cz
+        return px * px + pz * pz < r * r
+      }
+      for (const o of this.obstacles) if (hits(o.x, o.z, o.r + 0.25)) return false
+      for (const b of CAMP_BLOCKERS) if (hits(b.x, b.z, b.r + 0.2)) return false
+      return true
     }
 
     const land = island.cells.filter((c) => !c.beach && !inCamp(c.x, c.z, 0.3))
@@ -317,20 +351,20 @@ export class Fauna {
     }
 
     this.deerSpots = pick(
-      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 10 && objDist(c.x, c.z) > 2 && treeDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) < 3.2,
-      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 8 && objDist(c.x, c.z) > 1.6 && treeDist(c.x, c.z) < 4.5,
+      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 10 && objDist(c.x, c.z) > 1.1 && treeDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) < 3.2,
+      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 8 && objDist(c.x, c.z) > 0.8 && treeDist(c.x, c.z) < 4.5,
     )
     this.sheepSpots = pick(
-      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 9.5 && fireDist(c.x, c.z) < 14 && objDist(c.x, c.z) > 2 && treeDist(c.x, c.z) > 1.2,
-      (c) => !c.trod && fireDist(c.x, c.z) > 8 && fireDist(c.x, c.z) < 16 && objDist(c.x, c.z) > 1.6 && treeDist(c.x, c.z) > 1,
+      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 9.5 && fireDist(c.x, c.z) < 14 && objDist(c.x, c.z) > 1.1 && treeDist(c.x, c.z) > 1.2,
+      (c) => !c.trod && fireDist(c.x, c.z) > 8 && fireDist(c.x, c.z) < 16 && objDist(c.x, c.z) > 0.8 && treeDist(c.x, c.z) > 1,
     )
     this.henSpots = pick(
-      (c) => fireDist(c.x, c.z) > 2.2 && fireDist(c.x, c.z) < 4.6 && objDist(c.x, c.z) > 1.2,
-      (c) => fireDist(c.x, c.z) < 6 && objDist(c.x, c.z) > 1,
+      (c) => fireDist(c.x, c.z) > 2.2 && fireDist(c.x, c.z) < 4.6 && objDist(c.x, c.z) > 0.7,
+      (c) => fireDist(c.x, c.z) < 6 && objDist(c.x, c.z) > 0.5,
     )
     this.horseSpots = pick(
-      (c) => !c.trod && c.inland > 2.2 && fireDist(c.x, c.z) > 11 && objDist(c.x, c.z) > 2.2 && treeDist(c.x, c.z) > 2.4,
-      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 9 && objDist(c.x, c.z) > 1.8 && treeDist(c.x, c.z) > 1.6,
+      (c) => !c.trod && c.inland > 2.2 && fireDist(c.x, c.z) > 11 && objDist(c.x, c.z) > 1.3 && treeDist(c.x, c.z) > 2.4,
+      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 9 && objDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) > 1.6,
     )
 
     // Le troupeau de moutons reste groupé : ses cibles se limitent au voisinage
@@ -463,19 +497,21 @@ export class Fauna {
           }
         } else {
           b.timer -= dt
-          if (b.timer < 0) pickTarget(b, spots, cfg)
+          if (b.timer < 0) pickTarget(b, spots, cfg, this.segClear)
         }
       }
 
-      // Jamais dans le camp : poussée radiale hors des emprises pleines.
+      // Jamais dans le bâti : poussée radiale hors de l'emprise RÉELLE de
+      // chaque bâtiment — le rayon uniforme laissait entrer dans les grands.
       for (const o of this.obstacles) {
+        const rr = o.r + 0.3
         const dx = b.x - o.x
         const dz = b.z - o.z
         const d2 = dx * dx + dz * dz
-        if (d2 > 0.0001 && d2 < 1.5 * 1.5) {
+        if (d2 > 0.0001 && d2 < rr * rr) {
           const d = Math.sqrt(d2)
-          b.x = o.x + (dx / d) * 1.5
-          b.z = o.z + (dz / d) * 1.5
+          b.x = o.x + (dx / d) * rr
+          b.z = o.z + (dz / d) * rr
         }
       }
       for (let k = 0; k < CAMP_BLOCKERS.length; k++) {

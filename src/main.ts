@@ -50,7 +50,9 @@ function disposeWorld(): void {
 function buildWorld(): void {
   disposeWorld()
   island = new Island(game.save.seed, growthForAge(game.save.age))
-  village = new Village(island)
+  // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
+  // brasero, lampadaire dès que l'électricité est sue.
+  village = new Village(island, game.save.age, game.knows('electricity'))
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
@@ -99,7 +101,10 @@ game.on((e) => {
   switch (e.type) {
     case 'tech':
       hud.showFact(e.tech)
-      village.sync(game.buildings)
+      // L'électricité transforme le cœur du village (lampadaire à la place du
+      // feu) : on reconstruit le monde comme à un passage d'âge.
+      if (e.tech.id === 'electricity') buildWorld()
+      else village.sync(game.buildings)
       hud.refreshTechList()
       settler.celebrate()
       break
@@ -411,6 +416,7 @@ function frame(now: number): void {
     expPhase = 'none'
   }
   village.update(dt, elapsed)
+  island.tickWater(elapsed)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure

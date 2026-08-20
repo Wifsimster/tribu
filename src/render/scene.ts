@@ -894,8 +894,14 @@ export class Stage {
     this.glint.scale.set(gWidth, 1, gLen)
     this.glint.rotation.y = gAz
     this.glint.position.set(Math.sin(gAz) * (26 + gLen / 2), 0.06, Math.cos(gAz) * (26 + gLen / 2))
-    // Il scintille : une respiration lente suffit à faire vivre l'eau.
+    // Il scintille : une respiration lente, plus un glissement latéral des
+    // cellules cuites — le glitter dérive comme sur une vraie mer au lieu de
+    // battre sur place (l'idée du sun-glitter de poseidon, au prix d'un offset).
     gMat.opacity *= 0.86 + 0.14 * Math.sin(this.skyTime * 2.6)
+    if (gMat.map) {
+      gMat.map.offset.x = Math.sin(this.skyTime * 1.7) * 0.012
+      gMat.map.offset.y = Math.sin(this.skyTime * 0.9 + 1.3) * 0.008
+    }
     this.glint.visible = gMat.opacity > 0.015
 
     // La voûte tourne imperceptiblement : le ciel vit même sans orbiter.

@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.7.0',
+    title: 'Le village vit avec son temps',
+    items: [
+      "Le campement évolue enfin : dès l'âge du bronze, une maison remplace les tipis — torchis et chaume d'abord, enduit, tuiles et cheminée ensuite. Jarres, caisses et barrières remplacent séchoirs et paravents.",
+      "Le feu suit le progrès : feu ouvert aux âges anciens, brasero sur trépied à l'antiquité, et lampadaire électrique dès que l'électricité est découverte — la veillée continue, sans fumée.",
+      'Les animaux respectent le bâti : chaque bâtiment a son emprise réelle et les bêtes la contournent au lieu de la traverser.',
+      "La mer inspirée de poseidon, en toon : la surface ondule vraiment, rend le ciel au regard rasant, et le chemin de lumière scintille en dérivant.",
+    ],
+  },
+  {
     version: '1.6.0',
     title: 'Le monde à la bonne échelle',
     items: [

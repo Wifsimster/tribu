@@ -937,6 +937,142 @@ function aqueductParts(): BufferGeometry[] {
 
 /** Everything the tribe builds. Buildings pop in when their technology lands, so
  *  research has an immediate, physical consequence on screen. */
+/** La maison du colon, qui remplace les tipis dès l'âge du bronze. Deux robes :
+ *  torchis à colombages sous chaume (âges 2–5), enduit clair sous tuiles avec
+ *  cheminée (âges 6+). La face +z regarde le feu, comme la tente avant elle. */
+function houseParts(modern: boolean): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  const w = modern ? 2.7 : 2.4
+  const d = modern ? 2.1 : 1.9
+  const h = modern ? 1.3 : 1.1
+  const straw = new Color('#c2a061')
+  const wall = modern ? C.plaster : C.wall
+  p.push(part(new BoxGeometry(w + 0.16, 0.34, d + 0.16), C.stoneDark, 0, 0.17, 0))
+  p.push(part(new BoxGeometry(w, h, d), tint(wall, 5, 0.04), 0, 0.34 + h / 2, 0))
+  if (!modern) {
+    // Colombages : poteaux d'angle et sablière sombres sur le torchis.
+    for (const sx of [-1, 1])
+      for (const sz of [-1, 1])
+        p.push(
+          part(
+            new BoxGeometry(0.13, h, 0.13),
+            C.woodDark,
+            sx * (w / 2 - 0.02),
+            0.34 + h / 2,
+            sz * (d / 2 - 0.02),
+          ),
+        )
+    p.push(part(new BoxGeometry(w + 0.1, 0.1, d + 0.1), C.woodDark, 0, 0.34 + h, 0))
+  }
+  // Porte et fenêtres face au feu : la maison vit tournée vers la veillée.
+  p.push(
+    part(new BoxGeometry(0.5, 0.86, 0.07), C.woodDark, modern ? -0.6 : 0, 0.34 + 0.43, d / 2 + 0.02),
+  )
+  if (!modern)
+    p.push(part(new BoxGeometry(0.64, 0.09, 0.1), C.woodDark, 0, 0.34 + 0.9, d / 2 + 0.02))
+  p.push(part(new BoxGeometry(0.36, 0.36, 0.07), C.glass, modern ? 0.5 : 0.62, 0.34 + h * 0.6, d / 2 + 0.02))
+  if (modern)
+    p.push(part(new BoxGeometry(0.07, 0.36, 0.36), C.glass, w / 2 + 0.02, 0.34 + h * 0.6, 0.2))
+  // Toit à deux pans débordants, fermé par une cloison intérieure qui bouche
+  // les pignons sans coûter deux triangles sur mesure.
+  const pitch = modern ? 0.58 : 0.66
+  const y0 = 0.34 + h
+  const S = d / 2 + 0.3
+  const R = S * Math.tan(pitch)
+  const L = S / Math.cos(pitch) + 0.12
+  for (const s of [-1, 1] as const)
+    p.push(
+      part(
+        new BoxGeometry(w + 0.55, 0.085, L).rotateX(s * pitch),
+        modern ? (s < 0 ? C.tile : C.tileDark) : tint(straw, s * 4, 0.05),
+        0,
+        y0 + R / 2,
+        s * (S / 2),
+      ),
+    )
+  p.push(part(new BoxGeometry(w - 0.06, R, 0.12), tint(wall, 9, 0.04), 0, y0 + R / 2, 0))
+  p.push(part(new BoxGeometry(w + 0.45, 0.09, 0.16), modern ? C.ridge : C.woodDark, 0, y0 + R, 0))
+  if (modern) {
+    p.push(part(new BoxGeometry(0.26, 0.72, 0.26), C.tileDark, w * 0.22, y0 + R * 0.55 + 0.3, -S * 0.3))
+    p.push(part(new BoxGeometry(0.34, 0.08, 0.34), C.stoneLight, w * 0.22, y0 + R * 0.55 + 0.68, -S * 0.3))
+  }
+  return p
+}
+
+/** Appentis de travail : quatre poteaux, un toit en appent, du rangement. */
+function annexParts(modern: boolean): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  const straw = new Color('#c2a061')
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const h = sz > 0 ? 1.18 : 0.92
+      p.push(part(new CylinderGeometry(0.05, 0.065, h, 5), C.wood, sx * 0.78, h / 2, sz * 0.58))
+    }
+  p.push(
+    part(
+      new BoxGeometry(1.9, 0.07, 1.55).rotateX(0.2),
+      modern ? C.tileDark : tint(straw, 3, 0.05),
+      0,
+      1.1,
+      0,
+    ),
+  )
+  p.push(part(new BoxGeometry(1.7, 0.5, 0.06), C.wood, 0, 0.62, -0.58))
+  if (modern) {
+    p.push(part(new BoxGeometry(0.46, 0.46, 0.46), new Color('#d9c8a4'), -0.3, 0.23, 0.05))
+    p.push(part(new BoxGeometry(0.4, 0.4, 0.4).rotateY(0.4), C.wood, 0.42, 0.2, -0.1))
+  } else {
+    for (const [x, z] of [[-0.32, 0], [0.38, -0.12]] as const) {
+      p.push(part(new CylinderGeometry(0.14, 0.18, 0.44, 7), C.ochre, x, 0.22, z))
+      p.push(part(new SphereGeometry(0.13, 7, 5), C.ochre, x, 0.46, z))
+    }
+  }
+  return p
+}
+
+/** Pile de caisses : le séchoir à peaux n'a plus sa place après le chaume. */
+function crateStack(): BufferGeometry[] {
+  return [
+    part(new BoxGeometry(0.52, 0.5, 0.52), new Color('#d9c8a4'), 0, 0.25, 0),
+    part(new BoxGeometry(0.46, 0.44, 0.46).rotateY(0.35), C.wood, 0.56, 0.22, 0.16),
+    part(new BoxGeometry(0.4, 0.38, 0.4).rotateY(-0.2), new Color('#d9c8a4'), 0.08, 0.72, 0.04),
+  ]
+}
+
+/** Tonneau cerclé — l'eau et la bière du foyer moderne. */
+function barrelParts(): BufferGeometry[] {
+  return [
+    part(new CylinderGeometry(0.24, 0.22, 0.62, 9), C.wood, 0, 0.31, 0),
+    part(new CylinderGeometry(0.255, 0.255, 0.05, 9), C.char, 0, 0.16, 0),
+    part(new CylinderGeometry(0.255, 0.255, 0.05, 9), C.char, 0, 0.46, 0),
+  ]
+}
+
+/** Jarres à provisions près du seuil, du bronze au moyen âge. */
+function jarCluster(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  for (const [x, z, s] of [[-0.2, 0.1, 1], [0.26, -0.08, 0.82]] as const) {
+    p.push(part(new CylinderGeometry(0.15 * s, 0.19 * s, 0.46 * s, 7), C.ochre, x, 0.23 * s, z))
+    p.push(part(new SphereGeometry(0.14 * s, 7, 5), C.ochre, x, 0.48 * s, z))
+  }
+  return p
+}
+
+/** Billot de fente, toutes époques : on coupe du bois même sous l'ampoule. */
+function choppingBlock(): BufferGeometry[] {
+  return [part(new CylinderGeometry(0.2, 0.24, 0.36, 7), tint(C.wood, 4, 0.06), 0, 0.18, 0)]
+}
+
+/** Barrière basse à deux lisses : elle remplace le paravent de peaux. */
+function fenceRun(): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  for (const x of [-1.05, 0, 1.05])
+    p.push(part(new CylinderGeometry(0.05, 0.06, 0.68, 5), C.wood, x, 0.34, 0))
+  p.push(part(new BoxGeometry(2.4, 0.07, 0.05), C.woodDark, 0, 0.3, 0))
+  p.push(part(new BoxGeometry(2.4, 0.07, 0.05), C.woodDark, 0, 0.54, 0))
+  return p
+}
+
 export class Village {
   readonly group = new Group()
   private readonly solid = new MeshToonMaterial({ vertexColors: true })
@@ -952,8 +1088,22 @@ export class Village {
   private glowMat!: MeshBasicMaterial
   private halo!: Sprite
   private haloCore!: Sprite
+  /** Décalage vertical des braises et de la fumée quand la flamme est en
+   *  hauteur (brasero) : l'update anime tout au-dessus de cette base. */
+  private fireLift = 0
+  private flameK = 1
+  private haloBase = 6.4
+  private haloCoreBase = 2.5
 
-  constructor(private island: Island) {
+  /** L'âge et l'électricité changent la FORME du centre, jamais sa place : le
+   *  foyer reste l'ancre visuelle et lumineuse du village à toutes les époques.
+   *  Tipis aux âges primitifs, maison ensuite ; feu ouvert, puis brasero à
+   *  l'antiquité, puis lampadaire dès que l'électricité est un savoir. */
+  constructor(
+    private island: Island,
+    private readonly age = 0,
+    private readonly electric = false,
+  ) {
     this.buildCampfire()
     // Les reflets miroir des loges ont vécu ici jusqu'au round 8 : une image
     // INVERSÉE des tipis sous la flottaison. Le jury les lisait — avec le
@@ -962,35 +1112,69 @@ export class Village {
     // buildFoundation) et les objets posés dessus n'ont pas d'image.
   }
 
+  /** Feu ouvert, brasero ou lampadaire selon l'époque. */
+  private get fireMode(): 'open' | 'brazier' | 'lamp' {
+    return this.electric ? 'lamp' : this.age >= 4 ? 'brazier' : 'open'
+  }
+
   private buildCampfire(): void {
     const fire = new Group()
     const fireY = this.island.heightAt(HEARTH.x, HEARTH.z)
     const p: BufferGeometry[] = []
-    p.push(part(new CylinderGeometry(0.86, 1.0, 0.14, 12), C.ash, 0, 0.07, 0))
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2
-      const s = 0.22 + ((i * 7) % 5) * 0.036
-      p.push(
-        part(
-          new DodecahedronGeometry(s, 0).rotateY(i * 1.7).rotateX(i * 0.4).scale(1, 0.82, 1),
-          tint(i % 3 === 0 ? PALETTE.rockDark : PALETTE.rock, i * 3, 0.09),
-          Math.sin(a) * 1.06,
-          0.1,
-          Math.cos(a) * 1.06,
-        ),
-      )
-    }
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2 + 0.4
-      p.push(
-        part(
-          new CylinderGeometry(0.08, 0.1, 1.24, 6).rotateZ(0.62).rotateY(a),
-          i % 2 === 0 ? C.char : C.woodDark,
-          Math.cos(a) * 0.3,
-          0.34,
-          -Math.sin(a) * 0.3,
-        ),
-      )
+    const mode = this.fireMode
+    if (mode === 'open') {
+      p.push(part(new CylinderGeometry(0.86, 1.0, 0.14, 12), C.ash, 0, 0.07, 0))
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2
+        const s = 0.22 + ((i * 7) % 5) * 0.036
+        p.push(
+          part(
+            new DodecahedronGeometry(s, 0).rotateY(i * 1.7).rotateX(i * 0.4).scale(1, 0.82, 1),
+            tint(i % 3 === 0 ? PALETTE.rockDark : PALETTE.rock, i * 3, 0.09),
+            Math.sin(a) * 1.06,
+            0.1,
+            Math.cos(a) * 1.06,
+          ),
+        )
+      }
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + 0.4
+        p.push(
+          part(
+            new CylinderGeometry(0.08, 0.1, 1.24, 6).rotateZ(0.62).rotateY(a),
+            i % 2 === 0 ? C.char : C.woodDark,
+            Math.cos(a) * 0.3,
+            0.34,
+            -Math.sin(a) * 0.3,
+          ),
+        )
+      }
+    } else if (mode === 'brazier') {
+      // Brasero sur trépied : la flamme quitte le sol, le cercle de pierres
+      // disparaît — on n'entoure plus un feu de pierres quand on sait forger.
+      p.push(part(new CylinderGeometry(0.5, 0.62, 0.08, 12), C.ash, 0, 0.04, 0))
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + 0.5
+        p.push(
+          part(
+            new CylinderGeometry(0.045, 0.06, 1.28, 5).rotateZ(0.4).rotateY(a),
+            C.char,
+            Math.cos(a) * 0.24,
+            0.6,
+            -Math.sin(a) * 0.24,
+          ),
+        )
+      }
+      p.push(part(new CylinderGeometry(0.5, 0.32, 0.28, 9), new Color('#6b7078'), 0, 1.12, 0))
+      p.push(part(new CylinderGeometry(0.42, 0.42, 0.05, 9), C.char, 0, 1.24, 0))
+    } else {
+      // Lampadaire : dalle, fût, crosse et abat-jour. La lumière du soir est
+      // désormais publique et ne fume plus.
+      p.push(part(new CylinderGeometry(0.36, 0.44, 0.14, 10), C.stoneDark, 0, 0.07, 0))
+      const iron = new Color('#3f454e')
+      p.push(part(new CylinderGeometry(0.05, 0.075, 3.3, 7), iron, 0, 1.72, 0))
+      p.push(part(new CylinderGeometry(0.038, 0.038, 0.66, 5).rotateZ(Math.PI / 2), iron, 0.3, 3.34, 0))
+      p.push(part(new ConeGeometry(0.3, 0.24, 9), iron, 0.58, 3.3, 0))
     }
     this.camp(p)
     const geo = mergeGeometries(p) ?? new BufferGeometry()
@@ -1064,6 +1248,48 @@ export class Village {
     this.haloCore.scale.set(2.5, 2.5, 1)
     this.haloCore.position.y = 0.86
 
+    if (mode === 'brazier') {
+      // La flamme vit dans la vasque : plus petite, plus haute, moins de fumée.
+      this.fireLift = 0.7
+      this.flameK = 0.62
+      this.haloBase = 5.2
+      this.haloCoreBase = 2.0
+      this.flame.scale.setScalar(0.62)
+      this.flame.position.y = 1.5
+      this.core.scale.setScalar(0.6)
+      this.core.position.y = 1.38
+      this.fireLight.position.y = 1.75
+      this.halo.position.y = 1.85
+      this.haloCore.position.y = 1.55
+    } else if (mode === 'lamp') {
+      // Plus de flamme, plus de braises, plus de fumée : une ampoule sous
+      // l'abat-jour et deux halos blanc chaud, parfaitement immobiles.
+      this.flame.visible = false
+      this.embers.visible = false
+      this.smoke.visible = false
+      this.core.geometry.dispose()
+      this.core.geometry = new IcosahedronGeometry(0.12, 1)
+      ;(this.core.material as MeshBasicMaterial).color.set(0xffedbe)
+      this.core.scale.setScalar(1)
+      this.core.position.set(0.58, 3.18, 0)
+      this.fireLight.color.set(0xffd9a0)
+      this.fireLight.distance = 13
+      this.fireLight.position.set(0.58, 3.05, 0)
+      ;(this.halo.material as SpriteMaterial).map = haloTexture(
+        new Color('#fff1c9'),
+        new Color('#b98a2e'),
+        2.2,
+      )
+      this.halo.scale.set(4.8, 4.8, 1)
+      this.halo.position.set(0.58, 3.15, 0)
+      ;(this.haloCore.material as SpriteMaterial).map = haloTexture(
+        new Color('#fff7dd'),
+        new Color('#d3a238'),
+        1.9,
+      )
+      this.haloCore.scale.set(1.5, 1.5, 1)
+      this.haloCore.position.set(0.58, 3.16, 0)
+    }
     fire.add(
       hearth,
       this.flame,
@@ -1096,20 +1322,29 @@ export class Village {
     // recouvre au lieu de le repeindre, donc la terre battue reste de la terre.
     // Et elle porte trois fois plus loin qu'avant — une flaque qui s'arrête au
     // pied de la tente n'éclaire rien, elle décore le foyer.
+    // Sous un lampadaire, la flaque tire vers le blanc chaud du sodium ; sous
+    // une flamme, vers l'orange braise.
+    const pool = this.electric
+      ? (['#b98a3a', '#ddb057', '#ffe19a'] as const)
+      : (['#d4621d', '#ef8a3a', '#ffb45c'] as const)
     const glow = [
-      glowDisc(7.4, new Color('#d4621d'), 0.34, 26).translate(0, at(0, 0), 0),
-      glowDisc(3.4, new Color('#ef8a3a'), 0.5, 22).translate(0, at(0, 0) + 0.004, 0),
-      glowDisc(1.5, new Color('#ffb45c'), 0.46, 16).translate(0, at(0, 0) + 0.008, 0),
-      // Braises visibles par la porte de la tente: quelqu'un est rentré.
-      glowDisc(0.46, new Color('#ffc06a'), 0.9, 10)
-        .rotateX(Math.PI / 2 - 0.42)
-        .rotateY(TENT_YAW)
-        .translate(
-          CAMP.tent.x + Math.sin(TENT_YAW) * 1.68,
-          at(CAMP.tent.x, CAMP.tent.z) + 0.6,
-          CAMP.tent.z + Math.cos(TENT_YAW) * 1.68,
-        ),
+      glowDisc(7.4, new Color(pool[0]), 0.34, 26).translate(0, at(0, 0), 0),
+      glowDisc(3.4, new Color(pool[1]), 0.5, 22).translate(0, at(0, 0) + 0.004, 0),
+      glowDisc(1.5, new Color(pool[2]), 0.46, 16).translate(0, at(0, 0) + 0.008, 0),
     ]
+    // Braises visibles par la porte de la tente: quelqu'un est rentré. La
+    // maison des âges suivants a une porte pleine — pas de lueur par le seuil.
+    if (this.age <= 1)
+      glow.push(
+        glowDisc(0.46, new Color('#ffc06a'), 0.9, 10)
+          .rotateX(Math.PI / 2 - 0.42)
+          .rotateY(TENT_YAW)
+          .translate(
+            CAMP.tent.x + Math.sin(TENT_YAW) * 1.68,
+            at(CAMP.tent.x, CAMP.tent.z) + 0.6,
+            CAMP.tent.z + Math.cos(TENT_YAW) * 1.68,
+          ),
+      )
     // Chaque brasero a sa flaque au sol et son halo debout, incliné vers l'œil:
     // c'est le halo qui fait qu'une lanterne éclaire au lieu de seulement
     // briller, et ces deux-là signent l'habitat loin du foyer.
@@ -1169,20 +1404,36 @@ export class Village {
     const put = (parts: BufferGeometry[], s: { x: number; z: number }, yaw?: number): void =>
       place(p, parts, yaw ?? facingFire(s.x, s.z), s.x, s.z)
 
-    // Deux loges, une grande et une petite, dont les silhouettes se recouvrent à
-    // l'écran: c'est une masse bâtie, pas deux objets posés côte à côte.
-    // Round 2 : la grande tente culminait à 4,66 u monde (3,1 colons) — elle
-    // dominait les sapins voisins et, à l'âge urbain, dépassait le moulin. Un
-    // tipi réel fait ~4,5 m : apex ramené à ~3,5 u (2,3 colons), sous la
-    // canopée (sapins ≈ 3,8–6,2 u). La petite loge suit pour garder la
-    // hiérarchie grande/petite.
-    put(hideTent(1.55, 2.9), CAMP.tent, TENT_YAW)
-    put(hideTent(1.0, 1.9), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
-    put(dryingRack(2.0, 1.82), CAMP.rack, CAMERA_YAW + 0.3)
-    put(woodPile(1.75), CAMP.wood)
-    put(hideFrame(1.15, 1.4), CAMP.frame, CAMERA_YAW - 0.2)
-    put(knappingSpot(), CAMP.knap)
-    put(windScreen(2.6, 1.45), CAMP.screen)
+    if (this.age <= 1) {
+      // Deux loges, une grande et une petite, dont les silhouettes se recouvrent à
+      // l'écran: c'est une masse bâtie, pas deux objets posés côte à côte.
+      // Round 2 : la grande tente culminait à 4,66 u monde (3,1 colons) — elle
+      // dominait les sapins voisins et, à l'âge urbain, dépassait le moulin. Un
+      // tipi réel fait ~4,5 m : apex ramené à ~3,5 u (2,3 colons), sous la
+      // canopée (sapins ≈ 3,8–6,2 u). La petite loge suit pour garder la
+      // hiérarchie grande/petite.
+      put(hideTent(1.55, 2.9), CAMP.tent, TENT_YAW)
+      put(hideTent(1.0, 1.9), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
+      put(dryingRack(2.0, 1.82), CAMP.rack, CAMERA_YAW + 0.3)
+      put(woodPile(1.75), CAMP.wood)
+      put(hideFrame(1.15, 1.4), CAMP.frame, CAMERA_YAW - 0.2)
+      put(knappingSpot(), CAMP.knap)
+      put(windScreen(2.6, 1.45), CAMP.screen)
+    } else {
+      // Dès l'âge du bronze, on ne dort plus sous les peaux : la maison prend
+      // la place de la grande tente (mêmes emprises — le colon et la faune
+      // gardent leurs repères), l'appentis celle de la petite, et le vocabulaire
+      // paléolithique (séchoir, taille de silex, paravent) cède aux caisses,
+      // jarres et barrières.
+      const modern = this.age >= 6
+      put(houseParts(modern), CAMP.tent, TENT_YAW)
+      put(annexParts(modern), CAMP.lean, facingFire(CAMP.lean.x, CAMP.lean.z) - 0.4)
+      put(modern ? crateStack() : dryingRack(2.0, 1.82), CAMP.rack, CAMERA_YAW + 0.3)
+      put(woodPile(1.75), CAMP.wood)
+      put(modern ? barrelParts() : jarCluster(), CAMP.frame, CAMERA_YAW - 0.2)
+      put(choppingBlock(), CAMP.knap)
+      put(fenceRun(), CAMP.screen)
+    }
 
     // Deux sièges au bord du foyer: c'est ce qui transforme un feu en veillée.
     p.push(
@@ -1207,20 +1458,22 @@ export class Village {
 
     // Traînée d'objets entre le feu et les abris: des braises éteintes, un
     // ballot, des branches. Le vide entre deux volumes est ce qui trahit un
-    // décor posé plutôt qu'un lieu habité.
-    for (let i = 0; i < 7; i++) {
-      const a = i * 2.39 + 0.6
-      const r = 1.55 + (i % 3) * 0.42
-      p.push(
-        part(
-          new DodecahedronGeometry(0.11 + (i % 3) * 0.03, 0).rotateY(i * 2.1).scale(1, 0.55, 1),
-          tint(i % 2 === 0 ? PALETTE.rockDark : C.ash, i * 9, 0.1),
-          Math.cos(a) * r,
-          0.06,
-          -Math.sin(a) * r,
-        ),
-      )
-    }
+    // décor posé plutôt qu'un lieu habité. Elle n'a de sens qu'autour d'un feu
+    // ouvert — un brasero ne sème pas de braises, un lampadaire encore moins.
+    if (this.fireMode === 'open')
+      for (let i = 0; i < 7; i++) {
+        const a = i * 2.39 + 0.6
+        const r = 1.55 + (i % 3) * 0.42
+        p.push(
+          part(
+            new DodecahedronGeometry(0.11 + (i % 3) * 0.03, 0).rotateY(i * 2.1).scale(1, 0.55, 1),
+            tint(i % 2 === 0 ? PALETTE.rockDark : C.ash, i * 9, 0.1),
+            Math.cos(a) * r,
+            0.06,
+            -Math.sin(a) * r,
+          ),
+        )
+      }
     for (let i = 0; i < 5; i++) {
       p.push(
         part(
@@ -2002,9 +2255,15 @@ export class Village {
     this.group.add(this.propsMesh)
   }
 
-  /** Emprises au sol de tout ce qui est posé — la faune les évite. */
-  get obstaclePoints(): { x: number; z: number }[] {
-    return this.propPlacements.map((p) => ({ x: p.x, z: p.z }))
+  /** Emprises au sol de tout ce qui est posé — la faune les évite. Le rayon
+   *  suit l'emprise réelle du bâtiment : depuis les remises à l'échelle, un
+   *  rayon uniforme laissait les moutons traverser l'aqueduc. */
+  get obstaclePoints(): { x: number; z: number; r: number }[] {
+    return this.propPlacements.map((p) => ({
+      x: p.x,
+      z: p.z,
+      r: Math.max(0.9, (Village.FOOTPRINT[p.id] ?? 0.5) + 0.45),
+    }))
   }
 
   /** Quel savoir vit ici ? Le plus proche du point touché, feu compris. */
@@ -2024,11 +2283,21 @@ export class Village {
   }
 
   update(_dt: number, t: number): void {
+    if (this.electric) {
+      // Une ampoule ne vacille pas : halos stables, juste un souffle
+      // imperceptible pour que la lampe reste vivante à l'œil.
+      this.fireLight.intensity = 1.5 + Math.sin(t * 3.1) * 0.03
+      this.glowMat.opacity = 0.85
+      this.halo.material.opacity = 0.6
+      this.haloCore.material.opacity = 0.5
+      return
+    }
     // Flame flicker — cheap, and the only thing moving when the settler is away.
     const f = 1 + Math.sin(t * 11) * 0.12 + Math.sin(t * 6.3) * 0.08
-    this.flame.scale.set(1, f, 1)
+    const fk = this.flameK
+    this.flame.scale.set(fk, f * fk, fk)
     this.flame.rotation.y = t * 1.6
-    this.core.scale.set(1, 2 - f, 1)
+    this.core.scale.set(fk, (2 - f) * fk, fk)
     this.core.rotation.y = -t * 2.3
     this.fireLight.intensity = 1.45 + Math.sin(t * 9) * 0.35
     // La flaque de lumière bat avec la flamme: une nappe orange immobile se lit
@@ -2036,14 +2305,18 @@ export class Village {
     const pulse = 0.9 + Math.sin(t * 7.4) * 0.1 + Math.sin(t * 3.1) * 0.05
     this.glowMat.opacity = pulse
     this.halo.material.opacity = pulse * 0.8
-    this.halo.scale.setScalar(6.4 * (0.94 + (f - 1) * 0.6))
+    this.halo.scale.setScalar(this.haloBase * (0.94 + (f - 1) * 0.6))
     this.haloCore.material.opacity = pulse * 0.62
-    this.haloCore.scale.setScalar(2.5 * f)
+    this.haloCore.scale.setScalar(this.haloCoreBase * f)
 
     for (let i = 0; i < 7; i++) {
       const u = (t * 0.75 + i * 0.143) % 1
       const a = i * 2.4 + t
-      this.dummy.position.set(Math.sin(a) * 0.18 * u, 0.55 + u * 1.5, Math.cos(a) * 0.18 * u)
+      this.dummy.position.set(
+        Math.sin(a) * 0.18 * u,
+        0.55 + this.fireLift + u * 1.5,
+        Math.cos(a) * 0.18 * u,
+      )
       this.dummy.scale.setScalar(Math.max(0.001, 1 - u))
       this.dummy.updateMatrix()
       this.embers.setMatrixAt(i, this.dummy.matrix)
@@ -2057,7 +2330,7 @@ export class Village {
       // et effaçait le seul volume construit de l'île.
       this.dummy.position.set(
         Math.sin(a) * 0.4 * u + u * 0.75,
-        1.15 + u * 3.2,
+        1.15 + this.fireLift + u * 3.2,
         Math.cos(a) * 0.4 * u + u * 0.75,
       )
       this.dummy.scale.setScalar(0.42 + u * 1.25)
