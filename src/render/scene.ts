@@ -416,6 +416,69 @@ export class Stage {
     this.rain.visible = false
     this.scene.add(this.rain)
 
+    // ── Le monde habité, au loin ─────────────────────────────────────────────
+    // Le journal de bord le disait : « nous ne sommes pas seuls ». Des voiles
+    // qui passent à l'horizon, des feux qui s'allument la nuit sur la côte
+    // lointaine, une fumée qui monte de l'îlot voisin — trois signes de vie
+    // minuscules, chacun un draw call, la plupart du temps invisibles.
+    const tintGeo = (g: import('three').BufferGeometry, c: Color): import('three').BufferGeometry => {
+      const src = g.index ? g.toNonIndexed() : g
+      const n = src.attributes.position!.count
+      const rgb = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        rgb[i * 3] = c.r
+        rgb[i * 3 + 1] = c.g
+        rgb[i * 3 + 2] = c.b
+      }
+      src.setAttribute('color', new (Object.getPrototypeOf(src.attributes.position!).constructor)(rgb, 3))
+      return src
+    }
+    const sailParts = [
+      tintGeo(new BoxGeometry(2.1, 0.45, 0.7), new Color('#5c6f7c')),
+      tintGeo(new CylinderGeometry(0.001, 1.15, 2.8, 3).translate(0, 1.9, 0), new Color('#e6e1d4')),
+    ]
+    this.farSails = new InstancedMesh(
+      mergeGeometries(sailParts) ?? sailParts[0]!,
+      new MeshToonMaterial({ vertexColors: true, fog: false }),
+      2,
+    )
+    this.farSails.frustumCulled = false
+    this.farSails.visible = false
+    this.scene.add(this.farSails)
+    for (let i = 0; i < 2; i++)
+      this.sailState.push({ active: false, wait: 40 + i * 130, t: 0, dur: 0, x0: 0, z0: 0, x1: 0, z1: 0 })
+
+    // Feux de la côte lointaine : trois lueurs qui battent, la nuit seulement.
+    this.shoreFires = new InstancedMesh(
+      new PlaneGeometry(1.7, 1.7),
+      new MeshBasicMaterial({
+        map: rampTexture(32, 32, (u, v, out) => {
+          const d = Math.hypot(u - 0.5, v - 0.5) * 2
+          out.set('#ffab52')
+          return Math.pow(Math.max(0, 1 - d), 2.4)
+        }),
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+        opacity: 0,
+      }),
+      3,
+    )
+    this.shoreFires.frustumCulled = false
+    this.shoreFires.visible = false
+    this.scene.add(this.shoreFires)
+
+    // Fumée de l'îlot voisin : quelqu'un y vit aussi.
+    this.isletSmoke = new InstancedMesh(
+      new IcosahedronGeometry(0.6, 0),
+      new MeshBasicMaterial({ color: '#dfe6ea', transparent: true, opacity: 0.15, depthWrite: false, fog: false }),
+      5,
+    )
+    this.isletSmoke.frustumCulled = false
+    this.scene.add(this.isletSmoke)
+
     this.resize()
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('orientationchange', () => this.resize())
@@ -423,6 +486,20 @@ export class Stage {
 
   /** Assombrissement d'éclipse : 1 = plein jour normal, piloté par la boucle. */
   eclipseK = 1
+
+  private farSails!: InstancedMesh
+  private readonly sailState: {
+    active: boolean
+    wait: number
+    t: number
+    dur: number
+    x0: number
+    z0: number
+    x1: number
+    z1: number
+  }[] = []
+  private shoreFires!: InstancedMesh
+  private isletSmoke!: InstancedMesh
 
   private auroraMesh: Mesh | null = null
   private auroraLife = 0
@@ -490,6 +567,102 @@ export class Stage {
     return this.wCur.rain
   }
 
+  /** Les signes de vie lointains : voiles, feux de côte, fumée d'îlot. */
+  private tickFarWorld(dt: number): void {
+    const dummy = this.cloudDummy
+    const day = this.lastDaylight
+
+    // Voiles : chacune traverse un segment du large, puis se repose.
+    let anySail = false
+    for (let i = 0; i < this.sailState.length; i++) {
+      const sl = this.sailState[i]!
+      if (!sl.active) {
+        sl.wait -= dt
+        if (sl.wait <= 0) {
+          sl.active = true
+          sl.t = 0
+          sl.dur = 90 + Math.random() * 70
+          const a = Math.random() * Math.PI * 2
+          const r = 95 + Math.random() * 35
+          const cx = Math.sin(a) * r
+          const cz = Math.cos(a) * r
+          const tx = Math.cos(a)
+          const tz = -Math.sin(a)
+          const span = 30 + Math.random() * 25
+          sl.x0 = cx - tx * span
+          sl.z0 = cz - tz * span
+          sl.x1 = cx + tx * span
+          sl.z1 = cz + tz * span
+        }
+        dummy.position.set(0, -50, 0)
+        dummy.scale.setScalar(0.001)
+      } else {
+        sl.t += dt
+        const u = sl.t / sl.dur
+        if (u >= 1) {
+          sl.active = false
+          sl.wait = 120 + Math.random() * 240
+          dummy.scale.setScalar(0.001)
+          dummy.position.set(0, -50, 0)
+        } else {
+          anySail = true
+          const x = sl.x0 + (sl.x1 - sl.x0) * u
+          const z = sl.z0 + (sl.z1 - sl.z0) * u
+          dummy.position.set(x, Math.sin(this.skyTime * 1.4 + i * 2) * 0.12, z)
+          dummy.rotation.set(0, Math.atan2(sl.x1 - sl.x0, sl.z1 - sl.z0) + Math.PI / 2, 0)
+          dummy.scale.setScalar(1)
+        }
+      }
+      dummy.updateMatrix()
+      this.farSails.setMatrixAt(i, dummy.matrix)
+    }
+    this.farSails.visible = anySail
+    if (anySail) {
+      this.farSails.instanceMatrix.needsUpdate = true
+      // La voile s'éteint avec le jour : la nuit on ne voit que les feux.
+      ;(this.farSails.material as MeshToonMaterial).color.setRGB(1, 1, 1).multiplyScalar(0.35 + 0.65 * day)
+    }
+
+    // Feux de côte : sur la longue échine à l'azimut 4,7 — la nuit seulement.
+    const nightK = 1 - day
+    this.shoreFires.visible = nightK > 0.15
+    if (this.shoreFires.visible) {
+      const cx = Math.sin(4.7) * 115
+      const cz = Math.cos(4.7) * 115
+      const tx = Math.cos(4.7)
+      const tz = -Math.sin(4.7)
+      const camA = this.azimuth
+      for (let i = 0; i < 3; i++) {
+        const off = [-13, -2, 9][i]!
+        const flick = 0.75 + 0.25 * Math.sin(this.skyTime * (5 + i) + i * 4)
+        dummy.position.set(cx + tx * off, 1.5, cz + tz * off)
+        dummy.rotation.set(0, camA, 0)
+        dummy.scale.setScalar(flick)
+        dummy.updateMatrix()
+        this.shoreFires.setMatrixAt(i, dummy.matrix)
+      }
+      this.shoreFires.instanceMatrix.needsUpdate = true
+      ;(this.shoreFires.material as MeshBasicMaterial).opacity = Math.min(1, nightK * 1.2)
+    }
+
+    // Fumée de l'îlot : une colonne paresseuse, le jour.
+    this.isletSmoke.visible = day > 0.2
+    if (this.isletSmoke.visible) {
+      const ix = Math.sin(3.95) * 85
+      const iz = Math.cos(3.95) * 85
+      for (let i = 0; i < 5; i++) {
+        const u = (this.skyTime * 0.1 + i / 5) % 1
+        dummy.position.set(ix + u * 2.2 + Math.sin(this.skyTime + i) * 0.3, 4 + u * 6, iz + u * 1.4)
+        dummy.rotation.set(i, i * 0.7, 0)
+        dummy.scale.setScalar((0.4 + u * 1.1) * (1 - Math.pow(u, 6)))
+        dummy.updateMatrix()
+        this.isletSmoke.setMatrixAt(i, dummy.matrix)
+      }
+      this.isletSmoke.instanceMatrix.needsUpdate = true
+      ;(this.isletSmoke.material as MeshBasicMaterial).opacity = 0.15 * Math.min(1, day * 1.4)
+    }
+  }
+
   /** Vie du ciel : dérive des nuages, vols d'oiseaux. Appelé chaque frame. */
   private tickAurora(dt: number): void {
     if (!this.auroraMesh || this.auroraLife <= 0) return
@@ -505,6 +678,7 @@ export class Stage {
 
   driftSky(dt: number): void {
     this.skyTime += dt
+    this.tickFarWorld(dt)
     this.tickAurora(dt)
     this.tickWeather(dt)
     this.updateWaves(dt)

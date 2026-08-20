@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.6.0',
+    title: 'Nous ne sommes pas seuls',
+    items: [
+      "Le monde est habité : des voiles inconnues passent parfois à l'horizon, des feux s'allument la nuit sur la côte lointaine, une fumée monte de l'îlot voisin.",
+      'Trois signes de vie minuscules — le journal de bord le disait déjà.',
+    ],
+  },
+  {
     version: '2.5.0',
     title: 'Ça mord',
     items: [
