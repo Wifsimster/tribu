@@ -116,6 +116,8 @@ game.on((e) => {
   switch (e.type) {
     case 'tech':
       hud.showFact(e.tech)
+      if (game.treeComplete)
+        hud.toast("Les 51 savoirs sont réunis — l'Exode attend dans le menu")
       // L'électricité transforme le cœur du village (lampadaire à la place du
       // feu) : on reconstruit le monde comme à un passage d'âge.
       if (e.tech.id === 'electricity') buildWorld()
@@ -195,6 +197,17 @@ game.on((e) => {
     }
     case 'caravanLeave':
       caravan.depart()
+      break
+    case 'exodus':
+      stage.applyAge(0)
+      buildWorld()
+      boat.setTier(0)
+      caravan.depart()
+      hud.refreshTechList()
+      hud.showBanner("L'Exode", `${e.legacy} étoile${e.legacy > 1 ? 's' : ''} à la constellation`)
+      hud.toast(
+        `La tribu débarque sur une île inconnue. Sa constellation brille : récolte +${e.legacy * 8} % — pour toujours.`,
+      )
       break
     case 'worldEvent':
       switch (e.kind) {
@@ -402,7 +415,9 @@ function menuEl<T extends HTMLElement>(id: string): T {
   const eraseLabel = menuEl('menu-erase-label')
   const continueBtn = menuEl<HTMLButtonElement>('menu-continue')
   const newBtn = menuEl('menu-new')
+  const exodeBtn = menuEl('menu-exode')
   let confirmStep = 0
+  let confirmMode: 'erase' | 'exode' = 'erase'
 
   const hasProgress = game.save.techs.length > 0 || game.save.totalPlaySeconds > 30
 
@@ -418,6 +433,11 @@ function menuEl<T extends HTMLElement>(id: string): T {
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
       ? 'Nouvelle partie'
       : 'Commencer'
+    // L'Exode n'apparaît que l'arbre complet ; la constellation, dès la première étoile.
+    exodeBtn.hidden = !game.treeComplete
+    const cons = menuEl('menu-constellation')
+    cons.hidden = game.save.legacy === 0
+    cons.textContent = `Constellation : ${'★'.repeat(Math.min(8, game.save.legacy))}${game.save.legacy > 8 ? `×${game.save.legacy}` : ''} — récolte +${game.save.legacy * 8} %`
   }
 
   const open = () => {
@@ -439,11 +459,21 @@ function menuEl<T extends HTMLElement>(id: string): T {
       return
     }
     // Première confirmation.
+    confirmMode = 'erase'
     confirmStep = 1
     home.hidden = true
     confirm.hidden = false
     warn.textContent = `Recommencer au Paléolithique ? Ta tribu — ${game.age.name}, ${game.save.techs.length} découvertes — et son île seront effacées.`
     eraseLabel.textContent = 'Effacer ma tribu'
+  })
+
+  exodeBtn.addEventListener('click', () => {
+    confirmMode = 'exode'
+    confirmStep = 1
+    home.hidden = true
+    confirm.hidden = false
+    warn.textContent = `L'Exode : la tribu embarque vers une île inconnue — nouveau monde, savoirs remis à zéro. Elle emporte ses ${game.save.relics.length} reliques et gagne une étoile : récolte +8 % pour toujours.`
+    eraseLabel.textContent = 'Embarquer'
   })
 
   menuEl('menu-cancel').addEventListener('click', showHome)
@@ -471,6 +501,17 @@ function menuEl<T extends HTMLElement>(id: string): T {
   menuEl('menu-news-close').addEventListener('click', showHome)
 
   menuEl('menu-erase').addEventListener('click', () => {
+    if (confirmMode === 'exode') {
+      if (confirmStep === 1) {
+        confirmStep = 2
+        warn.textContent =
+          "Dernière confirmation : l'île actuelle et ses 51 savoirs restent derrière. Le musée et la constellation voyagent avec la tribu."
+        eraseLabel.textContent = 'Larguer les amarres'
+        return
+      }
+      if (game.exodus()) close()
+      return
+    }
     if (confirmStep === 1) {
       // Seconde confirmation : le libellé change, il faut re-taper en conscience.
       confirmStep = 2

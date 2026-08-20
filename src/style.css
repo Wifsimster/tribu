@@ -1011,3 +1011,12 @@ body.night .age-bar {
 
 /* Les fiches du musée sont une liste : garder les sauts de ligne. */
 #fact-text { white-space: pre-line; }
+
+/* La constellation de la tribu, sous le titre du menu. */
+.menu-constellation {
+  margin-top: 10px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #f3d98a;
+  opacity: 0.9;
+}

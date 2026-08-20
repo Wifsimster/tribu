@@ -21,6 +21,7 @@ export type GameEvent =
   | { type: 'tech'; tech: TechDef }
   | { type: 'age'; age: AgeDef }
   | { type: 'expeditionStart' }
+  | { type: 'exodus'; legacy: number }
   | {
       type: 'worldEvent'
       kind: 'wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant'
@@ -357,12 +358,13 @@ export class Game {
       }
       const focusFactor = this.save.focus === id ? 1 : IDLE_FRACTION
       const r =
-        BASE_RATE[id] * this.mult[id] * focusFactor * carryBonus * encourage * this.lightFactor
+        BASE_RATE[id] * this.mult[id] * focusFactor * carryBonus * encourage * this.lightFactor * this.legacyBonus
       this.rates[id] = r
       material += r
     }
     // Knowledge grows out of what the tribe actually does, not out of nothing.
-    this.rates.insight = (0.2 + this.insightAdd + material * 0.05) * encourage * this.lightFactor
+    this.rates.insight =
+      (0.2 + this.insightAdd + material * 0.05) * encourage * this.lightFactor * this.legacyBonus
   }
 
   /** La nuit ralentit la tribu : le rendement glisse entre le plancher de nuit
@@ -542,6 +544,37 @@ export class Game {
     this.save.expedition = null
     this.refreshRates()
     this.emit({ type: 'expeditionEnd', loot, find, journal, relic, setback })
+  }
+
+  /** L'arbre entier est-il su ? C'est la porte de l'Exode. */
+  get treeComplete(): boolean {
+    return TECHS.every((t) => this.save.techs.includes(t.id))
+  }
+
+  /** La constellation : chaque Exode accompli accélère la récolte pour toujours. */
+  get legacyBonus(): number {
+    return 1 + this.save.legacy * 0.08
+  }
+
+  /** L'Exode : la tribu embarque vers une île inconnue. Nouveau seed, savoirs
+   *  remis à zéro — mais le musée voyage dans la cale, et une étoile de plus
+   *  brille au-dessus de la récolte. */
+  exodus(): boolean {
+    if (!this.treeComplete) return false
+    const relics = this.save.relics
+    const legacy = this.save.legacy + 1
+    this.save = { ...emptySave(Date.now()), relics, legacy }
+    this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
+    this.buildings = new Set()
+    this.encourageLeft = 0
+    this.encourageCooldown = 0
+    this.lastFact = null
+    this.wasNight = false
+    this.currentMerchant = ''
+    this.recompute()
+    writeSave(this.save, Date.now())
+    this.emit({ type: 'exodus', legacy })
+    return true
   }
 
   get relics(): RelicDef[] {

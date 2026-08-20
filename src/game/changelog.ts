@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.0.0',
+    title: "L'Exode",
+    items: [
+      "Le jeu a désormais une fin — et une suite. Les 51 savoirs réunis, l'Exode s'ouvre dans le menu : la tribu embarque vers une île inconnue, nouveau monde, savoirs remis à zéro.",
+      "Elle emporte son musée, et gagne une étoile à sa constellation : récolte +8 % par Exode, pour toujours.",
+      'La constellation brille dans le menu — chaque étoile est un monde traversé.',
+    ],
+  },
+  {
     version: '1.11.0',
     title: 'Le monde a ses humeurs',
     items: [
