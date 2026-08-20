@@ -287,10 +287,10 @@ export class Stage {
       puff(0.7, 1.0, 0.4, 0.8, 0.4, 0.45, -0.6),
     ])!
     const cloudMat = new MeshToonMaterial({ color: '#f6fbff', transparent: true, opacity: 0.62 })
-    this.clouds = new InstancedMesh(cloudGeo, cloudMat, 7)
+    this.clouds = new InstancedMesh(cloudGeo, cloudMat, 12)
     this.clouds.castShadow = true
     this.clouds.frustumCulled = false
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 12; i++) {
       // Semis déterministe : anneau large au-dessus de l'île, tailles variées.
       const h = (n: number) => {
         const s = Math.sin(i * 37.7 + n * 91.3) * 43758.5453
@@ -298,6 +298,8 @@ export class Stage {
       }
       // Bas et proches : au-dessus de l'île ils restent dans le cadre de la
       // caméra plongeante ET dans le frustum d'ombre — leurs ombres glissent.
+      // Chaque nuage vit : il naît quelque part au vent, grandit, traverse,
+      // se dissout et laisse la place — la population varie sans cesse.
       this.cloudState.push({
         x: (h(1) - 0.5) * 72,
         y: 16 + h(2) * 6,
@@ -305,6 +307,10 @@ export class Stage {
         s: 0.9 + h(4) * 1.0,
         v: 0.55 + h(5) * 0.7,
         rot: h(6) * Math.PI * 2,
+        phase: h(7) < 0.6 ? 'live' : 'wait',
+        t: 0,
+        life: 20 + h(8) * 40,
+        wait: 4 + h(9) * 30,
       })
     }
     this.scene.add(this.clouds)
@@ -325,6 +331,17 @@ export class Stage {
     this.birds.visible = false
     this.scene.add(this.birds)
 
+    // Pluie : un rideau de gouttes instanciées au-dessus de l'île, un draw
+    // call, visible seulement quand la météo l'appelle.
+    this.rain = new InstancedMesh(
+      new BoxGeometry(0.025, 0.55, 0.025),
+      new MeshBasicMaterial({ color: '#a8bfd2', transparent: true, opacity: 0, fog: false }),
+      240,
+    )
+    this.rain.frustumCulled = false
+    this.rain.visible = false
+    this.scene.add(this.rain)
+
     this.resize()
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('orientationchange', () => this.resize())
@@ -336,18 +353,77 @@ export class Stage {
   private readonly moonDisc: Mesh
   private readonly stars: Mesh
   private readonly clouds: InstancedMesh
-  private readonly cloudState: { x: number; y: number; z: number; s: number; v: number; rot: number }[] = []
+  private readonly cloudState: { x: number; y: number; z: number; s: number; v: number; rot: number; phase: 'in' | 'live' | 'out' | 'wait'; t: number; life: number; wait: number }[] = []
   private readonly cloudDummy = new Object3D()
 
   private readonly birds: InstancedMesh
+  private readonly rain: InstancedMesh
   private skyTime = 0
+  /** La météo : des humeurs qui se succèdent, jamais un réglage figé. */
+  private weather = { state: 'voile', next: 45 }
+  private wTarget = { clouds: 5, grey: 0.2, sun: 0.92, rain: 0 }
+  private wCur = { clouds: 5, grey: 0.2, sun: 0.92, rain: 0 }
   private flock = { active: false, t: 0, cooldown: 6, dir: 0.9, y: 18, side: 1 }
 
   /** Vie du ciel : dérive des nuages, vols d'oiseaux. Appelé chaque frame. */
   driftSky(dt: number): void {
     this.skyTime += dt
+    this.tickWeather(dt)
     this.driftClouds(dt)
     this.updateBirds(dt)
+    this.updateRain(dt)
+  }
+
+  private tickWeather(dt: number): void {
+    this.weather.next -= dt
+    if (this.weather.next <= 0) {
+      const roll = Math.random()
+      if (roll < 0.32) {
+        this.weather.state = 'clair'
+        this.wTarget = { clouds: 2, grey: 0.05, sun: 1, rain: 0 }
+      } else if (roll < 0.62) {
+        this.weather.state = 'voile'
+        this.wTarget = { clouds: 5, grey: 0.2, sun: 0.92, rain: 0 }
+      } else if (roll < 0.85) {
+        this.weather.state = 'couvert'
+        this.wTarget = { clouds: 10, grey: 0.65, sun: 0.6, rain: 0 }
+      } else {
+        this.weather.state = 'pluie'
+        this.wTarget = { clouds: 12, grey: 0.85, sun: 0.45, rain: 1 }
+      }
+      this.weather.next = 70 + Math.random() * 90
+    }
+    // Transitions douces : la météo glisse, elle ne claque pas.
+    const k = Math.min(1, dt / 9)
+    this.wCur.clouds += (this.wTarget.clouds - this.wCur.clouds) * k
+    this.wCur.grey += (this.wTarget.grey - this.wCur.grey) * k
+    this.wCur.sun += (this.wTarget.sun - this.wCur.sun) * k
+    this.wCur.rain += (this.wTarget.rain - this.wCur.rain) * k
+  }
+
+  private readonly rainDummy = new Object3D()
+
+  private updateRain(dt: number): void {
+    void dt
+    const strength = this.wCur.rain * (0.25 + 0.75 * this.lastDaylight)
+    ;(this.rain.material as MeshBasicMaterial).opacity = 0.34 * strength
+    this.rain.visible = strength > 0.04
+    if (!this.rain.visible) return
+    const h = (n: number, m: number) => {
+      const s = Math.sin(n * 127.1 + m * 311.7) * 43758.5453
+      return s - Math.floor(s)
+    }
+    for (let i = 0; i < 240; i++) {
+      const r = Math.sqrt(h(i, 1)) * 26
+      const a = h(i, 2) * Math.PI * 2
+      const speed = 16 + h(i, 3) * 6
+      const y = 24 - ((this.skyTime * speed + h(i, 4) * 40) % 26)
+      this.rainDummy.position.set(Math.cos(a) * r, y, Math.sin(a) * r)
+      this.rainDummy.rotation.set(0, 0, 0.08)
+      this.rainDummy.updateMatrix()
+      this.rain.setMatrixAt(i, this.rainDummy.matrix)
+    }
+    this.rain.instanceMatrix.needsUpdate = true
   }
 
   private updateBirds(dt: number): void {
@@ -393,26 +469,87 @@ export class Stage {
     this.birds.instanceMatrix.needsUpdate = true
   }
 
-  /** Dérive lente sous un vent diagonal constant ; réapparition de l'autre côté. */
+  private activeClouds(): number {
+    let n = 0
+    for (const c of this.cloudState) if (c.phase !== 'wait') n++
+    return n
+  }
+
+  /** Cycle de vie sous un vent diagonal constant : attente → naissance →
+   *  traversée → dissolution. La nuit, le ciel se vide (les nuages n'ont rien
+   *  à montrer sans soleil) et se repeuple à l'aube. */
   private driftClouds(dt: number): void {
     const wx = 0.82
     const wz = 0.44
+    // Opacité globale calée sur le jour : voiles pleins en journée, ciel
+    // dégagé la nuit pour la lune et les étoiles.
+    // La nuit vide le ciel clair, mais un temps couvert garde ses masses
+    // sombres — on voit qu'il fait mauvais même sans soleil.
+    const dayFade = smoothstep(0.12, 0.55, this.lastDaylight)
+    const vis = Math.max(dayFade, this.wCur.grey * 0.4)
+    const mat = this.clouds.material as MeshToonMaterial
+    mat.opacity = 0.62 * vis
+    mat.color.set('#f6fbff').lerp(new Color('#8d99a6'), this.wCur.grey)
+    this.clouds.visible = vis > 0.03
     for (let i = 0; i < this.cloudState.length; i++) {
       const c = this.cloudState[i]!
-      c.x += wx * c.v * dt
-      c.z += wz * c.v * dt
-      if (c.x > 42) {
-        c.x = -42
-        c.z = ((Math.sin(c.rot * 12.9) * 43758.5453) % 1) * 34
+      let grow = 0
+      switch (c.phase) {
+        case 'wait':
+          c.wait -= dt
+          if (c.wait <= 0 && this.activeClouds() < Math.round(this.wCur.clouds)) {
+            c.phase = 'in'
+            c.t = 0
+            // Naissance au vent, position et gabarit renouvelés.
+            const r = (n: number) => {
+              const s = Math.sin(i * 51.7 + this.skyTime * 0.13 + n * 97.3) * 43758.5453
+              return s - Math.floor(s)
+            }
+            c.x = -44 + r(1) * 18
+            c.z = (r(2) - 0.5) * 68
+            c.y = 16 + r(3) * 6
+            c.s = 0.9 + r(4) * 1.0
+            c.v = 0.55 + r(5) * 0.7
+            c.life = 26 + r(6) * 44
+          }
+          break
+        case 'in':
+          c.t += dt / 7
+          grow = smoothstep(0, 1, Math.min(1, c.t))
+          if (c.t >= 1) c.phase = 'live'
+          break
+        case 'live':
+          grow = 1
+          c.life -= dt
+          // Le beau temps qui revient dissout les nuages en trop.
+          if (this.activeClouds() > Math.round(this.wCur.clouds) + 1) c.life -= dt * 3
+          if (c.life <= 0 || c.x > 40) {
+            c.phase = 'out'
+            c.t = 0
+          }
+          break
+        case 'out':
+          c.t += dt / 6
+          grow = 1 - smoothstep(0, 1, Math.min(1, c.t))
+          if (c.t >= 1) {
+            c.phase = 'wait'
+            c.wait = 5 + ((Math.sin(i * 77.7) * 43758.5453) % 1 + 1) % 1 * 30
+          }
+          break
       }
-      if (c.z > 42) c.z = -42
+      if (c.phase !== 'wait') {
+        c.x += wx * c.v * dt
+        c.z += wz * c.v * dt
+        if (c.z > 44) c.z = -44
+      }
       this.cloudDummy.position.set(c.x, c.y, c.z)
       // Rotation ENTIÈREMENT réinitialisée : le dummy est partagé avec les
-      // oiseaux, et sans ça les nuages héritaient de leur battement d'ailes —
-      // la « balançoire ».
+      // oiseaux, et sans ça les nuages héritaient de leur battement d'ailes.
       this.cloudDummy.rotation.set(0, c.rot, 0)
-      // Aplatis : des voiles, pas des cumulus.
-      this.cloudDummy.scale.set(c.s, c.s * 0.62, c.s)
+      // Aplatis : des voiles, pas des cumulus. La naissance et la dissolution
+      // passent par l'échelle — l'alpha par instance n'existe pas.
+      const s = Math.max(0.001, c.s * grow * (1 + this.wCur.grey * 0.7))
+      this.cloudDummy.scale.set(s, s * 0.62, s)
       this.cloudDummy.updateMatrix()
       this.clouds.setMatrixAt(i, this.cloudDummy.matrix)
     }
@@ -489,7 +626,7 @@ export class Stage {
     this.dayU = u
     const glowA = smoothstep(-0.14, 0.02, elev) * (1 - smoothstep(0.16, 0.42, elev))
     const discA = smoothstep(-0.03, 0.05, elev) * (1 - smoothstep(0.28, 0.5, elev))
-    this.glowBase = glowA * 0.5
+    this.glowBase = glowA * 0.5 * (1 - this.wCur.grey * 0.8)
     this.discBase = discA
     // Blanc au zénith, cuivré à l'horizon — c'est la couleur qui dit l'heure.
     ;(this.sunDisc.material as MeshBasicMaterial).color
@@ -504,11 +641,11 @@ export class Stage {
     // Les étoiles s'allument au crépuscule, pleines en nuit noire.
     this.starsBase = (1 - k) * 0.7
     this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
-    this.sun.intensity = 2.35 * k
+    this.sun.intensity = 2.35 * k * this.wCur.sun
     // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
     // rendu de profondeur payé pour rien.
     this.sun.castShadow = k > 0.02
-    this.hemi.intensity = 0.16 + 0.6 * k
+    this.hemi.intensity = (0.16 + 0.6 * k) * (0.82 + 0.18 * this.wCur.sun)
 
     const haze = this.hazeFor(age.fog).lerp(NIGHT_HAZE, 1 - k)
     this.fog.color.copy(haze)
