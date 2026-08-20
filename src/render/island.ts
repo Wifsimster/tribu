@@ -1073,17 +1073,53 @@ export class Island {
   // tout en restant sous le ratio réel d'un pin adulte (choix assumé — la
   // lisibilité du village prime). Hauteur et rayon restent découplés : gonfler
   // le rayon d'autant noierait le sol et les clairières, on garde une
-  // silhouette de pin élancée (rayon +13 % seulement pour éviter l'aiguille).
+  // silhouette de pin élancée. Retour joueur v1.7.0 : le cône unique prenait
+  // trop de place — houppier passé en trois étages, rayon resserré (1.55).
   private static readonly TREE_H = 4.0
-  private static readonly TREE_R = 1.7
+  private static readonly TREE_R = 1.55
 
   private addTrees(cells: Cell[], rnd: () => number): void {
     const trunkGeo = new CylinderGeometry(0.11, 0.16, 0.9, 6)
     const trunkMat = new MeshToonMaterial({ color: PALETTE.trunk })
     const trunks = new InstancedMesh(trunkGeo, trunkMat, cells.length)
 
-    const leafGeo = new ConeGeometry(0.62, 1.5, 7)
-    const leafMat = new MeshToonMaterial()
+    // Houppier étagé : trois couronnes qui se chevauchent, légèrement
+    // désaxées, plus sombres vers le bas. Un cône unique à cette hauteur
+    // était une voile pleine qui mangeait l'île ; les étages rendent la
+    // silhouette d'un vrai conifère, laissent passer le ciel entre eux et
+    // réduisent l'emprise au sol. Le dégradé vit dans les couleurs de
+    // sommets — il se multiplie à la teinte par instance déjà payée.
+    const tier = (
+      r: number,
+      h: number,
+      seg: number,
+      x: number,
+      y: number,
+      z: number,
+      shade: number,
+    ): BufferGeometry => {
+      const g = new ConeGeometry(r, h, seg)
+      g.translate(x, y, z)
+      const n = g.attributes.position!.count
+      const col = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        // Le bas de chaque couronne plus sombre que sa pointe : l'ombre
+        // interne du feuillage, sans une lumière de plus.
+        const k = shade * (0.9 + 0.1 * smoothstep(-h / 2, h / 2, g.attributes.position!.getY(i) - y))
+        col[i * 3] = k
+        col[i * 3 + 1] = k
+        col[i * 3 + 2] = k
+      }
+      g.setAttribute('color', new BufferAttribute(col, 3))
+      return g
+    }
+    const leafGeo =
+      mergeGeometries([
+        tier(0.52, 0.85, 7, 0.025, -0.33, -0.015, 0.78),
+        tier(0.4, 0.78, 7, -0.02, 0.1, 0.015, 0.9),
+        tier(0.27, 0.72, 6, 0.01, 0.53, 0.02, 1.0),
+      ]) ?? new ConeGeometry(0.52, 1.5, 7)
+    const leafMat = new MeshToonMaterial({ vertexColors: true })
     const leaves = new InstancedMesh(leafGeo, leafMat, cells.length)
     leaves.castShadow = true
     trunks.castShadow = true

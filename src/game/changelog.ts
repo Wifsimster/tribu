@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.7.1',
+    title: 'Des conifères dignes de ce nom',
+    items: [
+      "Les sapins gardent leur hauteur mais perdent leur volume : houppier en trois couronnes étagées au lieu d'un cône plein, emprise réduite d'un quart.",
+      'Le ciel passe entre les étages, les troncs se voient, le village redevient lisible sous la canopée.',
+      'Chaque couronne porte son ombre interne — plus sombre au pied, claire à la cime.',
+    ],
+  },
+  {
     version: '1.7.0',
     title: 'Le village vit avec son temps',
     items: [
