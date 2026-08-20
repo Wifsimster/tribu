@@ -267,6 +267,22 @@ export class Ambience {
     }
   }
 
+  /** Plop d'un poisson qui retombe : un thump grave très bref. */
+  plop(): void {
+    if (!this.enabled || !this.ctx || !this.master) return
+    const ctx = this.ctx
+    const t0 = ctx.currentTime
+    const osc = ctx.createOscillator()
+    osc.frequency.setValueAtTime(320, t0)
+    osc.frequency.exponentialRampToValueAtTime(70, t0 + 0.12)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.06, t0)
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.14)
+    osc.connect(g).connect(this.master)
+    osc.start(t0)
+    osc.stop(t0 + 0.16)
+  }
+
   /** La cloche du campanile : une fondamentale et deux partiels inharmoniques. */
   bell(): void {
     if (!this.enabled || !this.ctx || !this.master) return

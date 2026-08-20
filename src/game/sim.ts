@@ -591,6 +591,14 @@ export class Game {
     if (c.length > 600) c.splice(0, c.length - 600)
   }
 
+  /** Ça mord : la pêche paie un petit bonus par prise — l'équivalent de
+   *  quelques secondes de récolte, en plus du travail normal du colon. */
+  landCatch(): number {
+    const n = Math.max(1, Math.round(this.rates.food * (6 + Math.random() * 6)))
+    this.save.res.food = this.amount('food') + n
+    return n
+  }
+
   /** L'arbre entier est-il su ? C'est la porte de l'Exode. */
   get treeComplete(): boolean {
     return TECHS.every((t) => this.save.techs.includes(t.id))

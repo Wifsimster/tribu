@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.5.0',
+    title: 'Ça mord',
+    items: [
+      "Tape l'eau près du rivage : le colon part pêcher — au harpon d'abord, à la canne dès le cordage. Sa récolte de nourriture continue, avec des prises bonus quand ça mord.",
+      'La baie vit : des poissons sautent près des côtes, et se pressent autour du pêcheur.',
+      'Un plop discret à chaque saut, si le son est activé.',
+    ],
+  },
+  {
     version: '2.4.0',
     title: 'La Chronique',
     items: [

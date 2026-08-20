@@ -320,7 +320,7 @@ export class Settler {
   // silex, cuivre ou bronze, fer.
   private toolKey = ''
 
-  setTool(kind: 'hand' | 'spear' | 'sickle' | 'axe' | 'pick', tier: number): void {
+  setTool(kind: 'hand' | 'spear' | 'sickle' | 'axe' | 'pick' | 'rod', tier: number): void {
     const key = kind + tier
     if (key === this.toolKey) return
     this.toolKey = key
@@ -349,6 +349,12 @@ export class Settler {
         parts.push(part(new CylinderGeometry(0.028, 0.034, 0.52, 6), C.shaft, 0, 0.1, 0))
         parts.push(part(new BoxGeometry(0.2, 0.11, 0.05).rotateZ(0.08), edge, 0.1, 0.32, 0))
         parts.push(part(new CylinderGeometry(0.04, 0.04, 0.06, 6), C.bone, 0, 0.26, 0))
+        break
+      }
+      case 'rod': {
+        // Canne à pêche : une gaule inclinée vers l'avant, le fil qui plonge.
+        parts.push(part(new CylinderGeometry(0.016, 0.026, 1.5, 5).rotateX(-0.85), C.shaft, 0, 0.32, 0.42))
+        parts.push(part(new CylinderGeometry(0.006, 0.006, 0.72, 3), C.bone, 0, 0.32, 1.0))
         break
       }
       case 'pick': {

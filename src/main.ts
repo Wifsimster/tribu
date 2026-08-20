@@ -60,6 +60,13 @@ function disposeWorld(): void {
   }
 }
 
+// La pêche : un état de surface — le colon récolte SA nourriture, mais au
+// rivage, avec la baie qui vit autour de lui. Déclarée AVANT buildWorld qui
+// la remet à zéro à chaque reconstruction du monde.
+let fishing = false
+let catchTimer = 12
+let firstCatch = true
+
 /** (Re)construit l'île à la taille de l'âge courant. Appelé au chargement et à
  *  chaque passage d'âge : le monde s'agrandit sous la bannière. */
 function buildWorld(): void {
@@ -72,6 +79,8 @@ function buildWorld(): void {
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
   fauna = new Fauna(island, village.obstaclePoints)
+  fauna.onFishJump = () => ambience.plop()
+  fishing = false
   stage.scene.add(island.group, village.group, settler.group, fauna.group)
   stage.islandRadius = island.radius
   village.sync(game.buildings)
@@ -163,6 +172,8 @@ game.on((e) => {
       buildWorld()
       break
     case 'expeditionStart':
+      fishing = false
+      fauna.setFishing(null)
       settler.departExpedition(game.knows('cordage'))
       boat.setTier(game.boatTier)
       expPhase = 'walking'
@@ -409,16 +420,55 @@ attachControls(stage, canvas, (x, y) => {
 
   const hits = raycaster.intersectObjects(island.pickables, false)
   const hit = hits[0]
-  if (!hit || hit.instanceId === undefined) return
+  if (!hit || hit.instanceId === undefined) {
+    // Tap sur l'eau proche du rivage : le colon part pêcher. La nourriture
+    // continue de couler (c'est sa récolte, en bord de mer) et la baie
+    // s'anime — poissons qui sautent, prises bonus.
+    const t = -raycaster.ray.origin.y / raycaster.ray.direction.y
+    if (t > 0 && !game.save.expedition) {
+      const px = raycaster.ray.origin.x + raycaster.ray.direction.x * t
+      const pz = raycaster.ray.origin.z + raycaster.ray.direction.z * t
+      const r = Math.hypot(px, pz)
+      if (r > island.radius * 0.5 && r < island.radius + 10) {
+        let bx = 0
+        let bz = 0
+        let by = 0
+        let bestD = Infinity
+        for (const c of island.cells) {
+          if (!c.beach) continue
+          const d = (c.x - px) ** 2 + (c.z - pz) ** 2
+          if (d < bestD) {
+            bestD = d
+            bx = c.x
+            bz = c.z
+            by = c.height
+          }
+        }
+        if (bestD < Infinity) {
+          fishing = true
+          ambience.knock()
+          game.setFocus('food')
+          settler.sendTo(new Vector3(bx, by, bz))
+          fauna.setFishing(bx, bz)
+          hud.toast('Le colon part pêcher au rivage')
+          return
+        }
+      }
+    }
+    return
+  }
   const kind = island.kindFor(hit.object as InstancedMesh)
   if (!kind) return
   const resource: ResourceId = kind
   if (!game.unlocked.has(resource)) return
+  fishing = false
+  fauna.setFishing(null)
   ambience.knock()
   game.setFocus(resource)
   settler.sendTo(island.instancePosition(hit.object as InstancedMesh, hit.instanceId))
   hud.toast(`Le colon s’occupe de : ${RESOURCES[resource].name.toLowerCase()}`)
 })
+
 
 // ── Loop ───────────────────────────────────────────────────────────────────
 settler.sendTo(spotFor(game.save.focus))
@@ -665,7 +715,18 @@ function frame(now: number): void {
   // L'outil suit la ressource travaillée et la matière suit les savoirs.
   const metal = game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
   if (game.save.focus === 'food') {
-    settler.setTool(game.knows('agriculture') ? 'sickle' : game.knows('spear') ? 'spear' : 'hand', metal)
+    settler.setTool(
+      fishing
+        ? game.knows('cordage')
+          ? 'rod'
+          : 'spear'
+        : game.knows('agriculture')
+          ? 'sickle'
+          : game.knows('spear')
+            ? 'spear'
+            : 'hand',
+      metal,
+    )
   } else if (game.save.focus === 'wood') {
     settler.setTool(game.knows('flint') ? 'axe' : 'hand', metal)
   } else {
@@ -708,6 +769,18 @@ function frame(now: number): void {
   if (hudNight ? daylight > 0.55 : daylight < 0.4) {
     hudNight = !hudNight
     document.body.classList.toggle('night', hudNight)
+  }
+  if (fishing && !game.save.expedition && !settler.isAway && !settler.isSleeping) {
+    catchTimer -= dt
+    if (catchTimer <= 0) {
+      catchTimer = 13 + Math.random() * 13
+      const n = game.landCatch()
+      ambience.plop()
+      if (firstCatch) {
+        firstCatch = false
+        hud.toast(`Ça mord — +${fmt(n)} nourriture. Le colon pêchera tant que tu ne l'envoies pas ailleurs`)
+      }
+    }
   }
   ambience.update(
     dt,

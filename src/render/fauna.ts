@@ -10,6 +10,7 @@ import {
   Group,
   IcosahedronGeometry,
   InstancedMesh,
+  Mesh,
   MeshToonMaterial,
   Object3D,
   SphereGeometry,
@@ -425,6 +426,74 @@ export class Fauna {
     this.gullMesh.visible = sail
   }
 
+  // ── Les poissons de la baie ───────────────────────────────────────────────
+  // Un poisson saute de temps en temps près du rivage ; quand le colon pêche,
+  // la baie s'anime autour de lui. Un seul petit mesh, invisible entre deux
+  // sauts.
+  private fishMesh: Mesh | null = null
+  private fish = { t: 0, dur: 0.8, x: 0, z: 0, dx: 0, dz: 0 }
+  private fishTimer = 6
+  private fishingSpot: { x: number; z: number } | null = null
+  /** La boucle écoute : un plop au moment du saut si le son est activé. */
+  onFishJump: (() => void) | null = null
+
+  setFishing(x: number | null, z = 0): void {
+    this.fishingSpot = x === null ? null : { x, z }
+  }
+
+  private ensureFish(): Mesh {
+    if (this.fishMesh) return this.fishMesh
+    const geo = weld([
+      part(new CapsuleGeometry(0.05, 0.14, 1, 6).rotateX(Math.PI / 2).scale(1, 1.25, 1), new Color('#5a7d8f'), 0, 0, 0),
+      part(new ConeGeometry(0.05, 0.1, 4).rotateX(-Math.PI / 2).scale(1, 1.4, 0.3), new Color('#4a6b7d'), 0, 0, -0.14),
+    ])
+    this.fishMesh = new Mesh(geo, new MeshToonMaterial({ vertexColors: true }))
+    this.fishMesh.visible = false
+    this.group.add(this.fishMesh)
+    return this.fishMesh
+  }
+
+  private tickFish(dt: number, night: boolean): void {
+    const mesh = this.ensureFish()
+    if (mesh.visible) {
+      const f = this.fish
+      f.t += dt
+      const u = Math.min(1, f.t / f.dur)
+      const y = Math.sin(Math.PI * u) * 0.55 - 0.12
+      mesh.position.set(f.x + f.dx * u, y, f.z + f.dz * u)
+      // Le museau suit la parabole : il monte, bascule, replonge.
+      mesh.rotation.x = -Math.cos(Math.PI * u) * 0.9
+      mesh.rotation.y = Math.atan2(f.dx, f.dz)
+      if (u >= 1) mesh.visible = false
+      return
+    }
+    this.fishTimer -= dt * (this.fishingSpot ? 2.6 : 1) * (night ? 0.45 : 1)
+    if (this.fishTimer > 0) return
+    this.fishTimer = 5 + Math.random() * 9
+    const R = this.island.radius
+    let x: number
+    let z: number
+    if (this.fishingSpot) {
+      // Dans la baie du pêcheur : à quelques mètres au large de son rivage.
+      const out = Math.hypot(this.fishingSpot.x, this.fishingSpot.z) || 1
+      const k = (out + 2 + Math.random() * 2.5) / out
+      const swing = (Math.random() - 0.5) * 0.35
+      const c = Math.cos(swing)
+      const sn = Math.sin(swing)
+      x = (this.fishingSpot.x * c - this.fishingSpot.z * sn) * k
+      z = (this.fishingSpot.x * sn + this.fishingSpot.z * c) * k
+    } else {
+      const a = Math.random() * Math.PI * 2
+      const r = R * (1.04 + Math.random() * 0.14)
+      x = Math.sin(a) * r
+      z = Math.cos(a) * r
+    }
+    const dir = Math.random() * Math.PI * 2
+    this.fish = { t: 0, dur: 0.7 + Math.random() * 0.35, x, z, dx: Math.sin(dir) * 0.8, dz: Math.cos(dir) * 0.8 }
+    mesh.visible = true
+    this.onFishJump?.()
+  }
+
   /** Migration : tout le troupeau de cerfs traverse l'île au galop dans une
    *  même direction, puis reprend sa vie de lisière. */
   stampede(angle: number, dur = 24): void {
@@ -442,6 +511,7 @@ export class Fauna {
   }
 
   update(dt: number, time: number, settler: Vector3, night: boolean): void {
+    this.tickFish(dt, night)
     if (this.deerMesh.visible) this.stepLand(this.deerMesh, this.deer, this.deerSpots, this.deerCfg, dt, time, night, settler)
     if (this.sheepMesh.visible) this.stepLand(this.sheepMesh, this.sheep, this.sheepSpots, this.sheepCfg, dt, time, night, null)
     if (this.henMesh.visible) this.stepLand(this.henMesh, this.hens, this.henSpots, this.henCfg, dt, time, night, null)
