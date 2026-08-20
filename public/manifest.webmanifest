@@ -1,0 +1,17 @@
+{
+  "name": "Tribu — du silex à l'aqueduc",
+  "short_name": "Tribu",
+  "description": "Un jeu idle en 3D. Un colon, un feu, et 300 000 ans à traverser.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#173042",
+  "theme_color": "#9fd4e8",
+  "lang": "fr",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

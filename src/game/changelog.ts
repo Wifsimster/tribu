@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.2.0',
+    title: 'Tribu dans la poche',
+    items: [
+      "Tribu est une vraie app : installe-la depuis le navigateur (« Ajouter à l'écran d'accueil ») — elle a son icône, se lance plein écran et fonctionne hors-ligne.",
+      "Notifications optionnelles dans le menu : sois prévenu du retour d'expédition quand le jeu est en arrière-plan. Rien n'est envoyé nulle part — tout reste sur ton appareil.",
+    ],
+  },
+  {
     version: '2.1.0',
     title: "L'île a une voix",
     items: [

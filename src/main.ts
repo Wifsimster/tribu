@@ -110,6 +110,28 @@ const hud = new Hud(game)
 // L'ambiance sonore : coupée par défaut, activée au menu, reprise au premier
 // geste si la préférence est déjà « on » (l'audio exige un geste utilisateur).
 const ambience = new Ambience()
+
+// PWA : le service worker rend le jeu installable et jouable hors-ligne.
+if (import.meta.env.PROD && 'serviceWorker' in navigator)
+  window.addEventListener('load', () => void navigator.serviceWorker.register('/sw.js'))
+
+// Notifications locales, strictement opt-in : prévenir du retour d'expédition
+// quand l'application est en arrière-plan. Pas de serveur, pas de push.
+const NOTIF_KEY = 'tribu.notif.v1'
+let notifOn = false
+try {
+  notifOn = localStorage.getItem(NOTIF_KEY) === 'on' && Notification.permission === 'granted'
+} catch {
+  /* stockage ou API absents : les notifications resteront coupées */
+}
+function notify(body: string): void {
+  if (!notifOn || !document.hidden || Notification.permission !== 'granted') return
+  try {
+    new Notification('Tribu', { body, icon: '/icon-192.png' })
+  } catch {
+    /* certains navigateurs exigent un service worker : tant pis, le toast suffira */
+  }
+}
 document.addEventListener('pointerdown', () => ambience.resumeIfOn(), { once: true })
 
 // Chaque objet posé remonte à sa découverte : taper un bâtiment rouvre son
@@ -170,6 +192,7 @@ game.on((e) => {
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
         .join('  ')
       boat.sailIn(settler.shorePoint)
+      notify('Le colon est rentré d’expédition — le butin est au camp')
       hud.toast(`De retour · ${parts}`)
       hud.toast(`Journal de bord · ${e.journal}`)
       if (e.relic) {
@@ -539,6 +562,30 @@ function menuEl<T extends HTMLElement>(id: string): T {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && menu.classList.contains('open') && hasProgress) close()
   })
+
+  const notifBtn = menuEl('menu-notif')
+  const notifLabel = menuEl('menu-notif-label')
+  if ('Notification' in window) {
+    notifBtn.hidden = false
+    notifLabel.textContent = notifOn ? 'Notifications : activées' : 'Notifications : coupées'
+    notifBtn.addEventListener('click', () => {
+      if (notifOn) {
+        notifOn = false
+        try {
+          localStorage.setItem(NOTIF_KEY, 'off')
+        } catch { /* préférence en mémoire */ }
+        notifLabel.textContent = 'Notifications : coupées'
+        return
+      }
+      void Notification.requestPermission().then((perm) => {
+        notifOn = perm === 'granted'
+        try {
+          localStorage.setItem(NOTIF_KEY, notifOn ? 'on' : 'off')
+        } catch { /* préférence en mémoire */ }
+        notifLabel.textContent = notifOn ? 'Notifications : activées' : 'Notifications : refusées'
+      })
+    })
+  }
 
   const soundLabel = menuEl('menu-sound-label')
   soundLabel.textContent = ambience.isEnabled ? 'Son : activé' : 'Son : coupé'
