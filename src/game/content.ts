@@ -194,17 +194,6 @@ export const TECHS: TechDef[] = [
     ],
   },
   {
-    id: 'lamp',
-    name: 'Lampe à graisse',
-    age: 0,
-    cost: 55,
-    materials: { stone: 12, food: 25 },
-    requires: ['fire'],
-    fact: "À Lascaux, plus d'une centaine de lampes de pierre brûlaient de la graisse animale avec des mèches de genévrier : les peintres travaillaient sous terre, en pleine nuit.",
-    effects: [
-      { kind: 'building', building: 'lamps' },{ kind: 'nightFloor', value: 0.85 }],
-  },
-  {
     id: 'shelter',
     name: 'Abri de branchages',
     age: 0,
@@ -229,13 +218,24 @@ export const TECHS: TechDef[] = [
     ],
   },
   {
+    id: 'lamp',
+    name: 'Lampe à graisse',
+    age: 0,
+    cost: 55,
+    materials: { stone: 12, food: 25 },
+    requires: ['fire'],
+    fact: "À Lascaux, plus d'une centaine de lampes de pierre brûlaient de la graisse animale avec des mèches de genévrier : les peintres travaillaient sous terre, en pleine nuit.",
+    effects: [
+      { kind: 'building', building: 'lamps' },{ kind: 'nightFloor', value: 0.85 }],
+  },
+  {
     id: 'cordage',
     name: 'Cordage végétal',
     age: 0,
     cost: 70,
     materials: { wood: 30 },
     requires: ['spear'],
-    fact: "Un fragment de corde à trois brins retrouvé à l'Abri du Maras, en Ardèche, a 50 000 ans : il a été fabriqué par des Néandertaliens.",
+    fact: "Un fragment de corde à trois brins retrouvé à l'Abri du Maras, en Ardèche, a environ 45 000 à 50 000 ans : il a été fabriqué par des Néandertaliens.",
     effects: [
       { kind: 'building', building: 'ropes' },
       { kind: 'unlockResource', resource: 'fiber' },
@@ -264,7 +264,7 @@ export const TECHS: TechDef[] = [
     cost: 150,
     materials: { wood: 50 },
     requires: ['agriculture'],
-    fact: "Les plus vieux pots du monde viennent de la grotte de Xianrendong, en Chine : 20 000 ans, soit 10 000 ans avant l'agriculture.",
+    fact: "Les plus vieux pots du monde viennent de la grotte de Xianrendong, en Chine : 20 000 ans, soit près de 8 500 ans avant l'agriculture.",
     effects: [
       { kind: 'building', building: 'jars' },
       { kind: 'unlockResource', resource: 'clay' },
@@ -289,7 +289,7 @@ export const TECHS: TechDef[] = [
     cost: 260,
     materials: { stone: 50, wood: 30 },
     requires: ['pottery'],
-    fact: "La plus ancienne hache à tranchant poli connue vient d'Australie et a 49 000 ans. En Europe, la technique n'arrive qu'au Néolithique.",
+    fact: "La plus ancienne hache à tranchant poli connue vient d'Australie et a entre 44 000 et 49 000 ans. En Europe, la technique n'arrive qu'au Néolithique.",
     effects: [
       { kind: 'building', building: 'chopping' },{ kind: 'gatherRate', resource: 'wood', mult: 2.0 }],
   },
@@ -344,7 +344,7 @@ export const TECHS: TechDef[] = [
     cost: 780,
     materials: { wood: 100, copper: 30 },
     requires: ['bronze'],
-    fact: "La roue apparaît vers −3500, d'abord comme tour de potier. Les Mésoaméricains la connaissaient : ils l'ont mise sur des jouets, faute d'animaux de trait.",
+    fact: "La roue apparaît d'abord comme tour de potier vers −4000 ; vers −3500 elle porte les premiers chariots. Les Mésoaméricains l'ont mise sur des jouets, faute d'animaux de trait.",
     effects: [
       { kind: 'building', building: 'cart' },
       { kind: 'carry', add: 40 },
@@ -461,7 +461,7 @@ export const TECHS: TechDef[] = [
     cost: 6000,
     materials: { wood: 180, iron: 50 },
     requires: ['concrete'],
-    fact: "Décrit par Vitruve vers −25, le moulin de Barbegal, près d'Arles, alignait seize roues à eau et moulait de quoi nourrir dix mille personnes.",
+    fact: "Décrit par Vitruve vers −25, le moulin à eau culmine au IIe siècle à Barbegal, près d'Arles : seize roues alignées, de quoi moudre pour dix mille personnes.",
     effects: [
       { kind: 'building', building: 'watermill' },
       { kind: 'gatherRate', resource: 'food', mult: 2.0 },
@@ -501,7 +501,7 @@ export const TECHS: TechDef[] = [
     cost: 11000,
     materials: { fiber: 200, clay: 60 },
     requires: ['glass'],
-    fact: "Au IIe siècle, le codex — des pages cousues — remplace le rouleau : on peut enfin ouvrir un livre au milieu, chercher, comparer, annoter.",
+    fact: "À partir du IIe siècle, le codex — des pages cousues — supplante peu à peu le rouleau : on peut enfin ouvrir un livre au milieu, chercher, comparer, annoter.",
     effects: [
       { kind: 'building', building: 'lectern' },
       { kind: 'insightRate', add: 3 },
@@ -516,7 +516,7 @@ export const TECHS: TechDef[] = [
     cost: 13000,
     materials: { fiber: 180, iron: 80 },
     requires: ['roads'],
-    fact: "Venu de Chine, le collier d'épaule multiplie par quatre la force de traction du cheval : l'attelage antique l'étranglait dès qu'il tirait fort.",
+    fact: "Venu de Chine, le collier d'épaule augmente fortement la traction utile du cheval : il appuie sur les épaules là où l'attelage antique comprimait la gorge.",
     effects: [
       { kind: 'building', building: 'collar' },
       { kind: 'gatherRate', resource: 'food', mult: 1.6 },
@@ -612,7 +612,7 @@ export const TECHS: TechDef[] = [
     cost: 56000,
     materials: { copper: 300, clay: 200 },
     requires: ['perspective'],
-    fact: "Galilée pointe en 1609 une lunette de foire vers le ciel : quatre lunes tournent autour de Jupiter — tout ne tourne donc pas autour de la Terre.",
+    fact: "Galilée pointe fin 1609 une lunette de foire vers le ciel ; en janvier 1610, quatre lunes tournent autour de Jupiter — tout ne tourne donc pas autour de la Terre.",
     effects: [
       { kind: 'building', building: 'observatory' },
       { kind: 'insightRate', add: 20 },
@@ -669,7 +669,7 @@ export const TECHS: TechDef[] = [
     cost: 120000,
     materials: { iron: 600, wood: 400 },
     requires: ['steamengine'],
-    fact: "En 1830, la ligne Liverpool–Manchester inaugure l'horaire : pour la première fois, des villes règlent leurs horloges les unes sur les autres.",
+    fact: "En 1830, la ligne Liverpool–Manchester inaugure l'horaire régulier ; dix ans plus tard, les compagnies imposent une heure unique et les villes règlent leurs horloges les unes sur les autres.",
     effects: [
       { kind: 'building', building: 'railway' },
       { kind: 'expeditionSpeed', mult: 1.7 },

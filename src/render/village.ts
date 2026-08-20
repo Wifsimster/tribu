@@ -704,13 +704,15 @@ function masonry(
   y: number,
   z: number,
   seed: number,
+  light: Color = C.stone,
+  dark: Color = C.stoneDark,
 ): void {
   for (let k = 0; k < courses; k++) {
     const shift = k % 2 === 0 ? 0.03 : -0.03
     p.push(
       part(
         new BoxGeometry(w + shift, h * 0.92, d + shift),
-        tint(k % 3 === 0 ? C.stoneDark : C.stone, seed + k * 5, 0.07),
+        tint(k % 3 === 0 ? dark : light, seed + k * 5, 0.07),
         x,
         y + h * (k + 0.5),
         z,
@@ -1037,11 +1039,27 @@ export class Village {
     place(p, emberBowl(), 0, CAMP.frame.x - 0.95, CAMP.frame.z + 0.5)
   }
 
+  /** L'emprise est-elle posée sur un sol d'un seul tenant ? Une ferme à cheval
+   *  sur une marche de terrasse a le mur arrière noyé dans le bloc de terrain:
+   *  on échantillonne le pourtour et on refuse les slots qui enjambent un
+   *  dénivelé. */
+  private flatEnough(slot: Vector3, footprint: number): boolean {
+    if (footprint <= 0) return true
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      const h = this.island.heightAt(slot.x + Math.cos(a) * footprint, slot.z + Math.sin(a) * footprint)
+      if (Math.abs(h - slot.y) > 0.12) return false
+    }
+    return true
+  }
+
   /** Le village se construit derrière le feu, jamais devant. Un bâtiment qui se
    *  glisse entre la caméra et le colon coûte plus cher que tous les défauts
    *  qu'on pourrait lui trouver par ailleurs; le reste (écart minimal, rayon de
-   *  dégagement) empêche seulement les toits de s'interpénétrer. */
-  private nextSlot(spacing = 3.4): Vector3 {
+   *  dégagement) empêche seulement les toits de s'interpénétrer.
+   *  `central` est réservé aux monuments (campanile, moulin, aqueduc): un
+   *  ouvrage urbain relégué seul en rase campagne lit comme une ruine. */
+  private nextSlot(spacing = 3.4, footprint = 0, central = false): Vector3 {
     let best: Vector3 | null = null
     let bestScore = Infinity
     for (const slot of this.island.buildSlots) {
@@ -1058,28 +1076,40 @@ export class Village {
       ) {
         continue
       }
+      if (!this.flatEnough(slot, footprint)) continue
       // L'axe (+x, +z) est celui de la caméra au premier chargement.
       const toward = (slot.x + slot.z) / (Math.SQRT2 * r)
-      const score = r + Math.max(0, toward) * 7 + (r > 6.2 ? 40 : 0)
+      const score = central
+        ? r * 2.2 + Math.max(0, toward) * 3
+        : r + Math.max(0, toward) * 7 + (r > 6.2 ? 40 : 0)
       if (score < bestScore) {
         bestScore = score
         best = slot
       }
     }
-    if (!best && spacing > 1.4) return this.nextSlot(spacing * 0.65)
+    // Aucun sol plat de cette taille: mieux vaut un léger dénivelé qu'un exil.
+    if (!best && footprint > 0) return this.nextSlot(spacing, 0, central)
+    if (!best && spacing > 1.4) return this.nextSlot(spacing * 0.65, 0, central)
     // Plus une seule case libre : spirale d'or vers l'extérieur plutôt qu'un
     // point fixe — vingt-et-un savoirs empilés au même endroit, c'était ça le
     // « village vide » : tout existait, tout se cachait dans le même mètre.
+    // Le rayon est PLAFONNÉ: la spirale qui grandissait sans fin expédiait les
+    // époques récentes dans la forêt, hors du cadrage par défaut.
     const n = this.taken.length
-    const fallback = new Vector3(
-      Math.cos(n * 2.4) * (5.2 + n * 0.3),
-      0,
-      Math.sin(n * 2.4) * (5.2 + n * 0.3),
-    )
+    const fr = 5.2 + Math.min(n * 0.3, 2.4)
+    const fallback = new Vector3(Math.cos(n * 2.4) * fr, 0, Math.sin(n * 2.4) * fr)
     fallback.y = this.island.heightAt(fallback.x, fallback.z)
     const picked = best ? best.clone() : fallback
     this.taken.push(picked)
     return picked
+  }
+
+  /** Monuments urbains: ils réclament un slot proche du centre, pas la lisière. */
+  private static readonly MONUMENTS = new Set(['clock', 'windmill', 'aqueduct'])
+  /** Emprise au sol des gros objets: le slot doit être plat sous toute la base. */
+  private static readonly FOOTPRINT: Record<string, number> = {
+    hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 1.6,
+    railway: 1.2, villa: 1.0, threefield: 0.8, milestone: 0.8,
   }
 
   sync(buildings: Set<string>): void {
@@ -1088,13 +1118,13 @@ export class Village {
       const obj = this.make(b)
       if (!obj) {
         // Pas un bâtiment : un atelier de savoir, fondu dans le mesh unique.
-        const s = this.nextSlot(2.0)
+        const s = this.nextSlot(2.0, Village.FOOTPRINT[b] ?? 0.5, Village.MONUMENTS.has(b))
         this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot: Math.atan2(-s.x, -s.z) })
         this.rebuildProps()
         this.placed.add(b)
         continue
       }
-      const slot = this.nextSlot()
+      const slot = this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
       this.propPlacements.push({ id: b, x: slot.x, y: slot.y, z: slot.z, rot: 0 })
       obj.position.set(slot.x, slot.y, slot.z)
       obj.rotation.y = Math.atan2(-slot.x, -slot.z)
@@ -1121,11 +1151,16 @@ export class Village {
     const iron = new Color('#6b7078')
     switch (id) {
       case 'knapping': {
-        // Atelier de taille : souche, gros silex, éclats au sol.
-        p.push(part(new CylinderGeometry(0.26, 0.3, 0.3, 7), C.wood, 0, 0.15, 0))
-        p.push(part(new DodecahedronGeometry(0.14, 0), PALETTE.rockDark, 0.02, 0.37, 0))
-        for (let i = 0; i < 5; i++)
-          p.push(part(new TetrahedronGeometry(0.06, 0), C.stoneLight, 0.35 * Math.cos(i * 1.3), 0.03, 0.35 * Math.sin(i * 1.7)))
+        // Atelier de taille : peau claire étalée, nucléus d'obsidienne SOMBRE,
+        // éclats clairs en éventail — le dodécaèdre gris se confondait avec les
+        // rochers décoratifs du camp.
+        p.push(part(new BoxGeometry(1.15, 0.05, 0.9).rotateY(0.35), C.hidePale, 0, 0.03, 0))
+        p.push(part(new CylinderGeometry(0.24, 0.28, 0.3, 7), C.wood, -0.35, 0.15, -0.28))
+        p.push(part(new DodecahedronGeometry(0.2, 0).rotateY(0.8).scale(1, 0.85, 1), C.char, 0.02, 0.19, -0.05))
+        for (let i = 0; i < 6; i++) {
+          const a = -0.6 + i * 0.34
+          p.push(part(new TetrahedronGeometry(0.08, 0).rotateY(i * 1.3).scale(1, 0.5, 1), C.stoneLight, Math.sin(a) * 0.42, 0.07, 0.1 + Math.cos(a) * 0.32))
+        }
         return p
       }
       case 'woodpile': {
@@ -1136,24 +1171,30 @@ export class Village {
         return p
       }
       case 'lamps': {
-        // Lampes à graisse : pierres creuses, flamme émissive.
+        // Lampes à graisse : x2, posées sur une dalle surélevée, flammes
+        // surcuites — trois pierres de 9 cm se noyaient dans le halo du foyer.
+        p.push(part(new DodecahedronGeometry(0.52, 0).rotateY(0.4).scale(1.35, 0.32, 1.05), tint(PALETTE.rock, 3, 0.06), 0, 0.12, 0))
         for (let i = 0; i < 3; i++) {
-          const x = -0.3 + i * 0.3
-          const z = (i % 2) * 0.25
-          p.push(part(new CylinderGeometry(0.09, 0.12, 0.09, 6), PALETTE.rock, x, 0.05, z))
-          p.push(part(new ConeGeometry(0.035, 0.11, 5), C.emberFlame, x, 0.15, z))
+          const x = -0.42 + i * 0.42
+          const z = (i % 2) * 0.22 - 0.06
+          p.push(part(new CylinderGeometry(0.15, 0.19, 0.16, 6), PALETTE.rockDark, x, 0.32, z))
+          p.push(part(new CylinderGeometry(0.11, 0.11, 0.05, 6), C.emberCore, x, 0.41, z))
+          p.push(part(new ConeGeometry(0.07, 0.24, 5), C.emberFlame, x, 0.55, z))
         }
         return p
       }
       case 'spearrack': {
-        // Râtelier : deux croix, trois épieux inclinés.
+        // Râtelier : deux croix, épieux REDRESSÉS (~60° du sol) et grosses
+        // pointes de silex — à 72° de la verticale, l'objet lisait comme un
+        // chevalet de sciage.
         for (const sx of [-0.38, 0.38]) {
-          p.push(part(new CylinderGeometry(0.03, 0.03, 0.5, 5).rotateZ(0.4), C.wood, sx, 0.24, 0))
-          p.push(part(new CylinderGeometry(0.03, 0.03, 0.5, 5).rotateZ(-0.4), C.wood, sx, 0.24, 0))
+          p.push(part(new CylinderGeometry(0.03, 0.03, 0.55, 5).rotateZ(0.4), C.wood, sx, 0.26, 0))
+          p.push(part(new CylinderGeometry(0.03, 0.03, 0.55, 5).rotateZ(-0.4), C.wood, sx, 0.26, 0))
         }
         for (let i = 0; i < 3; i++) {
-          p.push(part(new CylinderGeometry(0.022, 0.03, 0.95, 5).rotateZ(1.25), C.woodDark, -0.1 + i * 0.14, 0.47, 0.02 * i))
-          p.push(part(new TetrahedronGeometry(0.05, 0), C.stoneLight, -0.53 + i * 0.14, 0.63, 0.02 * i))
+          const x = -0.14 + i * 0.14
+          p.push(part(new CylinderGeometry(0.024, 0.034, 1.1, 5).rotateZ(0.5), C.woodDark, x, 0.5, 0.04 * i))
+          p.push(part(new TetrahedronGeometry(0.09, 0).scale(0.65, 1.5, 0.65).rotateZ(0.5), C.stoneLight, x - 0.27, 0.99, 0.04 * i))
         }
         return p
       }
@@ -1167,26 +1208,34 @@ export class Village {
         return p
       }
       case 'jars': {
-        // Trois jarres : panse, col, une couchée.
+        // Trois jarres sur leur natte, avec un petit four d'argile : du
+        // contexte — deux points orange seuls en pleine prairie ne lisaient rien.
+        p.push(part(new BoxGeometry(1.05, 0.04, 0.85).rotateY(0.25), C.hidePale, 0, 0.02, 0))
+        p.push(part(new SphereGeometry(0.24, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), C.soil, -0.34, 0.05, -0.22))
+        p.push(part(new BoxGeometry(0.12, 0.1, 0.06), C.emberCore, -0.34, 0.08, 0.02))
         const jar = (s: number) => [
           part(new SphereGeometry(0.16 * s, 8, 6).scale(1, 1.15, 1), C.ochre, 0, 0.18 * s, 0),
           part(new CylinderGeometry(0.07 * s, 0.09 * s, 0.09 * s, 6), C.tileDark, 0, 0.36 * s, 0),
         ]
-        place(p, jar(1), 0, -0.18, 0)
-        place(p, jar(0.8), 0, 0.16, 0.12)
+        place(p, jar(1), 0, 0.02, 0.02)
+        place(p, jar(0.8), 0, 0.32, 0.16)
         const couche = [
-          part(new SphereGeometry(0.13, 8, 6).scale(1, 1.15, 1).rotateZ(Math.PI / 2), C.ochre, 0, 0.12, 0),
+          part(new SphereGeometry(0.13, 8, 6).scale(1, 1.15, 1).rotateZ(Math.PI / 2), C.ochre, 0, 0.13, 0),
         ]
-        place(p, couche, 0.6, 0.05, -0.25)
+        place(p, couche, 0.6, 0.22, -0.28)
         return p
       }
       case 'loom': {
-        // Métier à tisser vertical : cadre, toile rayée, navette.
+        // Métier à tisser vertical : toile UNIE écru, fils de chaîne sombres,
+        // navette — les rayures sont réservées à la voile, sinon trois ateliers
+        // lisent comme des barrières de chantier interchangeables.
         for (const sx of [-0.32, 0.32]) p.push(part(new CylinderGeometry(0.03, 0.04, 0.78, 5), C.wood, sx, 0.39, 0))
         p.push(part(new CylinderGeometry(0.03, 0.03, 0.72, 5).rotateZ(Math.PI / 2), C.wood, 0, 0.76, 0))
-        for (let i = 0; i < 4; i++)
-          p.push(part(new BoxGeometry(0.56, 0.13, 0.02), i % 2 ? PALETTE.cloth : C.hidePale, 0, 0.62 - i * 0.13, 0.01))
-        p.push(part(new BoxGeometry(0.1, 0.04, 0.05), C.woodDark, 0.1, 0.34, 0.05))
+        p.push(part(new CylinderGeometry(0.025, 0.025, 0.66, 5).rotateZ(Math.PI / 2), C.woodDark, 0, 0.14, 0.01))
+        p.push(part(new BoxGeometry(0.56, 0.34, 0.02), C.plaster, 0, 0.56, 0.01))
+        for (let i = 0; i < 6; i++)
+          p.push(part(new BoxGeometry(0.02, 0.26, 0.025), C.woodDark, -0.25 + i * 0.1, 0.27, 0.01))
+        p.push(part(new BoxGeometry(0.16, 0.045, 0.06), C.ochre, 0.08, 0.4, 0.04))
         return p
       }
       case 'chopping': {
@@ -1199,19 +1248,26 @@ export class Village {
         return p
       }
       case 'orepile': {
-        // Minerai de cuivre : panier et tas orangé.
-        p.push(part(new CylinderGeometry(0.2, 0.14, 0.26, 7), C.hideDark, -0.2, 0.13, 0))
-        for (let i = 0; i < 6; i++)
-          p.push(part(new DodecahedronGeometry(0.07, 0), i % 2 ? copper : PALETTE.rockDark, 0.15 + (i % 3) * 0.12, 0.06 + Math.floor(i / 3) * 0.1, (i % 2) * 0.12))
-        p.push(part(new DodecahedronGeometry(0.06, 0), copper, -0.2, 0.3, 0))
+        // Minerai de cuivre : blocs x2 et panier renversé — six dés de 7 cm
+        // n'étaient qu'un pixel orange à distance de jeu.
+        p.push(part(new CylinderGeometry(0.24, 0.18, 0.36, 7).rotateZ(1.3), C.hideDark, -0.42, 0.17, 0))
+        p.push(part(new CylinderGeometry(0.19, 0.19, 0.05, 7).rotateZ(1.3), C.woodDark, -0.59, 0.21, 0))
+        for (let i = 0; i < 7; i++)
+          p.push(part(new DodecahedronGeometry(0.13, 0).rotateY(i * 1.7), i % 2 ? copper : PALETTE.rockDark, 0.05 + (i % 3) * 0.2, 0.1 + Math.floor(i / 3) * 0.17, (i % 2) * 0.2 - 0.06))
+        p.push(part(new DodecahedronGeometry(0.11, 0), copper, -0.32, 0.14, 0.05))
         return p
       }
       case 'furnace': {
-        // Four à bronze : dôme percé, braise, lingots.
-        p.push(part(new SphereGeometry(0.3, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), PALETTE.rock, 0, 0.1, 0))
-        p.push(part(new CylinderGeometry(0.1, 0.12, 0.16, 6), PALETTE.rockDark, 0, 0.42, 0))
-        p.push(part(new BoxGeometry(0.14, 0.12, 0.06), C.emberCore, 0, 0.12, 0.28))
-        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.16, 0.05, 0.08), gold, 0.35, 0.03 + i * 0.055, 0.1 - i * 0.02))
+        // Four à bronze : dôme massif, cheminée, gueule ROUGEOYANTE émissive,
+        // tas de lingots x2 — le dôme gris de 0.3 u était un caillou parmi les
+        // cailloux.
+        p.push(part(new SphereGeometry(0.42, 9, 7, 0, Math.PI * 2, 0, Math.PI * 0.55), tint(PALETTE.rockDark, 2, 0.05), 0, 0.13, 0))
+        p.push(part(new CylinderGeometry(0.12, 0.17, 0.5, 6), PALETTE.rockDark, 0, 0.62, 0))
+        p.push(part(new CylinderGeometry(0.15, 0.13, 0.07, 6), C.char, 0, 0.9, 0))
+        p.push(part(new BoxGeometry(0.24, 0.22, 0.1), C.char, 0, 0.16, 0.36))
+        p.push(part(new BoxGeometry(0.17, 0.15, 0.07), C.emberCore, 0, 0.13, 0.4))
+        for (let i = 0; i < 6; i++)
+          p.push(part(new BoxGeometry(0.2, 0.06, 0.11), gold, 0.52 + (i % 2) * 0.05, 0.04 + Math.floor(i / 2) * 0.068, -0.07 + (i % 2) * 0.15))
         return p
       }
       case 'cart': {
@@ -1232,11 +1288,23 @@ export class Village {
         return p
       }
       case 'sailframe': {
-        // Voile carrée sur cadre, rayée comme celle de la barque.
-        for (const sx of [-0.35, 0.35]) p.push(part(new CylinderGeometry(0.03, 0.04, 0.85, 5), C.wood, sx, 0.42, 0))
-        p.push(part(new CylinderGeometry(0.025, 0.025, 0.78, 5).rotateZ(Math.PI / 2), C.wood, 0, 0.82, 0))
-        for (let i = 0; i < 4; i++)
-          p.push(part(new BoxGeometry(0.66, 0.15, 0.02), i % 2 ? PALETTE.cloth : C.plaster, 0, 0.68 - i * 0.15, 0))
+        // Gréement d'essai : mât, vergue, voile BOMBÉE écru à une seule bande
+        // ocre — la voile carrée rayée rouge/blanc lisait comme un panneau de
+        // passage à niveau.
+        p.push(part(new CylinderGeometry(0.045, 0.06, 1.2, 6), C.wood, 0, 0.6, 0))
+        p.push(part(new ConeGeometry(0.07, 0.12, 5), C.woodDark, 0, 1.24, 0))
+        p.push(part(new CylinderGeometry(0.03, 0.03, 1.0, 5).rotateZ(Math.PI / 2), C.woodDark, 0, 1.02, 0))
+        const sail = new CylinderGeometry(0.44, 0.5, 0.72, 10, 1, true, 0, Math.PI)
+          .rotateY(-Math.PI / 2)
+          .scale(1, 1, 0.5)
+        p.push(part(sail, C.plaster, 0, 0.6, -0.06))
+        const band = new CylinderGeometry(0.455, 0.475, 0.16, 10, 1, true, 0, Math.PI)
+          .rotateY(-Math.PI / 2)
+          .scale(1.01, 1, 0.51)
+        p.push(part(band, C.ochre, 0, 0.6, -0.06))
+        // Deux jambes d'appui : le mât d'essai tient debout sur la grève.
+        for (const s of [-1, 1])
+          p.push(part(new CylinderGeometry(0.03, 0.04, 0.6, 5).rotateX(s * 0.5), C.wood, 0, 0.26, s * 0.24))
         return p
       }
       case 'forge': {
@@ -1249,17 +1317,23 @@ export class Village {
         return p
       }
       case 'plough': {
-        // Araire posée : age courbe, mancherons, soc de fer.
-        p.push(part(new CylinderGeometry(0.035, 0.045, 0.7, 5).rotateZ(1.1), C.wood, 0, 0.2, 0))
-        p.push(part(new CylinderGeometry(0.03, 0.03, 0.4, 5).rotateZ(0.35), C.woodDark, 0.32, 0.4, 0))
-        p.push(part(new BoxGeometry(0.16, 0.06, 0.08).rotateZ(0.5), iron, -0.32, 0.05, 0))
+        // Araire sur sa bande de terre RETOURNÉE, sillons marqués — posée dans
+        // l'herbe, elle lisait comme une branche cassée.
+        p.push(part(new BoxGeometry(1.3, 0.1, 0.8).rotateY(0.1), C.soil, 0, 0.05, 0))
+        for (let i = 0; i < 3; i++)
+          p.push(part(new BoxGeometry(1.16, 0.07, 0.11).rotateY(0.1), C.soilDark, 0, 0.11, -0.24 + i * 0.24))
+        p.push(part(new CylinderGeometry(0.045, 0.055, 0.9, 5).rotateZ(1.1), C.wood, 0, 0.3, 0))
+        p.push(part(new CylinderGeometry(0.035, 0.04, 0.5, 5).rotateZ(0.35), C.woodDark, 0.4, 0.5, 0))
+        p.push(part(new BoxGeometry(0.2, 0.09, 0.1).rotateZ(0.5), iron, -0.4, 0.11, 0))
         return p
       }
       case 'stele': {
-        // Stèle gravée : pierre levée, lignes sombres.
-        p.push(part(new BoxGeometry(0.34, 0.8, 0.12), C.stone, 0, 0.4, 0))
-        p.push(part(new BoxGeometry(0.4, 0.1, 0.18), C.stoneDark, 0, 0.05, 0))
-        for (let i = 0; i < 4; i++) p.push(part(new BoxGeometry(0.2, 0.025, 0.015), C.stoneDark, 0, 0.62 - i * 0.12, 0.062))
+        // Stèle gravée : grès chaud, gravures larges rehaussées d'ocre — le
+        // gris-bleu froid à traits de 2 px lisait comme une pierre tombale.
+        p.push(part(new BoxGeometry(0.4, 0.95, 0.16), tint(C.wall, 4, 0.05), 0, 0.48, 0))
+        p.push(part(new BoxGeometry(0.5, 0.12, 0.24), C.hideDark, 0, 0.06, 0))
+        for (let i = 0; i < 4; i++) p.push(part(new BoxGeometry(0.26, 0.05, 0.02), C.ochre, 0, 0.82 - i * 0.14, 0.085))
+        p.push(part(new BoxGeometry(0.13, 0.13, 0.02), C.tileDark, 0, 0.28, 0.085))
         return p
       }
       case 'market': {
@@ -1267,44 +1341,61 @@ export class Village {
         p.push(part(new BoxGeometry(0.6, 0.05, 0.36), C.wood, 0, 0.3, 0))
         for (const sx of [-0.25, 0.25]) for (const sz of [-0.13, 0.13]) p.push(part(new BoxGeometry(0.05, 0.3, 0.05), C.woodDark, sx, 0.15, sz))
         for (const sx of [-0.27, 0.27]) p.push(part(new CylinderGeometry(0.02, 0.02, 0.5, 4), C.wood, sx, 0.55, -0.14))
-        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.24, 0.02, 0.3).rotateX(-0.25), i % 2 ? C.tile : C.plaster, -0.24 + i * 0.24, 0.82, -0.02))
+        // Auvent uni écru + liseré ocre : plus de rayures partagées avec la voile.
+        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.24, 0.02, 0.3).rotateX(-0.25), tint(C.plaster, i * 5, 0.04), -0.24 + i * 0.24, 0.82, -0.02))
+        p.push(part(new BoxGeometry(0.74, 0.025, 0.06).rotateX(-0.25), C.ochre, 0, 0.785, 0.12))
         for (let i = 0; i < 5; i++) p.push(part(new CylinderGeometry(0.035, 0.035, 0.015, 8), gold, -0.15 + (i % 3) * 0.12, 0.34, -0.05 + Math.floor(i / 3) * 0.1))
         return p
       }
       case 'villa': {
-        // Villa : base de béton clair, colonnes, toit de tuiles bas.
-        p.push(part(new BoxGeometry(0.9, 0.34, 0.7), C.plaster, 0, 0.17, 0))
-        for (const sx of [-0.34, 0.34]) p.push(part(new CylinderGeometry(0.05, 0.06, 0.34, 6), C.stoneLight, sx, 0.5, 0.28))
-        p.push(part(new BoxGeometry(1.0, 0.1, 0.8), C.tile, 0, 0.72, 0))
-        p.push(part(new BoxGeometry(0.7, 0.1, 0.55), C.tileDark, 0, 0.82, 0))
+        // Villa x2 avec péristyle : elle était plus petite que la ferme
+        // néolithique et lisait comme une table à toit rouge.
+        p.push(part(new BoxGeometry(2.0, 0.2, 1.55), C.stoneLight, 0, 0.1, 0))
+        p.push(part(new BoxGeometry(1.7, 0.72, 1.15), C.plaster, 0, 0.56, -0.12))
+        p.push(part(new BoxGeometry(0.36, 0.5, 0.06), C.woodDark, 0, 0.45, 0.46))
+        for (let i = 0; i < 6; i++)
+          p.push(part(new CylinderGeometry(0.06, 0.075, 0.74, 6), C.bone, -0.8 + i * 0.32, 0.57, 0.62))
+        p.push(part(new BoxGeometry(1.82, 0.09, 0.34), C.plaster, 0, 0.98, 0.58))
+        gableRoof(p, 2.0, 0.85, 0.52, 1.02, 5)
         return p
       }
       case 'watermill': {
-        // Roue à aubes sur son cadre, goulotte au-dessus.
-        p.push(part(new TorusGeometry(0.3, 0.045, 5, 10).rotateY(Math.PI / 2), C.woodDark, 0, 0.36, 0))
+        // Roue à aubes SUR bassin bleu, goulotte alimentée : l'eau vient avec
+        // elle — plantée en prairie sèche, la roue n'expliquait rien.
+        p.push(part(new BoxGeometry(1.0, 0.12, 0.66), C.stoneDark, 0, 0.06, 0))
+        p.push(part(new BoxGeometry(0.86, 0.06, 0.52), C.water, 0, 0.13, 0))
+        p.push(part(new TorusGeometry(0.34, 0.05, 5, 10).rotateY(Math.PI / 2), C.woodDark, 0, 0.46, 0))
         for (let i = 0; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2
-          p.push(part(new BoxGeometry(0.05, 0.16, 0.1), C.wood, 0, 0.36 + Math.cos(a) * 0.3, Math.sin(a) * 0.3))
+          p.push(part(new BoxGeometry(0.06, 0.18, 0.12), C.wood, 0, 0.46 + Math.cos(a) * 0.34, Math.sin(a) * 0.34))
         }
-        for (const sz of [-0.4, 0.4]) p.push(part(new CylinderGeometry(0.04, 0.05, 0.6, 5), C.wood, 0, 0.3, sz))
-        p.push(part(new BoxGeometry(0.16, 0.05, 0.9).rotateX(0.18), C.woodDark, 0.22, 0.72, 0))
+        for (const sz of [-0.44, 0.44]) p.push(part(new CylinderGeometry(0.04, 0.05, 0.7, 5), C.wood, 0, 0.35, sz))
+        p.push(part(new BoxGeometry(0.18, 0.06, 1.05).rotateX(0.22), C.woodDark, 0.26, 0.8, -0.1))
+        p.push(part(new BoxGeometry(0.1, 0.035, 0.95).rotateX(0.22), C.water, 0.26, 0.85, -0.1))
         return p
       }
       case 'glassworks': {
-        // Four de verrier, canne posée, deux pièces soufflées.
-        p.push(part(new SphereGeometry(0.26, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), C.ochre, 0, 0.08, 0))
-        p.push(part(new BoxGeometry(0.12, 0.1, 0.05), C.emberCore, 0, 0.12, 0.24))
-        p.push(part(new CylinderGeometry(0.015, 0.015, 0.7, 4).rotateZ(1.2), C.stoneDark, 0.3, 0.2, 0.1))
-        p.push(part(new SphereGeometry(0.09, 8, 6).scale(1, 1.2, 1), C.glass, 0.4, 0.1, -0.15))
-        p.push(part(new SphereGeometry(0.07, 8, 6), C.glass, 0.55, 0.07, 0.05))
+        // Verre CLAIR translucide (légère émissive) et gueule de four
+        // rougeoyante — C.glass ardoise faisait lire les pièces comme des
+        // cailloux et le four ocre comme une citrouille.
+        const blown = new Color(0.85, 1.2, 1.32)
+        p.push(part(new SphereGeometry(0.3, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), tint(C.soil, 3, 0.05), 0, 0.09, 0))
+        p.push(part(new CylinderGeometry(0.08, 0.11, 0.3, 6), C.soilDark, 0, 0.44, 0))
+        p.push(part(new BoxGeometry(0.18, 0.15, 0.08), C.emberCore, 0, 0.14, 0.26))
+        p.push(part(new CylinderGeometry(0.015, 0.015, 0.7, 4).rotateZ(1.2), C.stoneDark, 0.3, 0.22, 0.1))
+        p.push(part(new SphereGeometry(0.11, 8, 6).scale(1, 1.25, 1), blown, 0.45, 0.13, -0.15))
+        p.push(part(new SphereGeometry(0.085, 8, 6), blown, 0.62, 0.09, 0.08))
         return p
       }
       case 'milestone': {
-        // Borne milliaire et tronçon dallé.
-        p.push(part(new CylinderGeometry(0.11, 0.13, 0.55, 8), C.stoneLight, -0.25, 0.28, 0))
-        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.16, 0.02, 0.018), C.stoneDark, -0.25, 0.42 - i * 0.09, 0.115))
-        for (let i = 0; i < 6; i++)
-          p.push(part(new BoxGeometry(0.26, 0.05, 0.3), tint(i % 2 ? C.stone : C.stoneLight, i * 3, 0.06), 0.1 + (i % 3) * 0.27, 0.025, (Math.floor(i / 3) - 0.5) * 0.31))
+        // Borne et dalles CHAUDES en tronçon courbe : le carrelage gris froid
+        // au bord de la falaise ne lisait pas comme une voie romaine.
+        p.push(part(new CylinderGeometry(0.14, 0.17, 0.7, 8), tint(C.wall, 6, 0.05), -0.55, 0.35, 0.1))
+        for (let i = 0; i < 3; i++) p.push(part(new BoxGeometry(0.2, 0.026, 0.02), C.tileDark, -0.55, 0.52 - i * 0.11, 0.25))
+        for (let i = 0; i < 7; i++) {
+          const a = -0.55 + i * 0.22
+          p.push(part(new BoxGeometry(0.36, 0.06, 0.42).rotateY(a * 0.7), tint(i % 2 ? C.hidePale : C.wall, i * 3, 0.07), -0.25 + i * 0.34, 0.03, Math.sin(a) * 0.45))
+        }
         return p
       }
       case 'lectern': {
@@ -1316,19 +1407,25 @@ export class Village {
         return p
       }
       case 'collar': {
-        // Collier d'épaule sur sa potence, harnais pendu.
-        p.push(part(new CylinderGeometry(0.04, 0.05, 0.7, 5), C.wood, -0.15, 0.35, 0))
-        p.push(part(new CylinderGeometry(0.03, 0.03, 0.5, 5).rotateZ(Math.PI / 2), C.wood, 0.1, 0.66, 0))
-        p.push(part(new TorusGeometry(0.16, 0.05, 6, 10).rotateY(Math.PI / 2), C.hideDark, 0.18, 0.42, 0))
-        p.push(part(new BoxGeometry(0.03, 0.22, 0.02), C.hideLight, 0.32, 0.5, 0.05))
+        // Harnais complet : joug cintré, collier OVALE face caméra, traits
+        // pendants — le tore de profil lisait comme un pneu sur une clôture.
+        for (const sx of [-0.3, 0.3]) p.push(part(new CylinderGeometry(0.04, 0.05, 0.78, 5), C.wood, sx, 0.39, 0))
+        p.push(part(new CylinderGeometry(0.035, 0.035, 0.78, 5).rotateZ(Math.PI / 2), C.wood, 0, 0.75, 0))
+        for (const s of [-1, 1]) p.push(part(new CylinderGeometry(0.03, 0.03, 0.3, 5).rotateZ(s * 0.5), C.woodDark, s * 0.12, 0.62, 0.02))
+        p.push(part(new TorusGeometry(0.16, 0.055, 6, 10).scale(1, 1.25, 1), C.hideDark, 0, 0.38, 0.02))
+        for (const sx of [-0.24, 0.24]) p.push(part(new BoxGeometry(0.035, 0.32, 0.02), C.hideLight, sx, 0.5, 0.03))
         return p
       }
       case 'threefield': {
-        // Trois bandes : semée, en blé, en jachère.
-        const bands: [Color, number][] = [[PALETTE.grassDark, 0.06], [C.wheat, 0.14], [C.soil, 0.04]]
+        // Trois soles SURÉLEVÉES et bordées de bois : les bandes de 0.08 u se
+        // noyaient dans l'herbe.
+        const bands: [Color, number][] = [[PALETTE.grassDark, 0.1], [C.wheat, 0.26], [C.soil, 0.06]]
         bands.forEach(([col, h], i) => {
-          p.push(part(new BoxGeometry(0.4, 0.08, 1.0), C.soilDark, -0.42 + i * 0.42, 0.04, 0))
-          p.push(part(new BoxGeometry(0.34, h, 0.9), col, -0.42 + i * 0.42, 0.08 + h / 2, 0))
+          const x = -0.5 + i * 0.5
+          p.push(part(new BoxGeometry(0.44, 0.2, 1.15), C.soilDark, x, 0.1, 0))
+          p.push(part(new BoxGeometry(0.38, h, 1.05), col, x, 0.2 + h / 2, 0))
+          for (const sz of [-0.58, 0.58]) p.push(part(new BoxGeometry(0.46, 0.09, 0.06), C.woodDark, x, 0.2, sz))
+          for (const sx of [-0.23, 0.23]) p.push(part(new BoxGeometry(0.06, 0.09, 1.2), C.woodDark, x + sx, 0.2, 0))
         })
         return p
       }
@@ -1369,6 +1466,8 @@ export class Village {
         p.push(part(new CylinderGeometry(0.02, 0.025, 0.5, 5), C.wood, 0.06, 0.55, 0))
         p.push(part(new BoxGeometry(0.28, 0.22, 0.015), C.plaster, 0.06, 0.6, 0))
         for (const sx of [-0.2, 0.2]) p.push(part(new BoxGeometry(0.05, 0.16, 0.05).rotateZ(sx > 0 ? -0.4 : 0.4), C.wood, sx, 0.1, 0))
+        // ×1.6 : à 0.7 u entre les sapins, la Renaissance était muette.
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'easel': {
@@ -1378,6 +1477,7 @@ export class Village {
         p.push(part(new BoxGeometry(0.34, 0.28, 0.02), C.plaster, 0, 0.42, 0.03))
         p.push(part(new BoxGeometry(0.12, 0.09, 0.025), C.tile, -0.04, 0.44, 0.035))
         p.push(part(new BoxGeometry(0.08, 0.06, 0.025), PALETTE.grassDark, 0.07, 0.38, 0.035))
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'observatory': {
@@ -1385,6 +1485,7 @@ export class Village {
         for (let i = 0; i < 3; i++) p.push(part(new CylinderGeometry(0.02, 0.025, 0.5, 5).rotateZ(0.35).rotateY((i / 3) * Math.PI * 2), C.woodDark, 0, 0.25, 0))
         p.push(part(new CylinderGeometry(0.05, 0.07, 0.55, 7).rotateZ(0.9), copper, 0.1, 0.58, 0))
         p.push(part(new CylinderGeometry(0.075, 0.075, 0.06, 7).rotateZ(0.9), gold, 0.32, 0.68, 0))
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'bank': {
@@ -1395,6 +1496,7 @@ export class Village {
         p.push(part(new BoxGeometry(0.22, 0.16, 0.16), C.woodDark, 0.35, 0.08, 0.05))
         p.push(part(new BoxGeometry(0.24, 0.03, 0.18), iron, 0.35, 0.17, 0.05))
         for (let i = 0; i < 3; i++) p.push(part(new CylinderGeometry(0.028, 0.028, 0.012, 8), gold, 0.05 + i * 0.07, 0.34, 0.1))
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'anatomy': {
@@ -1403,65 +1505,84 @@ export class Village {
         for (const sx of [-0.22, 0.22]) p.push(part(new BoxGeometry(0.05, 0.3, 0.05), C.woodDark, sx, 0.15, 0))
         p.push(part(new BoxGeometry(0.2, 0.28, 0.02), C.plaster, -0.1, 0.55, -0.1))
         p.push(part(new BoxGeometry(0.05, 0.16, 0.025), C.meat, -0.1, 0.55, -0.085))
-        for (let i = 0; i < 2; i++) p.push(part(new SphereGeometry(0.045, 6, 5), C.glass, 0.12 + i * 0.12, 0.36, 0.05))
+        for (let i = 0; i < 2; i++) p.push(part(new SphereGeometry(0.045, 6, 5), new Color(0.85, 1.2, 1.32), 0.12 + i * 0.12, 0.36, 0.05))
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'steamengine': {
-        // Chaudière, volant, bielle.
-        p.push(part(new CylinderGeometry(0.16, 0.16, 0.5, 8).rotateZ(Math.PI / 2), iron, 0, 0.22, 0))
-        p.push(part(new CylinderGeometry(0.06, 0.08, 0.3, 6), C.char, -0.15, 0.55, 0))
-        p.push(part(new TorusGeometry(0.16, 0.03, 6, 12).rotateY(Math.PI / 2), C.stoneDark, 0.35, 0.3, 0))
-        p.push(part(new BoxGeometry(0.3, 0.04, 0.04), C.stoneLight, 0.15, 0.3, 0.1))
-        p.push(part(new SphereGeometry(0.08, 6, 5), C.smoke, -0.15, 0.78, 0.02))
+        // Machine à vapeur ×1.5 avec PANACHE de fumée : sans lui, la révolution
+        // industrielle ne changeait rien à la silhouette du village.
+        p.push(part(new BoxGeometry(0.55, 0.14, 0.42), C.char, 0.02, 0.07, 0))
+        p.push(part(new CylinderGeometry(0.22, 0.22, 0.72, 8).rotateZ(Math.PI / 2), iron, 0, 0.32, 0))
+        p.push(part(new CylinderGeometry(0.07, 0.1, 0.5, 6), C.char, -0.22, 0.8, 0))
+        p.push(part(new TorusGeometry(0.22, 0.04, 6, 12).rotateY(Math.PI / 2), C.stoneDark, 0.5, 0.38, 0))
+        p.push(part(new BoxGeometry(0.4, 0.05, 0.05), C.stoneLight, 0.22, 0.38, 0.12))
+        for (let i = 0; i < 3; i++)
+          p.push(part(new SphereGeometry(0.09 + i * 0.05, 6, 5), C.smoke, -0.22 + i * 0.09, 1.1 + i * 0.24, 0.02 + i * 0.05))
         return p
       }
       case 'railway': {
-        // Tronçon de voie et wagonnet.
-        for (let i = 0; i < 4; i++) p.push(part(new BoxGeometry(0.12, 0.03, 0.44), C.woodDark, -0.3 + i * 0.2, 0.02, 0))
-        for (const sz of [-0.16, 0.16]) p.push(part(new BoxGeometry(0.85, 0.035, 0.04), iron, 0, 0.05, sz))
-        p.push(part(new BoxGeometry(0.3, 0.16, 0.26), C.tileDark, 0.05, 0.18, 0))
-        for (const sx of [-0.08, 0.18]) for (const sz of [-0.14, 0.14]) p.push(part(new CylinderGeometry(0.05, 0.05, 0.03, 8).rotateX(Math.PI / 2), C.char, sx, 0.07, sz))
-        p.push(part(new DodecahedronGeometry(0.07, 0), C.char, 0.05, 0.3, 0))
+        // Voie de 2.5 u sur ballast SOMBRE + wagonnet : un rail lisible de loin.
+        p.push(part(new BoxGeometry(2.5, 0.07, 0.62), tint(C.char, 2, 0.08), 0, 0.035, 0))
+        for (let i = 0; i < 9; i++) p.push(part(new BoxGeometry(0.14, 0.04, 0.5), C.woodDark, -1.08 + i * 0.27, 0.09, 0))
+        for (const sz of [-0.17, 0.17]) p.push(part(new BoxGeometry(2.4, 0.05, 0.05), iron, 0, 0.13, sz))
+        p.push(part(new BoxGeometry(0.42, 0.24, 0.34), C.tileDark, 0.2, 0.3, 0))
+        for (const sx of [0.04, 0.36]) for (const sz of [-0.18, 0.18]) p.push(part(new CylinderGeometry(0.07, 0.07, 0.04, 8).rotateX(Math.PI / 2), C.char, sx, 0.15, sz))
+        p.push(part(new DodecahedronGeometry(0.1, 0), C.char, 0.2, 0.48, 0))
         return p
       }
       case 'gaslamp': {
-        // Réverbère à gaz : fût vert sombre, lanterne chaude.
-        p.push(part(new CylinderGeometry(0.035, 0.05, 0.8, 6), new Color('#3c4a42'), 0, 0.4, 0))
-        p.push(part(new BoxGeometry(0.12, 0.14, 0.12), C.glass, 0, 0.86, 0))
-        p.push(part(new ConeGeometry(0.1, 0.08, 4).rotateY(Math.PI / 4), new Color('#3c4a42'), 0, 0.97, 0))
-        p.push(part(new SphereGeometry(0.045, 6, 5), C.emberFlame, 0, 0.86, 0))
+        // Réverbère à gaz : lanterne CARRÉE chaude sur fût vert — nettement
+        // distinct du lampadaire électrique à potence et globe froid.
+        p.push(part(new CylinderGeometry(0.035, 0.055, 0.85, 6), new Color('#3c4a42'), 0, 0.42, 0))
+        p.push(part(new BoxGeometry(0.2, 0.03, 0.2), new Color('#3c4a42'), 0, 0.82, 0))
+        p.push(part(new BoxGeometry(0.16, 0.18, 0.16), new Color(1.9, 1.25, 0.5), 0, 0.93, 0))
+        p.push(part(new ConeGeometry(0.14, 0.1, 4).rotateY(Math.PI / 4), new Color('#3c4a42'), 0, 1.07, 0))
         return p
       }
       case 'bessemer': {
-        // Convertisseur basculé, coulée orange.
-        p.push(part(new CylinderGeometry(0.16, 0.12, 0.36, 8).rotateZ(0.6), iron, 0, 0.4, 0))
-        p.push(part(new CylinderGeometry(0.05, 0.05, 0.3, 6).rotateX(Math.PI / 2), C.stoneDark, 0, 0.32, 0))
-        for (const sz of [-0.18, 0.18]) p.push(part(new BoxGeometry(0.08, 0.4, 0.06), C.stoneDark, 0, 0.2, sz))
-        p.push(part(new CylinderGeometry(0.03, 0.05, 0.2, 5).rotateZ(0.6), C.emberCore, 0.22, 0.28, 0))
-        p.push(part(new BoxGeometry(0.2, 0.05, 0.14), C.emberCore, 0.32, 0.05, 0))
+        // Convertisseur ×1.5, gueule et coulée émissives larges.
+        p.push(part(new CylinderGeometry(0.24, 0.18, 0.55, 8).rotateZ(0.6), iron, 0, 0.55, 0))
+        p.push(part(new CylinderGeometry(0.13, 0.16, 0.1, 8).rotateZ(0.6), C.emberCore, 0.25, 0.79, 0))
+        p.push(part(new CylinderGeometry(0.07, 0.07, 0.45, 6).rotateX(Math.PI / 2), C.stoneDark, 0, 0.45, 0))
+        for (const sz of [-0.26, 0.26]) p.push(part(new BoxGeometry(0.12, 0.55, 0.08), C.stoneDark, 0, 0.28, sz))
+        p.push(part(new CylinderGeometry(0.05, 0.08, 0.5, 5).rotateZ(0.55), C.emberCore, 0.42, 0.38, 0))
+        p.push(part(new BoxGeometry(0.36, 0.06, 0.24), C.emberCore, 0.58, 0.05, 0))
         return p
       }
       case 'telegraph': {
-        // Poteau, traverses, isolateurs, fil qui plonge.
-        p.push(part(new CylinderGeometry(0.035, 0.05, 0.95, 6), C.wood, 0, 0.48, 0))
-        for (const y of [0.78, 0.9]) p.push(part(new BoxGeometry(0.4, 0.035, 0.035), C.woodDark, 0, y, 0))
-        for (const sx of [-0.16, 0.16]) for (const y of [0.8, 0.92]) p.push(part(new SphereGeometry(0.02, 5, 4), C.glass, sx, y, 0))
-        p.push(part(new CylinderGeometry(0.008, 0.008, 0.5, 4).rotateZ(1.1), C.char, 0.35, 0.7, 0))
+        // DEUX poteaux reliés par un fil en caténaire : une ligne qui part
+        // quelque part — le fil qui plongeait au sol lisait « poteau cassé ».
+        for (const sx of [-0.62, 0.62]) {
+          p.push(part(new CylinderGeometry(0.035, 0.05, 0.98, 6), C.wood, sx, 0.49, 0))
+          p.push(part(new BoxGeometry(0.32, 0.035, 0.035), C.woodDark, sx, 0.88, 0))
+          for (const ox of [-0.12, 0.12]) p.push(part(new SphereGeometry(0.022, 5, 4), C.bone, sx + ox, 0.91, 0))
+        }
+        const pts = [[-0.5, 0.91], [-0.17, 0.8], [0.17, 0.8], [0.5, 0.91]] as const
+        for (let i = 0; i < 3; i++) {
+          const [x0, y0] = pts[i]!
+          const [x1, y1] = pts[i + 1]!
+          const len = Math.hypot(x1 - x0, y1 - y0)
+          p.push(part(new CylinderGeometry(0.01, 0.01, len, 3).rotateZ(Math.PI / 2 + Math.atan2(y1 - y0, x1 - x0)), C.char, (x0 + x1) / 2, (y0 + y1) / 2, 0))
+        }
         return p
       }
       case 'electric': {
-        // Lampadaire électrique : fût acier, globe blanc froid.
-        p.push(part(new CylinderGeometry(0.03, 0.045, 0.95, 6), C.stoneDark, 0, 0.48, 0))
-        p.push(part(new CylinderGeometry(0.025, 0.025, 0.3, 5).rotateZ(0.9), C.stoneDark, 0.12, 0.98, 0))
-        p.push(part(new SphereGeometry(0.07, 8, 6), new Color(2.2, 2.2, 1.9), 0.26, 1.02, 0))
+        // Lampadaire électrique : haut fût acier, POTENCE arquée, globe froid —
+        // l'inverse exact de la lanterne carrée chaude du gaz.
+        p.push(part(new CylinderGeometry(0.03, 0.05, 1.25, 6), C.stoneDark, 0, 0.62, 0))
+        p.push(part(new CylinderGeometry(0.025, 0.025, 0.34, 5).rotateZ(1.1), C.stoneDark, 0.14, 1.29, 0))
+        p.push(part(new SphereGeometry(0.085, 8, 6), new Color(1.5, 1.9, 2.4), 0.3, 1.32, 0))
         return p
       }
       case 'garage': {
-        // Auto à l'arrêt : caisse, cabine, roues, phares.
-        p.push(part(new BoxGeometry(0.6, 0.14, 0.3), C.tile, 0, 0.18, 0))
-        p.push(part(new BoxGeometry(0.3, 0.14, 0.26), C.tileDark, -0.05, 0.32, 0))
-        for (const sx of [-0.2, 0.2]) for (const sz of [-0.16, 0.16]) p.push(part(new CylinderGeometry(0.06, 0.06, 0.04, 8).rotateX(Math.PI / 2), C.char, sx, 0.08, sz))
-        for (const sz of [-0.09, 0.09]) p.push(part(new SphereGeometry(0.025, 5, 4), gold, 0.31, 0.18, sz))
+        // Auto de 1.15 u : elle était plus petite que la charrette à bras de
+        // l'âge du bronze.
+        p.push(part(new BoxGeometry(1.15, 0.22, 0.52), C.tile, 0, 0.26, 0))
+        p.push(part(new BoxGeometry(0.55, 0.22, 0.46), C.tileDark, -0.1, 0.47, 0))
+        p.push(part(new BoxGeometry(0.44, 0.14, 0.48), new Color(0.75, 0.95, 1.1), -0.1, 0.44, 0))
+        for (const sx of [-0.38, 0.38]) for (const sz of [-0.28, 0.28]) p.push(part(new CylinderGeometry(0.11, 0.11, 0.07, 8).rotateX(Math.PI / 2), C.char, sx, 0.13, sz))
+        for (const sz of [-0.17, 0.17]) p.push(part(new SphereGeometry(0.04, 5, 4), new Color(1.7, 1.55, 1.0), 0.58, 0.28, sz))
         return p
       }
       case 'radio': {
@@ -1494,43 +1615,54 @@ export class Village {
         return p
       }
       case 'computer': {
-        // Bureau, écran ambré, clavier.
+        // Bureau, écran qui LUIT, clavier — ×1.7 pour l'âge final.
         p.push(part(new BoxGeometry(0.5, 0.05, 0.32), C.wood, 0, 0.28, 0))
         for (const sx of [-0.2, 0.2]) p.push(part(new BoxGeometry(0.05, 0.28, 0.05), C.woodDark, sx, 0.14, 0))
-        p.push(part(new BoxGeometry(0.22, 0.18, 0.06), C.bone, -0.06, 0.42, -0.04))
-        p.push(part(new BoxGeometry(0.16, 0.12, 0.01), new Color(1.4, 1.1, 0.4), -0.06, 0.42, -0.005))
+        p.push(part(new BoxGeometry(0.24, 0.2, 0.06), C.bone, -0.06, 0.42, -0.04))
+        p.push(part(new BoxGeometry(0.19, 0.15, 0.015), new Color(1.9, 1.5, 0.55), -0.06, 0.42, -0.002))
         p.push(part(new BoxGeometry(0.2, 0.02, 0.09), C.stoneLight, 0.02, 0.32, 0.09))
+        for (const g of p) g.scale(1.7, 1.7, 1.7)
         return p
       }
       case 'dish': {
-        // Parabole pointée vers le ciel.
-        p.push(part(new CylinderGeometry(0.04, 0.06, 0.3, 6), C.stoneDark, 0, 0.15, 0))
-        p.push(part(new SphereGeometry(0.24, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.35).rotateX(-0.9).scale(1, 1, 0.5), C.stoneLight, 0, 0.42, -0.08))
-        p.push(part(new CylinderGeometry(0.012, 0.012, 0.22, 4).rotateX(-0.9), iron, 0, 0.5, 0.04))
-        p.push(part(new SphereGeometry(0.025, 5, 4), C.tile, 0, 0.58, 0.12))
+        // Parabole ×1.8, coupole claire pointée vers le ciel.
+        p.push(part(new CylinderGeometry(0.045, 0.07, 0.32, 6), C.stoneDark, 0, 0.16, 0))
+        p.push(part(new SphereGeometry(0.26, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.35).rotateX(-0.9).scale(1, 1, 0.5), C.bone, 0, 0.44, -0.08))
+        p.push(part(new CylinderGeometry(0.014, 0.014, 0.24, 4).rotateX(-0.9), iron, 0, 0.52, 0.05))
+        p.push(part(new SphereGeometry(0.03, 5, 4), C.tile, 0, 0.6, 0.13))
+        for (const g of p) g.scale(1.8, 1.8, 1.8)
         return p
       }
       case 'server': {
-        // Baie de serveurs : racks à diodes.
-        p.push(part(new BoxGeometry(0.3, 0.6, 0.26), C.char, 0, 0.3, 0))
-        for (let i = 0; i < 5; i++) p.push(part(new BoxGeometry(0.26, 0.06, 0.02), C.stoneDark, 0, 0.1 + i * 0.11, 0.13))
-        for (let i = 0; i < 5; i++) p.push(part(new SphereGeometry(0.012, 4, 3), i % 2 ? new Color(0.3, 1.8, 0.5) : new Color(1.8, 0.5, 0.3), 0.09, 0.1 + i * 0.11, 0.145))
+        // Baie de serveurs ×1.6 : bandeaux de diodes ÉMISSIFS, pas des points.
+        p.push(part(new BoxGeometry(0.32, 0.64, 0.28), C.char, 0, 0.32, 0))
+        for (let i = 0; i < 5; i++) {
+          p.push(part(new BoxGeometry(0.28, 0.07, 0.02), C.stoneDark, 0, 0.1 + i * 0.12, 0.14))
+          p.push(part(new BoxGeometry(0.2, 0.025, 0.015), i % 2 ? new Color(0.35, 1.9, 0.6) : new Color(0.4, 1.3, 2.0), -0.02, 0.1 + i * 0.12, 0.152))
+        }
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'solar': {
-        // Deux panneaux inclinés plein sud.
-        for (const sx of [-0.2, 0.22]) {
-          p.push(part(new BoxGeometry(0.36, 0.02, 0.3).rotateX(-0.5), C.glass, sx, 0.22, 0))
-          p.push(part(new BoxGeometry(0.03, 0.2, 0.03), C.stoneDark, sx, 0.08, 0.08))
+        // Panneaux BLEU lumineux dressés sur châssis, ×1.6 — C.glass quasi noir
+        // à plat au ras du sol disparaissait dans l'herbe.
+        const cell = new Color(0.5, 0.95, 1.6)
+        for (const sx of [-0.24, 0.26]) {
+          p.push(part(new BoxGeometry(0.44, 0.035, 0.4).rotateX(-0.65), C.stoneLight, sx, 0.3, 0))
+          p.push(part(new BoxGeometry(0.4, 0.015, 0.34).rotateX(-0.65), cell, sx, 0.32, -0.02))
+          p.push(part(new BoxGeometry(0.04, 0.3, 0.04), C.stoneDark, sx, 0.12, 0.12))
+          p.push(part(new BoxGeometry(0.04, 0.16, 0.04), C.stoneDark, sx, 0.07, -0.12))
         }
-        p.push(part(new BoxGeometry(0.12, 0.1, 0.08), C.stoneLight, 0, 0.05, -0.18))
+        p.push(part(new BoxGeometry(0.14, 0.12, 0.09), C.stoneLight, 0, 0.06, 0.26))
+        for (const g of p) g.scale(1.6, 1.6, 1.6)
         return p
       }
       case 'phone': {
-        // Le totem final : un écran dressé qui luit doucement.
-        p.push(part(new BoxGeometry(0.22, 0.44, 0.04), C.char, 0, 0.3, 0))
-        p.push(part(new BoxGeometry(0.18, 0.38, 0.01), new Color(1.3, 1.5, 1.7), 0, 0.31, 0.021))
-        p.push(part(new BoxGeometry(0.3, 0.08, 0.2), C.stoneDark, 0, 0.04, 0))
+        // Le totem final ×1.5 : un écran dressé qui luit FRANCHEMENT.
+        p.push(part(new BoxGeometry(0.24, 0.48, 0.05), C.char, 0, 0.32, 0))
+        p.push(part(new BoxGeometry(0.2, 0.42, 0.012), new Color(1.7, 2.0, 2.3), 0, 0.33, 0.028))
+        p.push(part(new BoxGeometry(0.32, 0.08, 0.22), C.stoneDark, 0, 0.04, 0))
+        for (const g of p) g.scale(1.5, 1.5, 1.5)
         return p
       }
       default:
@@ -1764,9 +1896,16 @@ export class Village {
     // qu'un trou de souris et l'aqueduc redevient un mur.
     const spring = 0.95
     const radius = 0.52
+    // Pierre CHAUDE (grès/enduit): le gris bleu d'acier faisait lire l'ouvrage
+    // comme un pont cassé abandonné, hors palette du village. Les assises
+    // sombres restent au-dessus du rockDark: à l'ombre, tout ce qui est plus
+    // sombre vire au bleu.
+    const warm = tint(C.plaster, 3, 0.04)
+    const warmDark = PALETTE.rock
+    const warmLight = C.ridge
     for (let i = 0; i < 3; i++) {
       const x = -1.32 + i * 1.32
-      masonry(p, 0.5, 0.62, 7, 0.226, x, 0, 0, i * 11)
+      masonry(p, 0.5, 0.62, 7, 0.226, x, 0, 0, i * 11, warm, warmDark)
       if (i < 2) {
         // Claveaux: neuf blocs le long de l'arc, c'est ce qui fait "taillé" plutôt
         // que "moulé".
@@ -1775,7 +1914,7 @@ export class Village {
           p.push(
             part(
               new BoxGeometry(0.21, 0.22, 0.64).rotateZ(Math.PI / 2 - a),
-              tint(k % 2 === 0 ? C.stone : C.stoneLight, k * 7 + i, 0.06),
+              tint(k % 2 === 0 ? warm : warmLight, k * 7 + i, 0.06),
               x + 0.66 - Math.cos(a) * radius,
               spring + Math.sin(a) * radius,
               0,
@@ -1784,14 +1923,14 @@ export class Village {
         }
       }
     }
-    masonry(p, 3.14, 0.56, 2, 0.22, 0, 1.58, 0, 21)
-    p.push(part(new BoxGeometry(3.34, 0.12, 0.92), C.stone, 0, 2.08, 0))
-    p.push(part(new BoxGeometry(3.18, 0.14, 0.78), C.stone, 0, 2.21, 0))
-    p.push(part(new BoxGeometry(3.18, 0.3, 0.2), C.stoneDark, 0, 2.43, 0.29))
-    p.push(part(new BoxGeometry(3.18, 0.3, 0.2), C.stoneDark, 0, 2.43, -0.29))
+    masonry(p, 3.14, 0.56, 2, 0.22, 0, 1.58, 0, 21, warm, warmDark)
+    p.push(part(new BoxGeometry(3.34, 0.12, 0.92), warm, 0, 2.08, 0))
+    p.push(part(new BoxGeometry(3.18, 0.14, 0.78), warm, 0, 2.21, 0))
+    p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, 0.29))
+    p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, -0.29))
     p.push(part(new BoxGeometry(3.06, 0.16, 0.38), C.water, 0, 2.4, 0))
-    p.push(part(new BoxGeometry(3.26, 0.07, 0.26), C.stoneLight, 0, 2.62, 0.29))
-    p.push(part(new BoxGeometry(3.26, 0.07, 0.26), C.stoneLight, 0, 2.62, -0.29))
+    p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, 0.29))
+    p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, -0.29))
     return this.mesh(p)
   }
 
