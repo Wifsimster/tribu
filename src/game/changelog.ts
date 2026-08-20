@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.10.0',
+    title: 'Cap au large',
+    items: [
+      "L'expédition a désormais un cap : l'îlot voisin (court et sûr), la côte lointaine (équilibrée) ou le grand large (long, risqué, généreux) — et les destinations se voient à l'horizon.",
+      "Au retour, le colon tient un journal de bord : ce qu'il a vu, ce qui a mal tourné.",
+      "Il rapporte parfois une relique — figurine d'ivoire, disque de Nebra, mécanisme d'Anticythère… Chacune est un vrai objet de l'archéologie, exposé au musée du village. Tape le musée pour lire leurs histoires.",
+    ],
+  },
+  {
     version: '1.9.0',
     title: "L'essentiel en haut",
     items: [

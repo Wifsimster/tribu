@@ -2279,7 +2279,64 @@ export class Village {
     }
     const df = (HEARTH.x - x) ** 2 + (HEARTH.z - z) ** 2
     if (df < bestD && df < 4) best = 'campfire'
+    if (this.museumPos) {
+      const dm = (this.museumPos.x - x) ** 2 + (this.museumPos.z - z) ** 2
+      if (dm < bestD && dm < 2.4 * 2.4) best = 'museum'
+    }
     return best
+  }
+
+  // ── Le musée de la tribu ──────────────────────────────────────────────────
+  // Chaque relique rapportée d'expédition devient un objet sur son socle :
+  // une esplanade dallée qui se remplit au fil des voyages. Un seul mesh,
+  // reconstruit à chaque nouvelle pièce.
+
+  private museumMesh: Mesh | null = null
+  private museumPos: { x: number; y: number; z: number } | null = null
+
+  setRelics(count: number): void {
+    if (this.museumMesh) {
+      this.group.remove(this.museumMesh)
+      this.museumMesh.geometry.dispose()
+      this.museumMesh = null
+    }
+    if (count <= 0) return
+    if (!this.museumPos) {
+      const slot = this.nextSlot(2.4, 1.4, false)
+      this.museumPos = { x: slot.x, y: slot.y, z: slot.z }
+    }
+    const n = Math.min(count, 14)
+    const p: BufferGeometry[] = []
+    // L'esplanade : un dallage clair qui dit « ici, on garde ».
+    p.push(part(new BoxGeometry(3.6, 0.22, 2.4), C.stoneLight, 0, 0.11, 0))
+    p.push(part(new BoxGeometry(3.8, 0.1, 2.6), C.stoneDark, 0, 0.03, 0))
+    // Une stèle en fond, pour la silhouette.
+    p.push(part(new BoxGeometry(1.1, 1.15, 0.18), tint(C.stone, 3, 0.05), -1.05, 0.75, -0.95))
+    const tops = [
+      (): BufferGeometry => new SphereGeometry(0.11, 7, 5),
+      (): BufferGeometry => new ConeGeometry(0.1, 0.24, 6),
+      (): BufferGeometry => new BoxGeometry(0.16, 0.16, 0.16),
+      (): BufferGeometry => new IcosahedronGeometry(0.11, 0),
+      (): BufferGeometry => new CylinderGeometry(0.07, 0.1, 0.2, 7),
+      (): BufferGeometry => new DodecahedronGeometry(0.11, 0),
+      (): BufferGeometry => new SphereGeometry(0.1, 6, 4).scale(1.4, 0.7, 1),
+    ]
+    const hues = [C.bone, C.ochre, new Color('#d9b23f'), new Color('#c47a3f'), C.glass, C.stoneLight, new Color('#6b7078')]
+    for (let i = 0; i < n; i++) {
+      const px = -1.35 + (i % 5) * 0.68
+      const pz = 0.62 - Math.floor(i / 5) * 0.72
+      p.push(part(new CylinderGeometry(0.13, 0.17, 0.42, 6), tint(C.stone, i * 7, 0.06), px, 0.42, pz))
+      p.push(part(tops[i % tops.length]!(), tint(hues[i % hues.length]!, i * 13, 0.05), px, 0.72, pz))
+    }
+    const geo = mergeGeometries(p) ?? new BufferGeometry()
+    grain(geo, 0.07)
+    const rot = Math.atan2(-this.museumPos.x, -this.museumPos.z)
+    geo.rotateY(rot)
+    geo.translate(this.museumPos.x, this.museumPos.y, this.museumPos.z)
+    this.museumMesh = new Mesh(geo, this.solid)
+    this.museumMesh.castShadow = true
+    this.museumMesh.receiveShadow = true
+    this.group.add(this.museumMesh)
   }
 
   update(_dt: number, t: number): void {

@@ -4,6 +4,8 @@ export interface Expedition {
   /** Seconds of expedition work still to do, before speed multipliers. */
   remaining: number
   total: number
+  /** Destination choisie — absente sur les vieilles saves (= côte lointaine). */
+  dest?: string
 }
 
 export interface CaravanState {
@@ -27,6 +29,10 @@ export interface SaveV1 {
   caravan: CaravanState
   seenFacts: string[]
   totalPlaySeconds: number
+  /** Reliques rapportées d'expédition, exposées au musée du village. */
+  relics: string[]
+  /** Nombre d'Exodes accomplis : la constellation de la tribu. */
+  legacy: number
 }
 
 export const SAVE_KEY = 'tribu.save.v1'
@@ -50,6 +56,8 @@ export function emptySave(now: number): SaveV1 {
     caravan: { nextIn: 150, visiting: false, visitLeft: 0, haggled: false, traded: false },
     seenFacts: [],
     totalPlaySeconds: 0,
+    relics: [],
+    legacy: 0,
   }
 }
 

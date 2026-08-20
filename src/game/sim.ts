@@ -2,10 +2,16 @@ import {
   AGES,
   DAY_SECONDS,
   DAY_START,
+  DESTINATION_BY_ID,
+  DESTINATIONS,
+  RELIC_BY_ID,
+  RELICS,
   RESOURCES,
   TECHS,
   TECH_BY_ID,
   type AgeDef,
+  type DestinationDef,
+  type RelicDef,
   type ResourceId,
   type TechDef,
 } from './content'
@@ -15,7 +21,14 @@ export type GameEvent =
   | { type: 'tech'; tech: TechDef }
   | { type: 'age'; age: AgeDef }
   | { type: 'expeditionStart' }
-  | { type: 'expeditionEnd'; loot: Partial<Record<ResourceId, number>>; find: string | null }
+  | {
+      type: 'expeditionEnd'
+      loot: Partial<Record<ResourceId, number>>
+      find: string | null
+      journal: string
+      relic: RelicDef | null
+      setback: boolean
+    }
   | { type: 'encourage' }
   | { type: 'offline'; seconds: number; gained: Partial<Record<ResourceId, number>> }
   | { type: 'caravanArrive'; merchant: string }
@@ -87,6 +100,34 @@ const TRADE_TALES = [
   "le lapis-lazuli des mines d'Afghanistan ornait déjà les tombes égyptiennes vers −3000",
   'à Kanesh, en Anatolie, les marchands assyriens tenaient leurs comptes et leurs prêts à intérêt sur tablettes, vers −1900',
   "de l'ambre de la Baltique a été retrouvé dans la tombe de Toutânkhamon",
+]
+
+/** Ce que le colon raconte au retour, par tempérament de destination. */
+const SIGHTS: Record<string, string[]> = {
+  ilot: [
+    'des phoques endormis sur les rochers, indifférents à la barque',
+    'une colonie de sternes qui criait sur la falaise',
+    "des flaques de marée pleines d'étoiles de mer",
+    "un vieux foyer éteint — d'autres sont passés ici avant nous",
+  ],
+  cote: [
+    'une plage noire où fumait une source chaude',
+    'des empreintes énormes dans la vase, remontant vers les terres',
+    'une forêt qui descendait boire à la mer',
+    'des feux au loin, sur les collines — nous ne sommes pas seuls',
+  ],
+  large: [
+    "un banc de dauphins qui a suivi l'étrave une matinée entière",
+    "une île qui n'était qu'un brouillard, et qui a disparu au soir",
+    'la haute mer si calme que le ciel entier tenait dedans',
+    "une baleine, plus longue que dix barques, qui a soufflé tout près",
+  ],
+}
+
+const SETBACKS = [
+  'une bourrasque a couché le mât — une partie du butin est passée par-dessus bord',
+  'un récif a raclé la coque : il a fallu alléger pour rentrer',
+  "le brouillard a coûté deux jours et une partie des vivres",
 ]
 
 const FINDS = [
@@ -410,10 +451,11 @@ export class Game {
    *  vitesse atteignent ×63 et réduisaient tout voyage tardif au plancher,
    *  les rendant inutiles. Ici : ~90 s au Paléolithique, ~2 min à l'âge du
    *  fer équipé, ~4 min à l'ère contemporaine — et le butin suit la durée. */
-  expeditionDuration(): number {
+  expeditionDuration(destId = 'cote'): number {
     const base = EXPEDITION_SECONDS + this.save.age * 45
     const damp = 0.45 + 0.55 / this.expeditionSpeed
-    return Math.max(45, base * damp)
+    const k = DESTINATION_BY_ID.get(destId)?.durationK ?? 1
+    return Math.max(45, base * damp * k)
   }
 
   /** Les provisions suivent l'économie réelle : ~30 secondes de récolte de
@@ -429,11 +471,11 @@ export class Game {
     return !this.save.expedition && this.amount('food') >= this.expeditionCost()
   }
 
-  startExpedition(): boolean {
+  startExpedition(destId: DestinationDef['id'] = 'cote'): boolean {
     if (!this.canExpedition()) return false
     this.save.res.food = this.amount('food') - this.expeditionCost()
-    const total = this.expeditionDuration()
-    this.save.expedition = { remaining: total, total }
+    const total = this.expeditionDuration(destId)
+    this.save.expedition = { remaining: total, total, dest: destId }
     this.refreshRates()
     this.emit({ type: 'expeditionStart' })
     return true
@@ -451,20 +493,44 @@ export class Game {
     // encaisse ×20 de portage, le voyage rien) ; en plein, elle redevenait
     // dominante. La racine garde la tension.
     const carryBonus = Math.sqrt(1 + this.carry * 0.02)
-    const scale = (90 + this.save.age * 80) * ratio * carryBonus
+    const dest = DESTINATION_BY_ID.get(this.save.expedition?.dest ?? 'cote') ?? DESTINATIONS[1]!
+    // Le tempérament de la destination joue sur le butin — la durée a déjà
+    // payé sa part via ratio, lootK est le pari en plus.
+    const lootBias = dest.lootK / dest.durationK
+    // Un revers abîme le butin, jamais le colon : l'idle ne punit pas, il raconte.
+    const setback = Math.random() < dest.risk
+    const scale = (90 + this.save.age * 80) * ratio * carryBonus * lootBias * (setback ? 0.55 : 1)
     for (const id of this.unlocked) {
       if (id === 'insight') continue
       loot[id] = Math.round(scale * BASE_RATE[id] * this.mult[id])
     }
-    loot.insight = Math.round((12 + this.save.age * 25 + this.insightAdd * 20) * ratio)
+    loot.insight = Math.round((12 + this.save.age * 25 + this.insightAdd * 20) * ratio * lootBias)
     for (const [id, n] of Object.entries(loot) as [ResourceId, number][]) {
       this.save.res[id] = this.amount(id) + n
     }
     // A find is flavour, not power: it is what the settler brings home to look at.
     const find = Math.random() < 0.35 ? (FINDS[Math.floor(Math.random() * FINDS.length)] ?? null) : null
+    // Une relique pour le musée — jamais deux fois la même.
+    let relic: RelicDef | null = null
+    if (Math.random() < dest.relicChance) {
+      const pool = RELICS.filter((r) => !this.save.relics.includes(r.id))
+      relic = pool[Math.floor(Math.random() * pool.length)] ?? null
+      if (relic) this.save.relics.push(relic.id)
+    }
+    const sights = SIGHTS[dest.id] ?? []
+    const sight = sights[Math.floor(Math.random() * sights.length)] ?? 'la mer, longtemps'
+    let journal = `${dest.name} — le colon a vu ${sight}.`
+    if (setback)
+      journal += ` Mais ${SETBACKS[Math.floor(Math.random() * SETBACKS.length)]}.`
     this.save.expedition = null
     this.refreshRates()
-    this.emit({ type: 'expeditionEnd', loot, find })
+    this.emit({ type: 'expeditionEnd', loot, find, journal, relic, setback })
+  }
+
+  get relics(): RelicDef[] {
+    return this.save.relics
+      .map((id) => RELIC_BY_ID.get(id))
+      .filter((r): r is RelicDef => !!r)
   }
 
   private tickCaravan(dt: number): void {

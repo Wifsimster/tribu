@@ -60,6 +60,7 @@ function buildWorld(): void {
   stage.scene.add(island.group, village.group, settler.group, fauna.group)
   stage.islandRadius = island.radius
   village.sync(game.buildings)
+  village.setRelics(game.save.relics.length)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
   nodeSpots.clear()
@@ -148,7 +149,14 @@ game.on((e) => {
         .join('  ')
       boat.sailIn(settler.shorePoint)
       hud.toast(`De retour · ${parts}`)
-      if (e.find) hud.toast(`Il rapporte ${e.find}`)
+      hud.toast(`Journal de bord · ${e.journal}`)
+      if (e.relic) {
+        // La relique passe du sac du colon aux vitrines : le musée pousse (ou
+        // s'agrandit) sous les yeux du joueur.
+        village.setRelics(game.save.relics.length)
+        const name = e.relic.name.charAt(0).toLowerCase() + e.relic.name.slice(1)
+        hud.toast(`Il rapporte ${name} — exposée au musée du village`)
+      } else if (e.find) hud.toast(`Il rapporte ${e.find}`)
       break
     }
     case 'encourage':
@@ -218,6 +226,10 @@ attachControls(stage, canvas, (x, y) => {
   if (onVillage.length > 0) {
     const hp = onVillage[0]!.point
     const id = village.identifyAt(hp.x, hp.z)
+    if (id === 'museum') {
+      hud.showMuseum(game.relics)
+      return
+    }
     if (id === 'campfire') {
       const fire = TECHS.find((t) => t.id === 'fire')
       if (fire && game.knows('fire')) hud.showFact(fire)

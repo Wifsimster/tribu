@@ -858,3 +858,83 @@ export const TECHS: TechDef[] = [
 ]
 
 export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]))
+
+// ── Expéditions : destinations et reliques ───────────────────────────────────
+
+export interface DestinationDef {
+  id: 'ilot' | 'cote' | 'large'
+  name: string
+  /** Une ligne d'intention : le joueur choisit un tempérament, pas des chiffres. */
+  blurb: string
+  durationK: number
+  lootK: number
+  /** Probabilité d'un revers en route (le butin en souffre, jamais le colon). */
+  risk: number
+  relicChance: number
+  /** Azimut monde de la silhouette à l'horizon — la destination se VOIT. */
+  azimuth: number
+}
+
+export const DESTINATIONS: DestinationDef[] = [
+  {
+    id: 'ilot',
+    name: "L'îlot voisin",
+    blurb: 'Court et sûr — on rentre avant la nuit.',
+    durationK: 0.65,
+    lootK: 0.65,
+    risk: 0,
+    relicChance: 0.18,
+    azimuth: 3.95,
+  },
+  {
+    id: 'cote',
+    name: 'La côte lointaine',
+    blurb: 'La traversée raisonnable des marins prudents.',
+    durationK: 1,
+    lootK: 1.12,
+    risk: 0.14,
+    relicChance: 0.34,
+    azimuth: 4.7,
+  },
+  {
+    id: 'large',
+    name: 'Le grand large',
+    blurb: 'Long et risqué — mais le large paie ses audacieux.',
+    durationK: 1.6,
+    lootK: 1.85,
+    risk: 0.28,
+    relicChance: 0.55,
+    azimuth: 5.35,
+  },
+]
+
+export const DESTINATION_BY_ID = new Map<string, DestinationDef>(
+  DESTINATIONS.map((d) => [d.id, d]),
+)
+
+export interface RelicDef {
+  id: string
+  name: string
+  fact: string
+}
+
+/** Les reliques rapportées d'expédition : chacune expose un vrai objet de
+ *  l'archéologie — le musée du village est un musée d'histoire miniature. */
+export const RELICS: RelicDef[] = [
+  { id: 'venus', name: 'Une figurine d’ivoire', fact: 'La Dame de Brassempouy, sculptée dans l’ivoire de mammouth il y a ~25 000 ans, est l’une des plus anciennes représentations de visage humain.' },
+  { id: 'lionman', name: 'Une statuette mi-homme mi-lion', fact: 'L’Homme-lion de Hohlenstein-Stadel (~40 000 ans) est la plus ancienne sculpture d’un être imaginaire — preuve d’un esprit qui raconte déjà des histoires.' },
+  { id: 'flute', name: 'Une flûte en os de vautour', fact: 'Les flûtes de Geissenklösterle (~42 000 ans) sont les plus anciens instruments de musique connus : la musique a l’âge des grottes.' },
+  { id: 'ambre', name: 'Un morceau d’ambre poli', fact: 'L’ambre de la Baltique circulait sur des milliers de kilomètres dès le Néolithique — la première « route commerciale » d’Europe.' },
+  { id: 'tablette', name: 'Une tablette d’argile griffée', fact: 'À Uruk, vers −3300, on comptait moutons et grain sur l’argile : l’écriture est née de la comptabilité, pas de la poésie.' },
+  { id: 'disquenebra', name: 'Un disque de bronze étoilé', fact: 'Le disque de Nebra (~−1600) est la plus ancienne représentation connue du ciel : soleil, croissant et les Pléiades en or incrusté.' },
+  { id: 'amphore', name: 'Une amphore incrustée de sel', fact: 'L’épave d’Uluburun (~−1300) portait dix tonnes de cuivre, une tonne d’étain et de l’ambre balte : la mondialisation a 3 300 ans.' },
+  { id: 'monnaie', name: 'Une pièce d’électrum frappée', fact: 'Les premières monnaies frappées apparaissent en Lydie vers −620, en électrum, alliage naturel d’or et d’argent du fleuve Pactole.' },
+  { id: 'anticythere', name: 'Un mécanisme aux engrenages verdis', fact: 'La machine d’Anticythère (~−100) calculait éclipses et positions planétaires avec ~30 engrenages de bronze — un ordinateur antique retrouvé dans une épave.' },
+  { id: 'astrolabe', name: 'Un astrolabe gravé', fact: 'Perfectionné par les astronomes du monde islamique, l’astrolabe donnait l’heure, la latitude et la direction de La Mecque — le smartphone du IXe siècle.' },
+  { id: 'boussole', name: 'Une aiguille aimantée sur liège', fact: 'La boussole, née en Chine (aiguille flottante décrite en 1088), a atteint la Méditerranée en un siècle et ouvert la navigation hauturière.' },
+  { id: 'sextant', name: 'Un sextant de laiton', fact: 'Avec le sextant (1757) et les chronomètres de Harrison, la longitude cessa d’être le grand mystère qui jetait les flottes sur les récifs.' },
+  { id: 'daguerreotype', name: 'Une plaque d’argent imagée', fact: 'Le daguerréotype (1839) fixait une image en quelques minutes de pose : la première photographie commercialisée au monde.' },
+  { id: 'transistor', name: 'Un petit composant à trois pattes', fact: 'Le transistor (Bell Labs, 1947) a remplacé les tubes à vide : il y en a aujourd’hui plus de cent milliards de milliards en service — l’objet le plus fabriqué de l’histoire.' },
+]
+
+export const RELIC_BY_ID = new Map(RELICS.map((r) => [r.id, r]))

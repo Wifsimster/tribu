@@ -1,4 +1,4 @@
-import { AGES, DAY_SECONDS, DAY_START, RESOURCES, TECHS, TECH_BY_ID, type ResourceId, type TechDef } from '../game/content'
+import { AGES, DAY_SECONDS, DAY_START, DESTINATIONS, RESOURCES, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -155,7 +155,19 @@ export class Hud {
       this.toggleSheet(false)
     })
     el('btn-expedition').addEventListener('click', () => {
-      if (!this.game.startExpedition()) this.toast("Pas assez de nourriture pour partir")
+      if (this.game.save.expedition) return
+      if (!this.game.canExpedition()) {
+        this.toast('Pas assez de nourriture pour partir')
+        return
+      }
+      this.toggleDest(!this.destOpen)
+    })
+    // Le choix se referme si l'on touche ailleurs : c'est un menu, pas un modal.
+    document.addEventListener('pointerdown', (e) => {
+      if (!this.destOpen) return
+      const t = e.target as HTMLElement
+      if (t.closest('#dest-chooser') || t.closest('#btn-expedition')) return
+      this.toggleDest(false)
     })
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -257,6 +269,51 @@ export class Hud {
         body.appendChild(btn)
       }
     }
+  }
+
+  /** Le choix de la destination : trois tempéraments, pas des tableaux de
+   *  chiffres — durée estimée et niveau de risque en toutes lettres. */
+  private destOpen = false
+
+  private toggleDest(open: boolean): void {
+    this.destOpen = open
+    const host = el('dest-chooser')
+    host.hidden = !open
+    if (!open) return
+    host.textContent = ''
+    for (const d of DESTINATIONS) {
+      const sec = this.game.expeditionDuration(d.id)
+      const dur = sec < 100 ? `${Math.round(sec / 10) * 10} s` : `${Math.round(sec / 60)} min`
+      const risk = d.risk === 0 ? 'sans risque' : d.risk < 0.2 ? 'risque modéré' : 'risque élevé'
+      const row = document.createElement('button')
+      row.type = 'button'
+      row.className = 'dest'
+      row.innerHTML = `<span class="dest-name">${d.name}</span><span class="dest-blurb">${d.blurb}</span><span class="dest-meta">~${dur} · ${risk}</span>`
+      row.addEventListener('click', () => {
+        this.toggleDest(false)
+        if (!this.game.startExpedition(d.id)) this.toast('Pas assez de nourriture pour partir')
+      })
+      host.appendChild(row)
+    }
+  }
+
+  /** Les vitrines du musée : chaque relique et son histoire vraie. */
+  showMuseum(relics: RelicDef[]): void {
+    el('fact-kicker').textContent = 'Le musée de la tribu'
+    el('fact-title').textContent =
+      relics.length === 0
+        ? 'Les vitrines attendent'
+        : relics.length === 1
+          ? 'Une relique exposée'
+          : `${relics.length} reliques exposées`
+    el('fact-text').textContent =
+      relics.length === 0
+        ? "Les expéditions rapportent parfois une relique — c'est ici qu'elle sera exposée."
+        : relics.map((r) => `${r.name} — ${r.fact}`).join('\n\n')
+    el('fact').classList.add('open')
+    this.factOpen = true
+    this.syncScrim()
+    el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
   showFact(tech: TechDef): void {

@@ -309,6 +309,7 @@ export class Island {
     this.buildWater()
     this.buildRipple()
     this.buildWaterline()
+    this.buildHorizons()
     this.scatter(rnd)
 
     // Rayon mesuré sur les tuiles réellement posées, coin le plus lointain.
@@ -949,6 +950,72 @@ export class Island {
     surface.renderOrder = -1
 
     this.group.add(bed, surface)
+  }
+
+  /** Les destinations d'expédition SE VOIENT : deux silhouettes bleutées à
+   *  l'horizon — l'îlot voisin, la côte lointaine. Le grand large est la
+   *  direction où il n'y a rien, et c'est ce rien qui le raconte. Un seul
+   *  mesh, couleurs en sommets (le matériau reste blanc : la teinte
+   *  jour/nuit des `unlit` peut alors s'y appliquer sans l'écraser). */
+  private buildHorizons(): void {
+    const parts: BufferGeometry[] = []
+    const put = (src: BufferGeometry, color: Color, x: number, y: number, z: number): void => {
+      // Tout en non-indexé : mergeGeometries refuse (en silence) de mélanger
+      // géométries indexées et non-indexées — l'icosaèdre ne l'est pas.
+      const g = src.index ? src.toNonIndexed() : src
+      g.translate(x, y, z)
+      const n = g.attributes.position!.count
+      const rgb = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        rgb[i * 3] = color.r
+        rgb[i * 3 + 1] = color.g
+        rgb[i * 3 + 2] = color.b
+      }
+      g.setAttribute('color', new BufferAttribute(rgb, 3))
+      parts.push(g)
+    }
+    const haze = new Color('#67818f')
+    const hazeFar = new Color('#75909f')
+
+    // L'îlot voisin : un dôme rocheux et deux pins, à l'azimut de sa fiche.
+    {
+      const az = 3.95
+      const R = 85
+      const cx = Math.sin(az) * R
+      const cz = Math.cos(az) * R
+      put(new IcosahedronGeometry(3.1, 0).scale(1.7, 0.85, 1.25), haze, cx, 0.4, cz)
+      put(new IcosahedronGeometry(1.9, 0).scale(1.3, 0.7, 1.1), haze, cx + 3.4, 0.2, cz + 1.2)
+      put(new ConeGeometry(1.0, 3.0, 6), haze, cx - 1.2, 3.4, cz - 0.4)
+      put(new ConeGeometry(0.8, 2.4, 6), haze, cx + 1.4, 3.2, cz + 0.6)
+    }
+    // La côte lointaine : une longue échine basse, plus pâle — plus loin.
+    {
+      const az = 4.7
+      const R = 115
+      const cx = Math.sin(az) * R
+      const cz = Math.cos(az) * R
+      const dirX = Math.cos(az)
+      const dirZ = -Math.sin(az)
+      for (let i = 0; i < 6; i++) {
+        const t = (i - 2.5) * 7.5
+        const h = 1.6 + Math.sin(i * 2.1) * 0.9 + (i % 2) * 0.7
+        put(
+          new BoxGeometry(9, h, 3.2).rotateY(az + Math.sin(i * 3.7) * 0.2),
+          hazeFar,
+          cx + dirX * t,
+          h / 2 - 0.3,
+          cz + dirZ * t,
+        )
+      }
+    }
+
+    const geo = mergeGeometries(parts)
+    if (!geo) return
+    const mat = new MeshBasicMaterial({ vertexColors: true, fog: false })
+    this.unlit.push(mat)
+    const mesh = new Mesh(geo, mat)
+    mesh.renderOrder = 0
+    this.group.add(mesh)
   }
 
   /** Trees, rocks and berry bushes: three instanced draw calls for the whole map,
