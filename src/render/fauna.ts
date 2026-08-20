@@ -425,6 +425,22 @@ export class Fauna {
     this.gullMesh.visible = sail
   }
 
+  /** Migration : tout le troupeau de cerfs traverse l'île au galop dans une
+   *  même direction, puis reprend sa vie de lisière. */
+  stampede(angle: number, dur = 24): void {
+    const cap = this.island.radius * 0.85
+    for (const b of this.deer) {
+      b.state = 3
+      b.timer = dur
+      const tx = b.x + Math.sin(angle) * 60
+      const tz = b.z + Math.cos(angle) * 60
+      const d = Math.hypot(tx, tz)
+      const k = d > cap ? cap / d : 1
+      b.tx = tx * k
+      b.tz = tz * k
+    }
+  }
+
   update(dt: number, time: number, settler: Vector3, night: boolean): void {
     if (this.deerMesh.visible) this.stepLand(this.deerMesh, this.deer, this.deerSpots, this.deerCfg, dt, time, night, settler)
     if (this.sheepMesh.visible) this.stepLand(this.sheepMesh, this.sheep, this.sheepSpots, this.sheepCfg, dt, time, night, null)

@@ -316,6 +316,17 @@ export class Hud {
     el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
+  /** Une histoire hors savoir : épave, événement — même écrin que les faits. */
+  showStory(kicker: string, title: string, text: string): void {
+    el('fact-kicker').textContent = kicker
+    el('fact-title').textContent = title
+    el('fact-text').textContent = text
+    el('fact').classList.add('open')
+    this.factOpen = true
+    this.syncScrim()
+    el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
+  }
+
   showFact(tech: TechDef): void {
     el('fact-kicker').textContent = `Découverte · ${this.game.age.name}`
     el('fact-title').textContent = tech.name
@@ -373,7 +384,12 @@ export class Hud {
         : `Le soleil suit sa course — la nuit tombe dans ${dur(s)}`
     }
     const s = ((Hud.DAWN - u + 1) % 1) * DAY_SECONDS
-    return `La tribu dort — le jour se lève dans ${dur(s)}`
+    const veille = this.game.knows('electricity')
+      ? 'Le lampadaire veille sur le village endormi'
+      : this.game.age.id >= 4
+        ? 'Le brasero veille sur le village endormi'
+        : 'La tribu dort autour du feu'
+    return `${veille} — le jour se lève dans ${dur(s)}`
   }
 
   private lastDialKey = ''

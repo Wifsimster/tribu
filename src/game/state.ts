@@ -31,6 +31,8 @@ export interface SaveV1 {
   totalPlaySeconds: number
   /** Reliques rapportées d'expédition, exposées au musée du village. */
   relics: string[]
+  /** Secondes avant le prochain événement rare du monde (live uniquement). */
+  eventIn: number
   /** Nombre d'Exodes accomplis : la constellation de la tribu. */
   legacy: number
 }
@@ -57,6 +59,7 @@ export function emptySave(now: number): SaveV1 {
     seenFacts: [],
     totalPlaySeconds: 0,
     relics: [],
+    eventIn: 420,
     legacy: 0,
   }
 }

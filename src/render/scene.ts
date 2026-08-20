@@ -421,6 +421,47 @@ export class Stage {
     window.addEventListener('orientationchange', () => this.resize())
   }
 
+  /** Assombrissement d'éclipse : 1 = plein jour normal, piloté par la boucle. */
+  eclipseK = 1
+
+  private auroraMesh: Mesh | null = null
+  private auroraLife = 0
+  private auroraDur = 0
+
+  /** Une aurore : un voile vert qui ondule au-dessus de l'horizon nocturne. */
+  aurora(dur = 45): void {
+    if (!this.auroraMesh) {
+      const tex = rampTexture(96, 128, (u, v, out) => {
+        out.set('#63dfa6').lerp(new Color('#3fa8c9'), v * 0.8)
+        const band = smoothstep(0.12, 0.4, v) * (1 - smoothstep(0.6, 0.95, v))
+        const streaks = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(u * 44 + Math.sin(u * 13) * 3))
+        return band * streaks
+      })
+      tex.wrapS = RepeatWrapping
+      tex.repeat.set(3, 1)
+      const mat = new MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+        side: BackSide,
+        fog: false,
+        toneMapped: false,
+        opacity: 0,
+      })
+      this.auroraMesh = new Mesh(new CylinderGeometry(298, 298, 120, 48, 1, true), mat)
+      // Même règle que la voûte d'étoiles : le « ciel » visible de la caméra
+      // plongeante est BAS en monde (la bande étoilée vit à y −79..51). À +26
+      // puis −20 l'aurore restait au-dessus du cadre — son pic d'alpha doit
+      // tomber vers y ≈ −70 pour onduler au milieu des étoiles.
+      this.auroraMesh.position.y = -55
+      this.scene.add(this.auroraMesh)
+    }
+    this.auroraDur = dur
+    this.auroraLife = dur
+  }
+
   private readonly sunGlow: Mesh
   private readonly sunDisc: Mesh
   private readonly moonGlow: Mesh
@@ -445,8 +486,21 @@ export class Stage {
   private flock = { active: false, t: 0, cooldown: 6, dir: 0.9, y: 18, side: 1 }
 
   /** Vie du ciel : dérive des nuages, vols d'oiseaux. Appelé chaque frame. */
+  private tickAurora(dt: number): void {
+    if (!this.auroraMesh || this.auroraLife <= 0) return
+    this.auroraLife -= dt
+    const t = 1 - this.auroraLife / this.auroraDur
+    const mat = this.auroraMesh.material as MeshBasicMaterial
+    mat.opacity = 0.6 * Math.sin(Math.PI * Math.min(1, Math.max(0, t))) * (1 - this.lastDaylight)
+    this.auroraMesh.visible = mat.opacity > 0.01
+    this.auroraMesh.rotation.y += dt * 0.01
+    if (mat.map) mat.map.offset.x = Math.sin(this.skyTime * 0.11) * 0.2
+    if (this.auroraLife <= 0) this.auroraMesh.visible = false
+  }
+
   driftSky(dt: number): void {
     this.skyTime += dt
+    this.tickAurora(dt)
     this.tickWeather(dt)
     this.updateWaves(dt)
     this.driftClouds(dt)
@@ -731,7 +785,9 @@ export class Stage {
     const az = NOON_AZ - ARC * Math.cos(u * Math.PI * 2) ** 2
 
     // k : part de jour (0 la nuit, 1 en plein jour) ; w : chaleur d'horizon.
-    const k = smoothstep(-0.06, 0.2, elev)
+    // eclipseK < 1 pendant une éclipse : toute la chaîne (soleil, ciel, HUD
+    // nuit) suit d'elle-même — c'est bien une lumière de fin du monde.
+    const k = smoothstep(-0.06, 0.2, elev) * this.eclipseK
     const w = (1 - smoothstep(0.05, 0.42, elev)) * k
 
     const r = 52

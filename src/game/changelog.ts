@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '1.11.0',
+    title: 'Le monde a ses humeurs',
+    items: [
+      "Des événements rares (toutes les 6 à 13 minutes, en jouant) : une épave s'échoue sur la rive — tape-la pour son histoire —, un troupeau traverse l'île au galop, une éclipse assombrit le plein jour, une aurore ondule certaines nuits, un grand marchand passe avec des échanges légendaires.",
+      'Chaque événement raconte un fait vrai : le droit de bris, Pincevent, Thalès et l’éclipse de −585, l’événement de Carrington, les routes de la soie.',
+      'Les messages du soir suivent l’époque : feu de camp, brasero, réverbères à gaz, lampadaire électrique.',
+    ],
+  },
+  {
     version: '1.10.0',
     title: 'Cap au large',
     items: [

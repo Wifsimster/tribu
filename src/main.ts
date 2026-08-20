@@ -1,4 +1,18 @@
-import { InstancedMesh, Raycaster, Vector2, Vector3 } from 'three'
+import {
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  CylinderGeometry,
+  Group,
+  InstancedMesh,
+  Mesh,
+  MeshToonMaterial,
+  Raycaster,
+  Vector2,
+  Vector3,
+} from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
@@ -182,20 +196,120 @@ game.on((e) => {
     case 'caravanLeave':
       caravan.depart()
       break
+    case 'worldEvent':
+      switch (e.kind) {
+        case 'wreck':
+          spawnWreck(e.fact)
+          hud.toast(
+            `Une épave s’est échouée sur la rive — la tribu récupère bois ${fmt(e.loot?.wood ?? 0)} et savoir ${fmt(e.loot?.insight ?? 0)}. Tape-la pour son histoire.`,
+          )
+          break
+        case 'migration':
+          fauna.stampede(Math.random() * Math.PI * 2)
+          hud.toast('Un troupeau traverse l’île au galop — regarde-les passer')
+          hud.toast(e.fact)
+          break
+        case 'eclipse':
+          eclipseLeft = ECLIPSE_DUR
+          hud.toast('Le ciel s’assombrit en plein jour — une éclipse')
+          hud.toast(e.fact)
+          break
+        case 'aurora':
+          stage.aurora(46)
+          hud.toast('Une aurore ondule dans la nuit')
+          hud.toast(e.fact)
+          break
+        case 'merchant':
+          hud.toast('Un grand marchand approche — ses échanges sont légendaires')
+          hud.toast(e.fact)
+          break
+      }
+      break
     case 'nightfall':
+      // Le même crépuscule ne se raconte pas pareil selon les siècles.
       hud.toast(
-        e.floor >= 0.85
-          ? 'La nuit tombe — les lampes à graisse veillent, la tribu continue'
-          : e.floor >= 0.55
-            ? 'La nuit tombe — la tribu se serre autour du feu, le travail ralentit'
-            : 'La nuit tombe — sans lumière, la tribu ne fait presque plus rien',
+        game.knows('electricity')
+          ? 'La nuit tombe — le lampadaire s’allume, le village ne s’arrête plus'
+          : game.knows('gaslight')
+            ? 'La nuit tombe — les réverbères à gaz s’allument un à un'
+            : game.save.age >= 4
+              ? 'La nuit tombe — le brasero rougeoie, le travail ralentit à peine'
+              : game.knows('lamp')
+                ? 'La nuit tombe — les lampes à graisse veillent, la tribu continue'
+                : game.knows('fire')
+                  ? 'La nuit tombe — la tribu se serre autour du feu, le travail ralentit'
+                  : 'La nuit tombe — sans lumière, la tribu ne fait presque plus rien',
       )
       break
     case 'daybreak':
-      hud.toast('Le jour se lève, la tribu reprend le travail')
+      hud.toast(
+        game.save.age >= 6
+          ? 'Le jour se lève — la ville s’étire, le travail reprend'
+          : game.save.age >= 2
+            ? 'Le jour se lève — le village s’éveille, le travail reprend'
+            : 'Le jour se lève, la tribu reprend le travail',
+      )
       break
   }
 })
+
+// ── Événements du monde : épave et éclipse ─────────────────────────────────
+const ECLIPSE_DUR = 38
+let eclipseLeft = 0
+let wreck: Group | null = null
+let wreckFact = ''
+let wreckTimer = 0
+
+/** Une coque brisée échouée près du point d'accostage : trois membrures, des
+ *  bordés éclatés, un bout de mât. Un seul mesh, retiré au bout de 4 minutes. */
+function spawnWreck(fact: string): void {
+  despawnWreck()
+  wreckFact = fact
+  const wood = new Color('#6b4f38')
+  const dark = new Color('#4a3625')
+  const parts: BufferGeometry[] = []
+  const put = (g: BufferGeometry, c: Color, x: number, y: number, z: number): void => {
+    g.translate(x, y, z)
+    const n = g.attributes.position!.count
+    const rgb = new Float32Array(n * 3)
+    for (let i = 0; i < n; i++) {
+      rgb[i * 3] = c.r
+      rgb[i * 3 + 1] = c.g
+      rgb[i * 3 + 2] = c.b
+    }
+    g.setAttribute('color', new BufferAttribute(rgb, 3))
+    parts.push(g)
+  }
+  for (let i = 0; i < 3; i++)
+    put(new CylinderGeometry(0.05, 0.07, 1.5 - i * 0.2, 5).rotateZ(0.9 + i * 0.25).rotateY(i * 0.5), dark, i * 0.5 - 0.4, 0.3, (i % 2) * 0.3 - 0.1)
+  put(new BoxGeometry(1.9, 0.09, 0.34).rotateZ(0.16).rotateY(0.25), wood, 0.1, 0.16, 0.28)
+  put(new BoxGeometry(1.5, 0.09, 0.3).rotateZ(-0.1).rotateY(-0.2), wood, -0.3, 0.12, -0.25)
+  put(new CylinderGeometry(0.06, 0.08, 1.7, 6).rotateZ(1.35).rotateY(0.6), wood, 0.7, 0.24, -0.4)
+  const geo = mergeGeometries(parts)
+  if (!geo) return
+  const mesh = new Mesh(geo, new MeshToonMaterial({ vertexColors: true }))
+  mesh.castShadow = true
+  wreck = new Group()
+  wreck.add(mesh)
+  const sp = settler.shorePoint
+  const a = Math.atan2(sp.x, sp.z) + 0.55
+  const r = Math.hypot(sp.x, sp.z) + 0.5
+  wreck.position.set(Math.sin(a) * r, 0.03, Math.cos(a) * r)
+  wreck.rotation.set(0.04, a + 1.1, 0.09)
+  stage.scene.add(wreck)
+  wreckTimer = 240
+}
+
+function despawnWreck(): void {
+  if (!wreck) return
+  stage.scene.remove(wreck)
+  wreck.traverse((o) => {
+    const m = o as { geometry?: { dispose(): void }; material?: { dispose(): void } }
+    m.geometry?.dispose()
+    m.material?.dispose()
+  })
+  wreck = null
+}
 
 // ── Tapping ────────────────────────────────────────────────────────────────
 const raycaster = new Raycaster()
@@ -208,6 +322,11 @@ attachControls(stage, canvas, (x, y) => {
   if (caravan.group.visible && raycaster.intersectObject(caravan.group, true).length > 0) {
     if (game.haggle()) hud.toast('Tu marchandes : le marchand cédera un meilleur prix')
     else hud.toast('Le marchand te salue de la main')
+    return
+  }
+
+  if (wreck && raycaster.intersectObject(wreck, true).length > 0) {
+    hud.showStory('Sur la rive', 'Les restes d’un navire', wreckFact)
     return
   }
 
@@ -432,6 +551,17 @@ function frame(now: number): void {
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
+  if (wreckTimer > 0) {
+    wreckTimer -= dt
+    if (wreckTimer <= 0) despawnWreck()
+  }
+  if (eclipseLeft > 0) {
+    eclipseLeft -= dt
+    const p = 1 - Math.max(0, eclipseLeft) / ECLIPSE_DUR
+    // Une cloche d'ombre : la lumière fond, s'éteint aux trois quarts, revient.
+    stage.eclipseK = 1 - 0.78 * Math.sin(Math.PI * Math.min(1, p))
+    if (eclipseLeft <= 0) stage.eclipseK = 1
+  }
   const daylight = stage.setDaylight(
     forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
   )

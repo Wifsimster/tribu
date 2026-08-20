@@ -22,6 +22,12 @@ export type GameEvent =
   | { type: 'age'; age: AgeDef }
   | { type: 'expeditionStart' }
   | {
+      type: 'worldEvent'
+      kind: 'wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant'
+      fact: string
+      loot?: { wood: number; insight: number }
+    }
+  | {
       type: 'expeditionEnd'
       loot: Partial<Record<ResourceId, number>>
       find: string | null
@@ -130,6 +136,15 @@ const SETBACKS = [
   "le brouillard a coûté deux jours et une partie des vivres",
 ]
 
+/** Les événements rares : chacun paie en spectacle ET en histoire vraie. */
+const EVENT_FACTS = {
+  wreck: "Le bois d'épave était si précieux que le « droit de bris » médiéval réglait qui pouvait ramasser les épaves — souvent le seigneur du rivage, parfois les moines du coin.",
+  migration: 'Les chasseurs du Paléolithique suivaient les migrations saisonnières des rennes : à Pincevent, les campements entiers se déplaçaient avec les troupeaux, saison après saison.',
+  eclipse: "Thalès de Milet aurait prédit l'éclipse du 28 mai −585, qui interrompit net une bataille entre Lydiens et Mèdes — les deux armées y virent un signe et firent la paix.",
+  aurora: "L'aurore de 1859 (l'événement de Carrington) fut si intense que des télégraphes fonctionnèrent débranchés, alimentés par le courant induit dans leurs propres lignes.",
+  merchant: "Sur les routes de la soie, un ballot changeait dix fois de mains sans qu'aucun marchand ne fasse le trajet entier : le commerce antique était un relais, pas une traversée.",
+} as const
+
 const FINDS = [
   'un galet gravé de traits parallèles',
   'une dent de grand fauve percée',
@@ -161,6 +176,8 @@ export class Game {
   private carry = 0
   private expeditionSpeed = 1
   private nightFloor = NIGHT_BASE_FLOOR
+  /** Le grand marchand (événement) paie mieux — consommé au départ de la barque. */
+  private goldenTrade = false
   private lightFactor = 1
   private wasNight = false
 
@@ -533,6 +550,35 @@ export class Game {
       .filter((r): r is RelicDef => !!r)
   }
 
+  /** Les événements rares ne vivent qu'en direct : l'absence ne les simule
+   *  pas — ce sont des raisons de REGARDER le jeu, pas des chiffres de plus. */
+  private tickEvents(dt: number): void {
+    if (this.save.age < 1) return
+    this.save.eventIn -= dt
+    if (this.save.eventIn > 0) return
+    this.save.eventIn = 360 + Math.random() * 420
+    const u = (DAY_START + this.save.totalPlaySeconds / DAY_SECONDS) % 1
+    const day = u < 0.5
+    const pool: ('wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant')[] = ['wreck']
+    if (day) pool.push('migration', 'eclipse')
+    else pool.push('aurora')
+    if (this.save.age >= CARAVAN_AGE && !this.save.caravan.visiting) pool.push('merchant')
+    const kind = pool[Math.floor(Math.random() * pool.length)]!
+    if (kind === 'wreck') {
+      const wood = Math.round(40 * (1 + this.save.age))
+      const insight = Math.round(8 * (1 + this.save.age))
+      this.save.res.wood = this.amount('wood') + wood
+      this.save.res.insight = this.amount('insight') + insight
+      this.emit({ type: 'worldEvent', kind, fact: EVENT_FACTS.wreck, loot: { wood, insight } })
+      return
+    }
+    if (kind === 'merchant') {
+      this.save.caravan.nextIn = Math.min(this.save.caravan.nextIn, 1)
+      this.goldenTrade = true
+    }
+    this.emit({ type: 'worldEvent', kind, fact: EVENT_FACTS[kind] })
+  }
+
   private tickCaravan(dt: number): void {
     if (this.save.age < CARAVAN_AGE) return
     const c = this.save.caravan
@@ -553,11 +599,12 @@ export class Game {
     // marchander d'un tap avant que le prix soit fixé.
     if (!c.traded && c.visitLeft <= CARAVAN_VISIT * 0.5) {
       c.traded = true
-      this.doTrade(c.haggled ? 1.3 : 1, false)
+      this.doTrade((c.haggled ? 1.3 : 1) * (this.goldenTrade ? 2.2 : 1), false)
     }
     if (c.visitLeft <= 0) {
       c.visiting = false
       c.nextIn = CARAVAN_PERIOD * (0.8 + Math.random() * 0.5)
+      this.goldenTrade = false
       this.emit({ type: 'caravanLeave' })
     }
   }
@@ -647,6 +694,8 @@ export class Game {
     }
 
     this.tickCaravan(dt)
+
+    this.tickEvents(dt)
 
     this.saveAccumulator += dt
     if (this.saveAccumulator >= 5) {
