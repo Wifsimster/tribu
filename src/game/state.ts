@@ -35,6 +35,8 @@ export interface SaveV1 {
   relics: string[]
   /** Secondes avant le prochain événement rare du monde (live uniquement). */
   eventIn: number
+  /** Hauts faits accomplis. */
+  feats: string[]
   /** Comptoir établi sur l'îlot voisin, et minuterie de sa navette. */
   outpost: boolean
   outpostIn: number
@@ -73,6 +75,7 @@ export function emptySave(now: number): SaveV1 {
     relics: [],
     eventIn: 420,
     chronicle: [],
+    feats: [],
     outpost: false,
     outpostIn: 240,
     wonder: null,

@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '2.11.0',
+    title: 'Les hauts faits',
+    items: [
+      "Douze jalons à accomplir — de l'étincelle de la première découverte aux trois étoiles de la constellation. Panneau dans le menu, étoile dorée à chaque accomplissement, et chaque haut fait s'écrit dans la Chronique.",
+    ],
+  },
+  {
     version: '2.10.0',
     title: 'Le comptoir de l’îlot',
     items: [

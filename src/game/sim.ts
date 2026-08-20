@@ -6,6 +6,7 @@ import {
   DESTINATIONS,
   SEASON_DAYS,
   SEASONS,
+  FEATS,
   WONDER_BY_AGE,
   type WonderDef,
   RELIC_BY_ID,
@@ -30,6 +31,7 @@ export type GameEvent =
   | { type: 'wonderStage'; def: WonderDef; stage: number }
   | { type: 'wonderDone'; def: WonderDef }
   | { type: 'outpostFounded' }
+  | { type: 'feat'; id: string; name: string }
   | { type: 'outpostTribute'; loot: Partial<Record<ResourceId, number>> }
   | {
       type: 'worldEvent'
@@ -760,6 +762,35 @@ export class Game {
     return 1 + this.save.wonders.length * 0.04
   }
 
+  /** Les hauts faits se constatent : un balayage par seconde suffit. */
+  private featAcc = 0
+  private tickFeats(dt: number): void {
+    this.featAcc += dt
+    if (this.featAcc < 1) return
+    this.featAcc = 0
+    const S = this.save
+    const ok: Record<string, boolean> = {
+      etincelle: S.techs.length >= 1,
+      bronze: S.age >= 2,
+      michemin: S.techs.length >= 26,
+      sage: this.treeComplete,
+      relique: S.relics.length >= 1,
+      musee: S.relics.length >= 14,
+      merveille: S.wonders.length >= 1,
+      comptoir: S.outpost,
+      exode: S.legacy >= 1,
+      constellation: S.legacy >= 3,
+      annee: S.totalPlaySeconds >= 2880,
+      memoire: S.chronicle.length >= 100,
+    }
+    for (const f of FEATS) {
+      if (S.feats.includes(f.id) || !ok[f.id]) continue
+      S.feats.push(f.id)
+      this.record('feat', `Haut fait : ${f.name}`)
+      this.emit({ type: 'feat', id: f.id, name: f.name })
+    }
+  }
+
   private tickSeason(): void {
     const cur = this.season
     if (cur.id === this.lastSeasonId) return
@@ -952,6 +983,7 @@ export class Game {
     this.tickEvents(dt)
     this.tickWonder(dt)
     this.tickOutpost(dt)
+    this.tickFeats(dt)
     this.tickSeason()
 
     this.saveAccumulator += dt

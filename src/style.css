@@ -1086,3 +1086,9 @@ body.night .age-bar {
 
 /* L'ambassade : la ligne dorée du sélecteur. */
 .dest.embassy { border: 1px solid rgba(185, 138, 46, 0.55); background: rgba(42, 36, 20, 0.85); }
+
+
+/* Hauts faits : étoiles pleines pour l'accompli, estompé pour le reste. */
+.feat { opacity: 0.55; }
+.feat.done { opacity: 1; }
+.feat.done b { color: #b98a2e; }

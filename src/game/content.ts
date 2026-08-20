@@ -1014,3 +1014,21 @@ export const WONDERS: WonderDef[] = [
 ]
 
 export const WONDER_BY_AGE = new Map(WONDERS.map((w) => [w.age, w]))
+
+
+/** Les hauts faits : des jalons, pas des corvées — chacun se lit d'un état. */
+export interface FeatDef { id: string; name: string; desc: string }
+export const FEATS: FeatDef[] = [
+  { id: 'etincelle', name: "L'étincelle", desc: 'Faire une première découverte.' },
+  { id: 'bronze', name: "L'âge des métaux", desc: "Atteindre l'âge du bronze." },
+  { id: 'michemin', name: 'À mi-chemin', desc: 'Connaître 26 savoirs.' },
+  { id: 'sage', name: 'La tribu sage', desc: 'Réunir les 51 savoirs.' },
+  { id: 'relique', name: 'Première vitrine', desc: 'Rapporter une relique.' },
+  { id: 'musee', name: 'Le musée plein', desc: 'Exposer les 14 reliques.' },
+  { id: 'merveille', name: 'Bâtisseurs', desc: 'Achever une Merveille.' },
+  { id: 'comptoir', name: 'Les feux répondent', desc: "Fonder le comptoir de l'îlot." },
+  { id: 'exode', name: 'Le grand départ', desc: 'Accomplir un Exode.' },
+  { id: 'constellation', name: 'Trois étoiles', desc: 'Accomplir trois Exodes.' },
+  { id: 'annee', name: 'Une année vécue', desc: "Vivre une année entière de l'île (4 saisons)." },
+  { id: 'memoire', name: 'La mémoire longue', desc: 'Écrire 100 lignes de Chronique.' },
+]

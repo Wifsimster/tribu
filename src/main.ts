@@ -17,7 +17,7 @@ import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { CHANGELOG } from './game/changelog'
-import { WONDER_BY_AGE } from './game/content'
+import { FEATS, WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
 import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
@@ -309,6 +309,10 @@ game.on((e) => {
           hud.toast(e.fact)
           break
       }
+      break
+    case 'feat':
+      ambience.chime()
+      hud.toast(`Haut fait accompli : ${e.name}`)
       break
     case 'outpostFounded':
       island.setOutpost(true)
@@ -608,6 +612,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     tuto.hidden = true
     menuEl('menu-news').hidden = true
     menuEl('menu-chronicle').hidden = true
+    menuEl('menu-feats').hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -707,6 +712,21 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('menu-chronicle').hidden = false
   })
   menuEl('menu-chronicle-close').addEventListener('click', showHome)
+
+  menuEl('menu-feats-open').addEventListener('click', () => {
+    const list = menuEl('feats-list')
+    list.textContent = ''
+    for (const f of FEATS) {
+      const done = game.save.feats.includes(f.id)
+      const li = document.createElement('li')
+      li.className = done ? 'feat done' : 'feat'
+      li.innerHTML = `<b>${done ? '★' : '☆'} ${f.name}.</b> ${f.desc}`
+      list.appendChild(li)
+    }
+    home.hidden = true
+    menuEl('menu-feats').hidden = false
+  })
+  menuEl('menu-feats-close').addEventListener('click', showHome)
 
   menuEl('menu-news-open').addEventListener('click', () => {
     home.hidden = true
