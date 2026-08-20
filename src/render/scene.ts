@@ -315,21 +315,20 @@ export class Stage {
     }
     this.scene.add(this.clouds)
 
-    // Oiseaux : cinq silhouettes en V qui traversent le ciel par vols
-    // aléatoires, de jour seulement — la nuit ils se perchent. Un draw call.
-    const wing = (sign: number) => {
-      const g = new BoxGeometry(0.1, 0.02, 0.4)
-      g.translate(0, 0, sign * 0.22)
-      g.rotateX(sign * 0.42)
-      return g
-    }
-    const body = new BoxGeometry(0.2, 0.05, 0.09)
-    const birdGeo = mergeGeometries([wing(1), wing(-1), body])!
+    // Oiseaux : cinq silhouettes qui traversent par vols aléatoires, de jour
+    // seulement. Les ailes sont des instances SÉPARÉES du corps, pivotées en
+    // opposition autour de l'axe de vol : elles battent, elles ne balotent pas.
     const birdMat = new MeshToonMaterial({ color: '#39404a' })
-    this.birds = new InstancedMesh(birdGeo, birdMat, 5)
-    this.birds.frustumCulled = false
-    this.birds.visible = false
-    this.scene.add(this.birds)
+    this.birdBody = new InstancedMesh(new BoxGeometry(0.24, 0.05, 0.09), birdMat, 5)
+    const wingGeo = new BoxGeometry(0.1, 0.02, 0.36)
+    wingGeo.translate(0, 0, 0.2) // pivot au flanc du corps
+    this.birdWingL = new InstancedMesh(wingGeo, birdMat, 5)
+    this.birdWingR = new InstancedMesh(wingGeo.clone().scale(1, 1, -1), birdMat, 5)
+    for (const m of [this.birdBody, this.birdWingL, this.birdWingR]) {
+      m.frustumCulled = false
+      m.visible = false
+      this.scene.add(m)
+    }
 
     // Pluie : un rideau de gouttes instanciées au-dessus de l'île, un draw
     // call, visible seulement quand la météo l'appelle.
@@ -356,7 +355,9 @@ export class Stage {
   private readonly cloudState: { x: number; y: number; z: number; s: number; v: number; rot: number; phase: 'in' | 'live' | 'out' | 'wait'; t: number; life: number; wait: number }[] = []
   private readonly cloudDummy = new Object3D()
 
-  private readonly birds: InstancedMesh
+  private readonly birdBody: InstancedMesh
+  private readonly birdWingL: InstancedMesh
+  private readonly birdWingR: InstancedMesh
   private readonly rain: InstancedMesh
   private skyTime = 0
   /** La météo : des humeurs qui se succèdent, jamais un réglage figé. */
@@ -430,7 +431,7 @@ export class Stage {
     const f = this.flock
     if (!f.active) {
       f.cooldown -= dt
-      this.birds.visible = false
+      this.birdBody.visible = this.birdWingL.visible = this.birdWingR.visible = false
       // Ils ne décollent qu'en plein jour.
       if (f.cooldown <= 0 && this.lastDaylight > 0.6) {
         f.active = true
@@ -442,16 +443,19 @@ export class Stage {
       return
     }
     f.t += dt / 26
+    const birdMeshes = [this.birdBody, this.birdWingL, this.birdWingR]
     if (f.t >= 1 || this.lastDaylight < 0.35) {
       f.active = false
       f.cooldown = 18 + Math.random() * 45
-      this.birds.visible = false
+      for (const m of birdMeshes) m.visible = false
       return
     }
-    this.birds.visible = true
+    for (const m of birdMeshes) m.visible = true
     const cx = Math.cos(f.dir)
     const sx = Math.sin(f.dir)
     const along = -46 + f.t * 92
+    const yaw = -f.dir + Math.PI / 2
+    this.cloudDummy.rotation.order = 'YXZ'
     for (let i = 0; i < 5; i++) {
       // Formation en V lâche : décalés derrière et de part et d'autre du guide.
       const rank = Math.ceil(i / 2)
@@ -459,14 +463,25 @@ export class Stage {
       const back = rank * 2.6
       const px = cx * (along - back) - sx * lateral
       const pz = sx * (along - back) + cx * lateral
-      const flap = Math.sin(this.skyTime * 9 + i * 1.7)
-      this.cloudDummy.position.set(px, f.y + Math.sin(this.skyTime * 2.2 + i) * 0.4, pz)
-      this.cloudDummy.rotation.set(flap * 0.45, -f.dir + Math.PI / 2, 0)
+      // Coup d'aile net vers le bas, remontée souple — et le corps ne fait que
+      // suivre d'un léger ressaut, sans tanguer.
+      const beat = Math.sin(this.skyTime * 8 + i * 1.7)
+      const flap = beat * 0.85
+      const py = f.y + Math.sin(this.skyTime * 2.2 + i) * 0.3 + Math.max(0, beat) * 0.06
+      this.cloudDummy.position.set(px, py, pz)
       this.cloudDummy.scale.setScalar(1)
+      this.cloudDummy.rotation.set(0, yaw, 0)
       this.cloudDummy.updateMatrix()
-      this.birds.setMatrixAt(i, this.cloudDummy.matrix)
+      this.birdBody.setMatrixAt(i, this.cloudDummy.matrix)
+      this.cloudDummy.rotation.set(flap, yaw, 0)
+      this.cloudDummy.updateMatrix()
+      this.birdWingL.setMatrixAt(i, this.cloudDummy.matrix)
+      this.cloudDummy.rotation.set(-flap, yaw, 0)
+      this.cloudDummy.updateMatrix()
+      this.birdWingR.setMatrixAt(i, this.cloudDummy.matrix)
     }
-    this.birds.instanceMatrix.needsUpdate = true
+    this.cloudDummy.rotation.order = 'XYZ'
+    for (const m of birdMeshes) m.instanceMatrix.needsUpdate = true
   }
 
   private activeClouds(): number {

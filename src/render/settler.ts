@@ -217,6 +217,14 @@ export class Settler {
     return this.sleeping
   }
 
+  get isAway(): boolean {
+    return this.trip === 'away'
+  }
+
+  get shorePoint(): Vector3 {
+    return this.shore
+  }
+
   returnFromExpedition(): void {
     if (this.trip === 'leaving' || this.trip === 'away') {
       this.group.visible = true

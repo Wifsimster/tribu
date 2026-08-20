@@ -593,7 +593,6 @@ body {
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
-  text-wrap: balance;
   box-shadow: var(--shadow-m);
   animation: toast 3.4s ease forwards;
 }

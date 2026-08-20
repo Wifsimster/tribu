@@ -9,6 +9,7 @@ import { Island, growthForAge } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
 import { Caravan } from './render/caravan'
+import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
 import { Hud, fmt } from './ui/hud'
 import { RESOURCES } from './game/content'
@@ -20,6 +21,9 @@ const stage = new Stage(canvas)
 // et GRANDIT avec les âges — la tribu gagne du terrain sur la mer.
 const game = new Game(Date.now())
 const caravan = new Caravan()
+const boat = new ExpeditionBoat()
+/** Séquence d'embarquement : marche → embarque → large → (voyage) → accoste → marche. */
+let expPhase: 'none' | 'walking' | 'sailed' = 'none'
 
 let island!: Island
 let village!: Village
@@ -61,7 +65,7 @@ function buildWorld(): void {
 }
 
 buildWorld()
-stage.scene.add(caravan.group)
+stage.scene.add(caravan.group, boat.group)
 stage.sun.target.position.set(0, 0, 0)
 stage.applyAge(game.save.age)
 // Barque déjà à quai dans la sauvegarde : elle reprend sa place sans naviguer.
@@ -97,14 +101,22 @@ game.on((e) => {
       break
     case 'expeditionStart':
       settler.departExpedition(game.knows('cordage'))
-      hud.toast('Le colon charge sa hotte et part en expédition — le camp attendra son retour')
+      boat.setTier(game.knows('sail') ? 2 : game.knows('polished_axe') ? 1 : 0)
+      expPhase = 'walking'
+      hud.toast(
+        game.knows('sail')
+          ? 'Le colon hisse la voile — le camp attendra son retour'
+          : game.knows('polished_axe')
+            ? 'Le colon pousse sa pirogue à l\'eau — le camp attendra son retour'
+            : 'Le colon pousse son radeau à l\'eau — le camp attendra son retour',
+      )
       break
     case 'expeditionEnd': {
       const parts = Object.entries(e.loot)
         .filter(([, n]) => (n as number) > 0)
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
         .join('  ')
-      settler.returnFromExpedition()
+      boat.sailIn(settler.shorePoint)
       hud.toast(`De retour · ${parts}`)
       if (e.find) hud.toast(`Il rapporte ${e.find}`)
       break
@@ -310,6 +322,15 @@ function frame(now: number): void {
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
+  boat.update(dt, elapsed)
+  if (expPhase === 'walking' && settler.isAway) {
+    boat.launchOut(settler.shorePoint)
+    expPhase = 'sailed'
+  }
+  if (boat.consumeDocked()) {
+    settler.returnFromExpedition()
+    expPhase = 'none'
+  }
   village.update(dt, elapsed)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
