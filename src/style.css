@@ -941,3 +941,13 @@ body.night .age-bar {
   vertical-align: -3px;
   margin: 0 1px;
 }
+
+/* Le prochain savoir : liseré doré discret. */
+.tech.next {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(217, 164, 65, 0.35);
+}
+
+.res {
+  cursor: pointer;
+}

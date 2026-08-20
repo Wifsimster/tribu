@@ -101,6 +101,19 @@ export class Hud {
     this.refreshTechList()
   }
 
+  /** Un tap sur une ressource du bandeau explique ce qu'elle est, d'où elle
+   *  vient et à quoi elle sert. */
+  private static readonly RES_HELP: Record<ResourceId, string> = {
+    food: 'Nourriture — buissons, chasse, champs. Paie les expéditions et quelques découvertes.',
+    wood: 'Bois — tape un arbre pour y envoyer le colon. Sert aux découvertes et aux bâtiments.',
+    stone: 'Pierre — tape un rocher. La base des outils et des grandes constructions.',
+    fiber: 'Fibres — récoltées depuis le cordage. Cordes, tissage, voiles.',
+    clay: "Argile — récoltée depuis la poterie. Jarres, tablettes, fours.",
+    copper: 'Cuivre — récolté depuis la métallurgie du cuivre. Bronze, instruments, câbles.',
+    iron: 'Fer — récolté depuis la forge. Outils, rails, machines.',
+    insight: "Savoir — l'étincelle : il coule du travail de la tribu et paie chaque découverte.",
+  }
+
   private buildResources(): void {
     const host = el('resources')
     host.textContent = ''
@@ -110,6 +123,7 @@ export class Hud {
       root.className = 'res'
       root.hidden = def.hidden
       root.innerHTML = `${icon(id, 14)}<span class="sr">${def.name}</span><span class="val">0</span><span class="rate"></span>`
+      root.addEventListener('click', () => this.toast(Hud.RES_HELP[id]))
       host.appendChild(root)
       this.resNodes.set(id, {
         root,
@@ -142,7 +156,15 @@ export class Hud {
     this.sheetOpen = open
     el('sheet').classList.toggle('open', open)
     this.syncScrim()
-    if (open) this.refreshTechList()
+    if (open) {
+      this.refreshTechList()
+      // Ouvrir sur le prochain savoir à débloquer, pas sur le Paléolithique.
+      requestAnimationFrame(() => {
+        const body = el('sheet-body')
+        const next = body.querySelector<HTMLElement>('.tech.next')
+        body.scrollTop = next ? Math.max(0, next.offsetTop - body.offsetTop - 84) : 0
+      })
+    }
   }
 
   /** Un seul voile pour la feuille et la carte : la scène reste le sujet. */
@@ -152,9 +174,12 @@ export class Hud {
 
   /** L'arbre complet, âge par âge : l'acquis, l'atteignable, et la route qui
    *  reste. Un idle vit de montrer au joueur où il va. */
+  private nextMarked = false
+
   refreshTechList(): void {
     const g = this.game
     const body = el('sheet-body')
+    this.nextMarked = false
     body.textContent = ''
 
     for (const age of AGES) {
@@ -177,7 +202,11 @@ export class Hud {
 
         const btn = document.createElement('button')
         btn.type = 'button'
-        btn.className = `tech${known ? ' done' : ''}${!known && !reachable ? ' locked' : ''}`
+        // Le premier savoir atteignable est LE prochain objectif : marqué, et
+        // la feuille s'ouvre dessus.
+        const isNext = !known && reachable && !this.nextMarked
+        if (isNext) this.nextMarked = true
+        btn.className = `tech${known ? ' done' : ''}${!known && !reachable ? ' locked' : ''}${isNext ? ' next' : ''}`
         // Une techno acquise reste tapable : elle rejoue son fait historique.
         btn.disabled = !known && !affordable
 
