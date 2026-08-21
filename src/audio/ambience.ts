@@ -44,6 +44,19 @@ export class Ambience {
     if (this.enabled) this.start()
   }
 
+  /** L'onglet part en arrière-plan : on SUSPEND le contexte audio. Sans ça,
+   *  le ressac et le feu continuaient de jouer navigateur réduit — la boucle
+   *  de rendu, elle, s'arrête toute seule (requestAnimationFrame), mais un
+   *  graphe WebAudio qui tourne n'a besoin de personne pour continuer. */
+  pauseForBackground(): void {
+    if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend()
+  }
+
+  /** Retour au premier plan : on ne reprend QUE si le son est activé. */
+  resumeFromBackground(): void {
+    if (this.enabled && this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
+  }
+
   /** Bascule depuis le menu — le clic est le geste qui autorise l'audio. */
   toggle(): boolean {
     this.enabled = !this.enabled

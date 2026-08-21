@@ -79,6 +79,47 @@ function fbm(x: number, y: number, seed: number): number {
 export const TILE = 1.35
 export const GRID = 42
 
+/** ── LE RÉSEAU HEXAGONAL ───────────────────────────────────────────────────
+ *  Direction visuelle demandée (référence : hex builder). Les cellules sont
+ *  des prismes hexagonaux « flat-top » posés sur un réseau axial (q, r).
+ *
+ *  Rayon choisi pour que le PAS EN X reste celui de l'ancienne grille carrée
+ *  (1,5·R = TILE) : tout ce qui se raisonne en TILE — bord de côte, écume,
+ *  place du village, portées de la faune — garde son échelle. */
+export const HEX_R = TILE / 1.5
+/** Pas du réseau : 1,5·R en x, √3·R en z (décalé d'un demi-pas par colonne). */
+const HEX_DX = 1.5 * HEX_R
+const HEX_DZ = Math.sqrt(3) * HEX_R
+/** Les six voisins, dans l'ordre des six arêtes : l'arête k a pour normale
+ *  extérieure l'angle 30° + 60°·k, et son voisin est NB[k]. */
+const NB: readonly [number, number][] = [
+  [1, 0],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [0, -1],
+  [1, -1],
+]
+/** Sommet k de l'hexagone (rayon circonscrit R), en repère local. */
+function hexVertex(k: number, r = HEX_R): [number, number] {
+  const a = (Math.PI / 3) * (k % 6)
+  return [Math.cos(a) * r, Math.sin(a) * r]
+}
+/** Normale extérieure de l'arête k. */
+function hexNormal(k: number): [number, number] {
+  const a = (Math.PI / 3) * k + Math.PI / 6
+  return [Math.cos(a), Math.sin(a)]
+}
+/** Centre monde d'une cellule axiale. */
+function hexCenter(q: number, r: number): [number, number] {
+  return [HEX_DX * q, HEX_DZ * (r + q / 2)]
+}
+
+/** Clé de cellule : les coordonnées axiales sont signées, on les décale. */
+function key(q: number, r: number): number {
+  return (q + 64) * 256 + (r + 64)
+}
+
 /** Griffonnage partagé de setDaylight : une teinte par frame, zéro allocation. */
 const tmpTint = new Color()
 
@@ -259,20 +300,25 @@ export class Island {
     const half = GRID / 2
     const plaza = STEP * 4
 
-    for (let gx = 0; gx < GRID; gx++) {
-      for (let gz = 0; gz < GRID; gz++) {
-        const dx = gx - half + 0.5
-        const dz = gz - half + 0.5
+    // Réseau axial : on balaie un losange assez large pour contenir le disque
+    // de l'île, et `shoreEdge` découpe dedans exactement comme avant — les
+    // coordonnées de bord se raisonnent toujours en TILE.
+    const span = Math.ceil(half * 1.3)
+    for (let gx = -span; gx <= span; gx++) {
+      for (let gz = -span; gz <= span; gz++) {
+        const [wx, wz] = hexCenter(gx, gz)
+        const dx = wx / TILE
+        const dz = wz / TILE
         const r = Math.hypot(dx, dz)
         const theta = Math.atan2(dz, dx)
         const edge = shoreEdge(theta, seed, growth)
         if (r > edge) continue
         const inland = edge - r
-        const hill = fbm(gx * 0.23, gz * 0.23, seed)
+        const hill = fbm(dx * 0.23, dz * 0.23, seed)
         const shore = Math.min(inland / 2.4, 1)
         const raw = 0.3 + shore * (0.3 + hill * 2.4)
-        const x = dx * TILE
-        const z = dz * TILE
+        const x = wx
+        const z = wz
         let height = Math.max(STEP, Math.round(raw / STEP) * STEP)
         // Un liseré de sable tout autour donnerait un gâteau. Suivant l'angle,
         // la côte est soit une plage, soit une petite falaise dans l'eau.
@@ -306,7 +352,7 @@ export class Island {
           trod,
         }
         this.cells.push(cell)
-        this.byKey.set(gx * 64 + gz, cell)
+        this.byKey.set(key(gx, gz), cell)
       }
     }
 
@@ -419,33 +465,26 @@ export class Island {
   /** Une cellule cernée de voisins plus hauts reçoit moins de ciel. Sans ça les
    *  terrasses s'aplatissent et l'île redevient une nappe verte uniforme. */
   private bakeOcclusion(): void {
-    const offsets: [number, number, number][] = [
-      [1, 0, 1],
-      [-1, 0, 1],
-      [0, 1, 1],
-      [0, -1, 1],
-      [1, 1, 0.6],
-      [1, -1, 0.6],
-      [-1, 1, 0.6],
-      [-1, -1, 0.6],
-    ]
     for (const c of this.cells) {
       let occ = 0
-      for (const [ox, oz, w] of offsets) {
-        const n = this.byKey.get((c.gx + ox) * 64 + (c.gz + oz))
+      for (let k = 0; k < 6; k++) {
+        const n = this.byKey.get(key(c.gx + NB[k]![0], c.gz + NB[k]![1]))
         if (!n) {
-          // Un voisin absent, c'est de l'eau : le pourtour garde tout son ciel,
-          // sinon la silhouette s'assombrit là où elle doit trancher.
-          if (Math.abs(ox) + Math.abs(oz) === 1) {
-            c.rim = true
-            c.outx += ox
-            c.outz += oz
-          }
+          // Un voisin absent, c'est de l'eau : la cellule est du pourtour et
+          // garde tout son ciel de ce côté — sinon la silhouette s'assombrit
+          // là où elle doit trancher.
+          c.rim = true
+          const [nx, nz] = hexNormal(k)
+          c.outx += nx
+          c.outz += nz
           continue
         }
         const d = n.height - c.height
-        if (d > 0.05) occ += w * Math.min(d / 0.75, 1)
+        if (d > 0.05) occ += Math.min(d / 0.75, 1)
       }
+      // Six voisins au lieu de huit pondérés : le facteur compense pour que
+      // les terrasses gardent exactement le même creux qu'en grille carrée.
+      occ *= 1.13
       c.ao = Math.max(0.42, 1 - occ * 0.215)
     }
   }
@@ -496,7 +535,9 @@ export class Island {
   }
 
   private buildTerrain(): void {
-    const geo = new BoxGeometry(TILE, 1, TILE)
+    // Prisme hexagonal : CylinderGeometry à 6 segments, tourné pour que le
+    // sommet 0 tombe en (R, 0) — l'ordre des arêtes du réseau.
+    const geo = new CylinderGeometry(HEX_R, HEX_R, 1, 6, 1, false, Math.PI / 2)
     const mat = new MeshLambertMaterial()
     this.terrainMat = mat
     const rims = this.cells.filter((c) => c.rim)
@@ -548,8 +589,8 @@ export class Island {
       else ramp(grassRamp, smoothstep(0.5, 2.6, c.height), capColor)
       // Marbrure basse fréquence en plus du bruit par tuile : un aplat de
       // couleur unique sur toute une terrasse fait carton découpé.
-      const mottle = 0.93 + fbm(c.gx * 0.55, c.gz * 0.55, 7) * 0.14
-      capColor.copy(tint(capColor, c.gx * 31 + c.gz, 0.06)).multiplyScalar(c.ao * mottle)
+      const mottle = 0.93 + fbm((c.x / TILE) * 0.55, (c.z / TILE) * 0.55, 7) * 0.14
+      capColor.copy(tint(capColor, c.gx * 31 + c.gz * 7 + 512, 0.06)).multiplyScalar(c.ao * mottle)
 
       socleColor
         .copy(PALETTE.earth)
@@ -618,8 +659,7 @@ export class Island {
     const milk = PALETTE.water.clone().lerp(PALETTE.waterDeep, 0.25)
     const wall = new Color()
     const cj = new Color()
-    const h = TILE / 2
-    const water = (gx: number, gz: number): boolean => !this.byKey.has(gx * 64 + gz)
+    const water = (gx: number, gz: number): boolean => !this.byKey.has(key(gx, gz))
     /** Alpha selon la profondeur relative : dense sous la flottaison, éteint à
      *  la dernière rangée — c'est le dégradé qui arrête l'objet, pas une coupe
      *  de géométrie. */
@@ -672,8 +712,9 @@ export class Island {
       // sautait au blanc et lisait comme un rideau posé sous l'île, pas comme
       // la même pierre.
       wall.copy(shore).multiplyScalar(0.72 - shade * 0.12)
-      const tx = (bx - ax) / TILE
-      const tz = (bz - az) / TILE
+      // L'arête d'un hexagone mesure R (rayon circonscrit = côté).
+      const tx = (bx - ax) / HEX_R
+      const tz = (bz - az) / HEX_R
       const b = verts.length / 3
       let y = 0
       for (let j = 0; j <= rows; j++) {
@@ -704,20 +745,19 @@ export class Island {
 
     for (const c of this.cells) {
       if (!c.rim) continue
-      for (const sx of [1, -1] as const) {
-        if (!water(c.gx + sx, c.gz)) continue
-        const x = c.x + sx * h
+      for (let k = 0; k < 6; k++) {
+        if (!water(c.gx + NB[k]![0], c.gz + NB[k]![1])) continue
+        const [nx, nz] = hexNormal(k)
+        const [ax, az] = hexVertex(k)
+        const [bx, bz] = hexVertex(k + 1)
+        // Le sommet A est partagé avec l'arête précédente, le sommet B avec la
+        // suivante : c'est leur voisinage qui dit si la face se rétracte
+        // (angle saillant), continue, ou s'allonge (angle rentrant).
         curtain(
-          c, sx, 0, x, c.z - h, x, c.z + h,
-          endCode(c, 0, -1, sx, 0), endCode(c, 0, 1, sx, 0),
-        )
-      }
-      for (const sz of [1, -1] as const) {
-        if (!water(c.gx, c.gz + sz)) continue
-        const z = c.z + sz * h
-        curtain(
-          c, 0, sz, c.x - h, z, c.x + h, z,
-          endCode(c, -1, 0, 0, sz), endCode(c, 1, 0, 0, sz),
+          c, nx, nz,
+          c.x + ax, c.z + az, c.x + bx, c.z + bz,
+          endCode(c, NB[(k + 5) % 6]![0], NB[(k + 5) % 6]![1], NB[k]![0], NB[k]![1]),
+          endCode(c, NB[(k + 1) % 6]![0], NB[(k + 1) % 6]![1], NB[k]![0], NB[k]![1]),
         )
       }
     }
@@ -820,7 +860,6 @@ export class Island {
    *  décalque posé sur l'eau. La référence a un trait dessiné, marche par
    *  marche, entre le soubassement sombre et l'eau. */
   private buildWaterline(): void {
-    const h = TILE / 2
     /** Largeur du trait, en unités monde : ~3 px au cadrage desktop. Mesuré :
      *  la couronne de la référence culmine à +130 de luminance sur l'eau
      *  voisine, la nôtre à +102 — le trait s'élargit d'un demi-pixel pour que
@@ -830,7 +869,7 @@ export class Island {
     const verts: number[] = []
     const colors: number[] = []
     const index: number[] = []
-    const water = (gx: number, gz: number): boolean => !this.byKey.has(gx * 64 + gz)
+    const water = (gx: number, gz: number): boolean => !this.byKey.has(key(gx, gz))
 
     /** Alpha au point (x,z) : plein côté soleil, atténué à l'ombre, haché par
      *  un bruit cohérent — un trait d'alpha constant redeviendrait un cerne. */
@@ -865,30 +904,29 @@ export class Island {
       index.push(b, b + 2, b + 1, b, b + 3, b + 2)
     }
 
+    // Une arête hexagonale n'appartient qu'à DEUX cellules : contrairement à
+    // la grille carrée, aucun coin n'est peint deux fois et la règle de
+    // propriété des angles disparaît. On allonge simplement chaque bout d'un
+    // demi-trait pour que deux arêtes voisines se rejoignent sans encoche.
+    const JOIN = W * 0.6
     for (const c of this.cells) {
       if (!c.rim) continue
-      // Face est/ouest (normale ±x) : le trait court le long de z. Aux angles
-      // SAILLANTS c'est lui qui possède le carré de coin (il s'allonge de W) ;
-      // aux angles RENTRANTS c'est le trait ±z qui se rétracte — chaque coin
-      // n'est ainsi peint qu'une fois, sans surépaisseur d'alpha.
-      for (const sx of [1, -1] as const) {
-        if (!water(c.gx + sx, c.gz)) continue
-        const x = c.x + sx * h
-        let z0 = c.z - h
-        let z1 = c.z + h
-        if (water(c.gx, c.gz - 1)) z0 -= W
-        if (water(c.gx, c.gz + 1)) z1 += W
-        strip(x, z0, x, z1, sx, 0)
-      }
-      // Face nord/sud (normale ±z) : le trait court le long de x.
-      for (const sz of [1, -1] as const) {
-        if (!water(c.gx, c.gz + sz)) continue
-        const z = c.z + sz * h
-        let x0 = c.x - h
-        let x1 = c.x + h
-        if (!water(c.gx - 1, c.gz) && !water(c.gx - 1, c.gz + sz)) x0 += W
-        if (!water(c.gx + 1, c.gz) && !water(c.gx + 1, c.gz + sz)) x1 -= W
-        strip(x0, z, x1, z, 0, sz)
+      for (let k = 0; k < 6; k++) {
+        if (!water(c.gx + NB[k]![0], c.gz + NB[k]![1])) continue
+        const [nx, nz] = hexNormal(k)
+        const [ax, az] = hexVertex(k)
+        const [bx, bz] = hexVertex(k + 1)
+        const ex = bx - ax
+        const ez = bz - az
+        const el = Math.hypot(ex, ez) || 1
+        strip(
+          c.x + ax - (ex / el) * JOIN,
+          c.z + az - (ez / el) * JOIN,
+          c.x + bx + (ex / el) * JOIN,
+          c.z + bz + (ez / el) * JOIN,
+          nx,
+          nz,
+        )
       }
     }
 

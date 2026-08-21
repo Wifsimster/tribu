@@ -1397,14 +1397,19 @@ requestAnimationFrame((t) => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     game.flush(Date.now())
+    // Le son ne doit pas survivre à l'onglet : navigateur réduit, l'ambiance
+    // continuait de jouer dans le vide.
+    ambience.pauseForBackground()
   } else {
     // Le crédit passe par la détection d'écart de la boucle : ici on ne fait
     // que réarmer le chrono d'animation.
     last = performance.now()
+    ambience.resumeFromBackground()
   }
 })
 window.addEventListener('pagehide', () => {
   game.flush(Date.now())
+  ambience.pauseForBackground()
   const snap = snapshot()
   if (snap) publishBeacon(snap)
 })

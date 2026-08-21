@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.8.0',
+    title: 'L’île passe aux hexagones',
+    items: [
+      "Le sol change de forme : les terrasses carrées deviennent des tuiles hexagonales. La côte se découpe en dents plus franches, les paliers se lisent mieux, et l'île ressemble enfin à la maquette qu'elle voulait être.",
+      "Le son se tait quand tu quittes l'application : l'ambiance continuait de jouer navigateur réduit. Elle reprend exactement où elle en était au retour.",
+    ],
+  },
+  {
     version: '3.7.0',
     title: 'Le pré et la basse-cour',
     items: [
