@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.14.0',
+    title: 'Le mouton de plus près',
+    items: [
+      "Deuxième animal détaillé : la toison du mouton déborde en flocons au lieu d'être un galet lisse, avec un dessous plus gris, une tête et des pattes noires, des oreilles tombantes, un toupet de laine et une petite queue.",
+    ],
+  },
+  {
     version: '3.13.0',
     title: 'Le chevreuil de plus près',
     items: [

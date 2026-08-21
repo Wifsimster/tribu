@@ -101,16 +101,52 @@ function deerGeo(): BufferGeometry {
 
 function sheepGeo(): BufferGeometry {
   const fleece = new Color('#e9e2cf')
-  const dark = new Color('#4c4238')
+  // Une toison n'est pas blanche : elle est crème sur le dessus et grise
+  // dessous, là où elle traîne. Sans cet écart, la bête lisait comme un galet.
+  const fleeceShade = new Color('#cfc6b0')
+  const dark = new Color('#3a332c')
+  const face = new Color('#4c4238')
+  const hoof = new Color('#241f1a')
+  const eye = new Color('#15110d')
   const p: BufferGeometry[] = []
-  // Toison : un icosaèdre bosselé, c'est déjà de la laine à cette taille.
+
+  // Toison : un gros icosaèdre bosselé, ET des flocons qui débordent de sa
+  // silhouette. C'est ce contour irrégulier qui fait « laine » plutôt que
+  // « caillou » — un seul volume lisse ne suffisait pas.
   p.push(part(new IcosahedronGeometry(0.24, 1).scale(1.28, 0.95, 1), fleece, 0, 0.4, -0.02))
-  p.push(part(new CapsuleGeometry(0.055, 0.09, 1, 6).rotateX(Math.PI / 2 - 0.35), dark, 0, 0.46, 0.3))
+  p.push(part(new IcosahedronGeometry(0.2, 1).scale(1.2, 0.6, 0.95), fleeceShade, 0, 0.31, -0.02))
+  const flock: [number, number, number, number][] = [
+    [0.2, 0.52, 0.08, 0.1],
+    [-0.22, 0.47, -0.12, 0.095],
+    [0.16, 0.36, -0.26, 0.105],
+    [-0.14, 0.5, 0.2, 0.085],
+    [0.26, 0.4, -0.06, 0.08],
+    [-0.24, 0.36, 0.06, 0.09],
+  ]
+  for (const [x, y, z, r] of flock) p.push(part(new IcosahedronGeometry(r, 0), fleece, x, y, z))
+  // La queue, courte et laineuse.
+  p.push(part(new IcosahedronGeometry(0.07, 0), fleece, 0, 0.4, -0.34))
+
+  // Tête noire — le mouton de face n'est PAS de la même couleur que sa laine,
+  // et c'est le contraste qui le rend lisible de loin.
+  p.push(part(new CapsuleGeometry(0.055, 0.09, 1, 6).rotateX(Math.PI / 2 - 0.35), face, 0, 0.46, 0.3))
+  p.push(part(new SphereGeometry(0.042, 6, 5).scale(1, 0.9, 1.1), dark, 0, 0.44, 0.37))
   p.push(part(new IcosahedronGeometry(0.075, 0), fleece, 0, 0.56, 0.24))
-  for (const s of [-1, 1]) p.push(part(new BoxGeometry(0.08, 0.03, 0.05), dark, s * 0.08, 0.48, 0.28))
+  // Toupet de laine entre les oreilles : le détail qui dit « mouton » d'un trait.
+  p.push(part(new IcosahedronGeometry(0.05, 0), fleece, 0, 0.56, 0.31))
+  for (const s of [-1, 1]) {
+    // Oreilles tombantes, et un œil sombre de part et d'autre du chanfrein.
+    p.push(part(new BoxGeometry(0.09, 0.03, 0.055).rotateZ(s * -0.35), face, s * 0.085, 0.475, 0.28))
+    p.push(part(new SphereGeometry(0.014, 5, 4), eye, s * 0.04, 0.485, 0.35))
+  }
+
+  // Pattes fines, sabot plus sombre encore : quatre bâtons identiques
+  // faisaient un tabouret, pas une bête.
   for (const sx of [-1, 1])
-    for (const sz of [-1, 1])
-      p.push(part(new CylinderGeometry(0.024, 0.028, 0.28, 4), dark, sx * 0.1, 0.14, sz * 0.15))
+    for (const sz of [-1, 1]) {
+      p.push(part(new CylinderGeometry(0.024, 0.028, 0.24, 5), face, sx * 0.1, 0.16, sz * 0.15))
+      p.push(part(new CylinderGeometry(0.028, 0.024, 0.05, 5), hoof, sx * 0.1, 0.03, sz * 0.15))
+    }
   // Round 2 : à 0,63 u la toison arrivait à la taille du colon — un mouton
   // s'arrête au genou. ×0.62 → ~0,39 u, et le troupeau redevient du bétail.
   return weld(p).scale(0.62, 0.62, 0.62)
