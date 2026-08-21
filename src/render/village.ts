@@ -1359,6 +1359,7 @@ export class Village {
       p.push(part(new ConeGeometry(0.3, 0.24, 9), iron, 0.58, 3.3, 0))
     }
     this.camp(p)
+    this.jetty(p)
     const geo = mergeGeometries(p) ?? new BufferGeometry()
     grain(geo)
     bakeFirelight(geo)
