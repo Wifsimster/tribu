@@ -1544,22 +1544,33 @@ export class Village {
     const dir = Math.atan2(best.x, best.z)
     const dx = Math.sin(dir)
     const dz = Math.cos(dir)
-    const y = Math.max(0.16, best.h - 0.18)
-    // Tablier : cinq planches en travers, du sable vers le large.
-    for (let i = 0; i < 5; i++) {
-      const t = 0.5 + i * 0.62
+    // Deux hauteurs : le tablier repose sur la plage côté terre, puis descend
+    // au niveau de l'eau. Sans cette rampe, le ponton flottait à dix-huit
+    // centièmes SOUS la terrasse — et depuis le passage aux hexagones, il
+    // démarrait carrément au large : sa première planche était posée à 0,5 du
+    // CENTRE de la cellule, quand le bord d'un hexagone est à 0,78.
+    const yLand = best.h + 0.05
+    const ySea = Math.max(0.16, best.h - 0.18)
+    const y = ySea
+    // Tablier : sept planches, la première MORDANT sur la plage (t négatif),
+    // les suivantes gagnant le large.
+    for (let i = 0; i < 7; i++) {
+      const t = -0.75 + i * 0.62
+      // La pente ne dure que le temps de quitter la rive.
+      const k = Math.min(1, Math.max(0, (t + 0.4) / 1.2))
+      const py = yLand + (ySea - yLand) * (k * k * (3 - 2 * k))
       p.push(
         part(
           new BoxGeometry(1.35, 0.09, 0.44).rotateY(dir),
           i % 2 === 0 ? C.wood : C.woodDark,
           best.x + dx * t,
-          y,
+          py,
           best.z + dz * t,
         ),
       )
     }
     // Pieux : deux paires, plantées dans l'eau.
-    for (const t of [1.15, 2.95]) {
+    for (const t of [1.1, 2.9]) {
       for (const side of [-1, 1]) {
         p.push(
           part(
@@ -1577,9 +1588,9 @@ export class Village {
       part(
         new BoxGeometry(0.4, 0.4, 0.4).rotateY(dir + 0.4),
         C.wood,
-        best.x + dx * 2.6 + dz * 0.28,
+        best.x + dx * 3.15 + dz * 0.28,
         y + 0.24,
-        best.z + dz * 2.6 - dx * 0.28,
+        best.z + dz * 3.15 - dx * 0.28,
       ),
     )
   }

@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.12.1',
+    title: 'Le ponton touche la plage',
+    items: [
+      "Le ponton flottait à quelques pas du rivage depuis le passage aux tuiles hexagonales. Son tablier part désormais du sable, avec une petite rampe qui descend au niveau de l'eau.",
+    ],
+  },
+  {
     version: '3.12.0',
     title: 'Le bruit du travail',
     items: [
