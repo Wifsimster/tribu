@@ -72,6 +72,18 @@
         </svg>
       </button>
 
+      <!-- Cadran de l'année : le pendant du cadran du jour. Quatre arcs, une
+           saison chacun, et le repère qui fait le tour en 12 jours de jeu. -->
+      <button class="seasondial" id="seasondial" type="button" aria-label="Saison">
+        <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true">
+          <path id="season-arc-0" d="M16 4 A 12 12 0 0 1 28 16" stroke="#8fd06a" stroke-width="2.4" stroke-linecap="round"/>
+          <path id="season-arc-1" d="M28 16 A 12 12 0 0 1 16 28" stroke="#ffd05e" stroke-width="2.4" stroke-linecap="round"/>
+          <path id="season-arc-2" d="M16 28 A 12 12 0 0 1 4 16" stroke="#d5822f" stroke-width="2.4" stroke-linecap="round"/>
+          <path id="season-arc-3" d="M4 16 A 12 12 0 0 1 16 4" stroke="#cfe6f7" stroke-width="2.4" stroke-linecap="round"/>
+          <circle id="season-mark" cx="16" cy="4" r="3" fill="#fff"/>
+        </svg>
+      </button>
+
       <div class="bottom">
         <div class="dest-chooser" id="dest-chooser" hidden></div>
         <div class="actions">

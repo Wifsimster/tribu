@@ -1,4 +1,4 @@
-import { AGES, DAY_SECONDS, DAY_START, DESTINATIONS, RESOURCES, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
+import { AGES, DAY_SECONDS, DAY_START, DESTINATIONS, RESOURCES, SEASONS, SEASON_DAYS, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -149,6 +149,10 @@ export class Hud {
   private wire(): void {
     el('btn-research').addEventListener('click', () => this.toggleSheet(!this.sheetOpen))
     el('daydial').addEventListener('click', () => this.toast(this.dayDialHint()))
+    el('seasondial').addEventListener('click', () => {
+      this.toast(this.seasonHint())
+      this.toast(this.game.season.fact)
+    })
     el('sheet-close').addEventListener('click', () => this.toggleSheet(false))
     el('fact-close').addEventListener('click', () => this.closeFact())
     el('scrim').addEventListener('click', () => {
@@ -484,6 +488,49 @@ export class Hud {
     return `${veille}${mer} — le jour se lève dans ${dur(s)}`
   }
 
+  /** Le cadran de l'ANNÉE : quatre arcs, une saison chacun, et le repère qui
+   *  en fait le tour en douze jours de jeu. Le cadran du jour disait l'heure ;
+   *  rien ne disait la saison, alors qu'elle pèse sur la récolte — et que
+   *  l'île change de couleur sous les yeux du joueur sans qu'il sache
+   *  pourquoi. */
+  private lastSeasonKey = ''
+  private updateSeasonDial(): void {
+    const yearSeconds = DAY_SECONDS * SEASON_DAYS * 4
+    const u = (this.game.save.totalPlaySeconds % yearSeconds) / yearSeconds
+    const id = this.game.season.id
+    const key = `${id}-${u.toFixed(3)}`
+    if (key === this.lastSeasonKey) return
+    this.lastSeasonKey = key
+    for (let i = 0; i < 4; i++) {
+      const arc = el(`season-arc-${i}`)
+      arc.setAttribute('opacity', i === id ? '1' : '0.28')
+      arc.setAttribute('stroke-width', i === id ? '3.4' : '2.2')
+    }
+    // Le repère part du haut et tourne dans le sens des aiguilles : l'arc du
+    // printemps commence en haut, comme l'année.
+    const a = u * Math.PI * 2 - Math.PI / 2
+    const mark = el('season-mark')
+    mark.setAttribute('cx', (16 + Math.cos(a) * 12).toFixed(1))
+    mark.setAttribute('cy', (16 + Math.sin(a) * 12).toFixed(1))
+  }
+
+  /** Ce que dit le cadran de l'année quand on le touche : la saison, ce
+   *  qu'elle fait à la récolte, et quand elle passe la main. */
+  private seasonHint(): string {
+    const s = this.game.season
+    const seasonSeconds = DAY_SECONDS * SEASON_DAYS
+    const left = seasonSeconds - (this.game.save.totalPlaySeconds % seasonSeconds)
+    const next = SEASONS[(s.id + 1) % 4]!
+    const effect =
+      s.food > 1
+        ? `la récolte donne ${Math.round((s.food - 1) * 100)} % de plus`
+        : s.food < 1
+          ? `la récolte perd ${Math.round((1 - s.food) * 100)} %${this.game.knows('granary') ? ', le grenier amortit' : ' — et il n’y a pas de grenier'}`
+          : 'la récolte suit son cours'
+    const dur = left < 75 ? `${Math.max(5, Math.round(left / 5) * 5)} s` : `${Math.round(left / 60)} min`
+    return `${s.name} — ${effect}. ${next.name} dans ${dur}.`
+  }
+
   private lastDialKey = ''
   private updateDayDial(): void {
     const u = this.dayU()
@@ -535,6 +582,7 @@ export class Hud {
 
   update(): void {
     this.updateDayDial()
+    this.updateSeasonDial()
     const g = this.game
 
     const ess = this.essential()

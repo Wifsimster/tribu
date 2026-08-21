@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.27.0',
+    title: 'Les saisons se voient',
+    items: [
+      "L'île entière change de saison : l'herbe reverdit au printemps, fonce en été, roussit en automne — et l'hiver la couvre de neige, jusqu'aux falaises. Seule la laisse de mer reste sable : sous la neige jusqu'à l'eau, le trait de côte disparaissait.",
+      "Un cadran de l'année rejoint le cadran du jour, en haut à droite : quatre arcs, une saison chacun, et un repère qui en fait le tour. Touche-le pour savoir ce que la saison fait à ta récolte et quand la suivante arrive.",
+    ],
+  },
+  {
     version: '3.26.0',
     title: 'La nuit, le phare et la voie',
     items: [

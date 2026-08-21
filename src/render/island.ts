@@ -505,6 +505,8 @@ export class Island {
   private bushMesh: InstancedMesh | null = null
   private bushBase: Float32Array | null = null
   private terrainMat: MeshLambertMaterial | null = null
+  private terrainMesh: InstancedMesh | null = null
+  private terrainBase: Float32Array | null = null
   private seasonId = -1
 
   /** Repeint l'île à la saison : feuillage lerpé vers le roux ou le givre,
@@ -531,6 +533,7 @@ export class Island {
     }
     repaint(this.leavesMesh, this.leafBase, 1)
     repaint(this.bushMesh, this.bushBase, 0.7)
+    this.paintGround(id)
     if (this.terrainMat) {
       const grade: [number, number, number] =
         id === 0
@@ -542,6 +545,48 @@ export class Island {
               : [0.965, 0.99, 1.05]
       this.terrainMat.color.setRGB(grade[0], grade[1], grade[2])
     }
+  }
+
+  /** Le SOL change de saison, pas seulement les feuilles. C'est le seul signal
+   *  assez large pour se lire d'un coup d'œil sur une île de six cents tuiles :
+   *  l'hiver blanchit tout sauf la laisse de mer (une plage sous la neige
+   *  jusqu'au ras de l'eau efface le trait de côte), l'automne roussit l'herbe,
+   *  le printemps la reverdit, l'été la fonce. Seules les faces SUPÉRIEURES
+   *  sont touchées : les falaises restent de la terre, en toute saison. */
+  private paintGround(id: number): void {
+    const mesh = this.terrainMesh
+    const base = this.terrainBase
+    if (!mesh?.instanceColor || !base) return
+    const target =
+      id === 0
+        ? new Color('#a9dc72')
+        : id === 1
+          ? new Color('#79a83e')
+          : id === 2
+            ? new Color('#c08a3c')
+            : new Color('#eef5fa')
+    const mix = id === 0 ? 0.2 : id === 1 ? 0.16 : id === 2 ? 0.34 : 0.72
+    const arr = mesh.instanceColor.array as Float32Array
+    const c = new Color()
+    this.cells.forEach((cell, i) => {
+      const j = (i * 2 + 1) * 3
+      c.setRGB(base[j]!, base[j + 1]!, base[j + 2]!)
+      // La neige tient mal sur le sable mouillé : la plage n'en prend qu'un
+      // tiers, et le trait de côte survit à l'hiver.
+      c.lerp(target, mix * (cell.beach ? 0.35 : 1))
+      arr[j] = c.r
+      arr[j + 1] = c.g
+      arr[j + 2] = c.b
+      // Le socle, lui, ne fait que refroidir ou se réchauffer : une falaise
+      // enneigée sur toute sa hauteur redevient un bloc plat.
+      const k = (i * 2) * 3
+      c.setRGB(base[k]!, base[k + 1]!, base[k + 2]!)
+      c.lerp(target, mix * 0.22)
+      arr[k] = c.r
+      arr[k + 1] = c.g
+      arr[k + 2] = c.b
+    })
+    mesh.instanceColor.needsUpdate = true
   }
 
   private buildTerrain(): void {
@@ -614,6 +659,11 @@ export class Island {
       mesh.setColorAt(i * 2, socleColor)
       mesh.setColorAt(i * 2 + 1, capColor)
     })
+    // Le terrain garde sa teinte de base : les saisons le repeignent par-dessus
+    // (neige, roux, herbe neuve) au lieu de le multiplier globalement — un
+    // étalonnage de matériau ne se VOIT pas, une île blanche se voit.
+    this.terrainMesh = mesh
+    this.terrainBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
 
     // La bande de flottaison sombre, sur le pourtour émergé. Le contact se
     // densifie à l'ombre : l'eau y reprend le pied. Face au soleil il reste
