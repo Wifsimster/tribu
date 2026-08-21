@@ -2489,9 +2489,7 @@ export class Village {
       case 'dish': {
         // Parabole ×1.8, coupole claire pointée vers le ciel.
         p.push(part(new CylinderGeometry(0.045, 0.07, 0.32, 6), C.stoneDark, 0, 0.16, 0))
-        p.push(part(new SphereGeometry(0.26, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.35).rotateX(-0.9).scale(1, 1, 0.5), C.bone, 0, 0.44, -0.08))
-        p.push(part(new CylinderGeometry(0.014, 0.014, 0.24, 4).rotateX(-0.9), iron, 0, 0.52, 0.05))
-        p.push(part(new SphereGeometry(0.03, 5, 4), C.tile, 0, 0.6, 0.13))
+        // La parabole elle-même tourne (buildDish) : ne reste que le pied.
         for (const g of p) g.scale(1.8, 1.8, 1.8)
         return p
       }
@@ -2508,10 +2506,9 @@ export class Village {
       case 'solar': {
         // Panneaux BLEU lumineux dressés sur châssis, ×1.6 — C.glass quasi noir
         // à plat au ras du sol disparaissait dans l'herbe.
-        const cell = new Color(0.5, 0.95, 1.6)
+        // Les DALLES ne sont plus ici : elles pivotent pour suivre le soleil
+        // (buildSolarPanels). Restent les mâts et le coffret.
         for (const sx of [-0.24, 0.26]) {
-          p.push(part(new BoxGeometry(0.44, 0.035, 0.4).rotateX(-0.65), C.stoneLight, sx, 0.3, 0))
-          p.push(part(new BoxGeometry(0.4, 0.015, 0.34).rotateX(-0.65), cell, sx, 0.32, -0.02))
           p.push(part(new BoxGeometry(0.04, 0.3, 0.04), C.stoneDark, sx, 0.12, 0.12))
           p.push(part(new BoxGeometry(0.04, 0.16, 0.04), C.stoneDark, sx, 0.07, -0.12))
         }
@@ -2618,6 +2615,9 @@ export class Village {
    *  petits meshes autonomes, créés seulement si le bâtiment est posé. */
   private windmillSails: Mesh | null = null
   private millWheel: Mesh | null = null
+  private solarPanels: Mesh[] = []
+  private solarPivot: Group | null = null
+  private dish: Mesh | null = null
   private millPivot: Group | null = null
   private clockHands: { hour: Mesh; minute: Mesh } | null = null
   private windSpin = 0
@@ -2631,6 +2631,15 @@ export class Village {
       this.windSpin += dt * (0.55 + Math.sin(this.windSpin * 0.21) * 0.13)
       this.windmillSails.rotation.z = this.windSpin
     }
+    // Les dalles solaires suivent le soleil : à l'aube elles regardent l'est,
+    // au zénith le ciel, au couchant l'ouest. La nuit, elles se remettent à
+    // plat — c'est ce que font les vrais trackers.
+    for (const panel of this.solarPanels) {
+      const day = Math.min(1, Math.max(0, Math.sin(dayU * Math.PI * 2)))
+      const target = day > 0.02 ? (0.5 - dayU) * Math.PI * 1.2 : 0
+      panel.rotation.x += (target - panel.rotation.x) * Math.min(1, dt * 0.8)
+    }
+    if (this.dish) this.dish.rotation.y += dt * 0.12
     if (this.millWheel) {
       // Une roue à aubes tourne lentement et régulièrement : c'est l'eau qui
       // la mène, pas le vent.
@@ -2649,6 +2658,17 @@ export class Village {
       if (!m) continue
       this.group.remove(m)
       m.geometry.dispose()
+    }
+    if (this.solarPivot) {
+      this.group.remove(this.solarPivot)
+      for (const m of this.solarPanels) m.geometry.dispose()
+    }
+    this.solarPanels = []
+    this.solarPivot = null
+    if (this.dish) {
+      this.group.remove(this.dish)
+      this.dish.geometry.dispose()
+      this.dish = null
     }
     if (this.millPivot) {
       this.group.remove(this.millPivot)
@@ -2685,6 +2705,51 @@ export class Village {
     this.group.add(mesh)
   }
 
+  /** Les dalles solaires, montées sur leur mât : elles suivent la course du
+   *  soleil au lieu de fixer un point du ciel. Un panneau qui ne suit pas est
+   *  un panneau mal posé — et le mouvement, ici, RACONTE la technologie. */
+  private buildSolarPanels(pl: { x: number; y: number; z: number; rot: number }): void {
+    const K = 1.6
+    const cell = new Color(0.5, 0.95, 1.6)
+    const pivot = new Group()
+    pivot.position.set(pl.x, pl.y, pl.z)
+    pivot.rotation.y = pl.rot
+    // Les DEUX dalles dans un seul mesh : elles pivotent ensemble, donc rien
+    // ne justifie de payer deux appels de rendu pour elles.
+    const p: BufferGeometry[] = []
+    for (const sx of [-0.24, 0.26]) {
+      p.push(part(new BoxGeometry(0.44, 0.035, 0.4), C.stoneLight, sx, 0, 0))
+      p.push(part(new BoxGeometry(0.4, 0.015, 0.34), cell, sx, 0.02, -0.02))
+    }
+    const geo = mergeGeometries(p.map((g) => g.scale(K, K, K)))
+    if (geo) {
+      grain(geo)
+      const panel = new Mesh(geo, this.solid)
+      panel.position.set(0, 0.3 * K, 0)
+      pivot.add(panel)
+      this.solarPanels.push(panel)
+    }
+    this.solarPivot = pivot
+    this.group.add(pivot)
+  }
+
+  /** La parabole : elle balaie lentement le ciel, comme une antenne qui
+   *  cherche. Le pied, lui, reste dans la géométrie fusionnée. */
+  private buildDish(pl: { x: number; y: number; z: number; rot: number }): void {
+    const K = 1.8
+    const p: BufferGeometry[] = []
+    p.push(part(new SphereGeometry(0.26, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.35).rotateX(-0.9).scale(1, 1, 0.5), C.bone, 0, 0, -0.08))
+    p.push(part(new CylinderGeometry(0.014, 0.014, 0.24, 4).rotateX(-0.9), new Color('#6b7078'), 0, 0.08, 0.05))
+    p.push(part(new SphereGeometry(0.03, 5, 4), C.tile, 0, 0.16, 0.13))
+    const geo = mergeGeometries(p.map((g) => g.scale(K, K, K)))
+    if (!geo) return
+    grain(geo)
+    const mesh = new Mesh(geo, this.solid)
+    mesh.position.set(pl.x, pl.y + 0.44 * K, pl.z)
+    this.dish = mesh
+    this.group.add(mesh)
+  }
+
   /** La roue à aubes, hors de la fusion. Un pivot porte l'orientation du
    *  bâtiment, la roue tourne dedans autour de son axe : ainsi l'ordre des
    *  rotations d'Euler ne peut pas s'emmêler. */
@@ -2705,7 +2770,6 @@ export class Village {
     if (!geo) return
     grain(geo)
     const wheel = new Mesh(geo, this.solid)
-    wheel.castShadow = true
     const pivot = new Group()
     pivot.position.set(pl.x, pl.y + 0.46 * K, pl.z)
     pivot.rotation.y = pl.rot
@@ -2765,6 +2829,8 @@ export class Village {
       if (pl.id === 'windmill') this.buildWindmillSails(pl)
       if (pl.id === 'clock') this.buildClockHands(pl)
       if (pl.id === 'watermill') this.buildMillWheel(pl)
+      if (pl.id === 'solar') this.buildSolarPanels(pl)
+      if (pl.id === 'dish') this.buildDish(pl)
     }
   }
 

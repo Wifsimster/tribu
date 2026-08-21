@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.22.0',
+    title: 'Le village bouge',
+    items: [
+      "Les panneaux solaires suivent la course du soleil — à l'aube ils regardent l'est, au couchant l'ouest — et se remettent à plat la nuit, comme les vrais trackers.",
+      "La parabole balaie lentement le ciel, comme une antenne qui cherche.",
+      "Avec le moulin, sa roue et l'horloge, cinq mécanismes vivent maintenant dans le village.",
+    ],
+  },
+  {
     version: '3.21.1',
     title: 'La roue du moulin à eau tourne',
     items: [
