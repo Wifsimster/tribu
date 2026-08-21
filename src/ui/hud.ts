@@ -157,6 +157,10 @@ export class Hud {
     })
     el('btn-expedition').addEventListener('click', () => {
       if (this.game.save.expedition) return
+      if (!this.game.seaOpen) {
+        this.toast("La mer est noire : sans phare, aucune barque ne quitte l'île avant l'aube")
+        return
+      }
       if (!this.game.canExpedition()) {
         this.toast('Pas assez de nourriture pour partir')
         return
@@ -465,12 +469,19 @@ export class Hud {
         : `Le soleil suit sa course — la nuit tombe dans ${dur(s)}`
     }
     const s = ((Hud.DAWN - u + 1) % 1) * DAY_SECONDS
-    const veille = this.game.knows('electricity')
-      ? 'Le lampadaire veille sur le village endormi'
-      : this.game.age.id >= 4
-        ? 'Le brasero veille sur le village endormi'
-        : 'La tribu dort autour du feu'
-    return `${veille} — le jour se lève dans ${dur(s)}`
+    // Tant que la veillée dure, on le dit ; ensuite la tribu dort, à toutes les
+    // époques — aucun savoir n'abolit le cœur de la nuit.
+    const veille = !this.game.sleepTime
+      ? this.game.knows('electricity')
+        ? 'Sous le lampadaire, la tribu veille encore'
+        : 'À la lueur des lampes, la tribu veille encore'
+      : this.game.knows('electricity')
+        ? 'Le lampadaire veille sur le village endormi'
+        : this.game.age.id >= 4
+          ? 'Le brasero veille sur le village endormi'
+          : 'La tribu dort autour du feu'
+    const mer = this.game.canSailAtNight ? ' — le phare tient la passe' : ''
+    return `${veille}${mer} — le jour se lève dans ${dur(s)}`
   }
 
   private lastDialKey = ''
@@ -580,7 +591,10 @@ export class Hud {
     const label = el('expedition-label')
     if (exp) {
       expBtn.disabled = true
-      const text = `En route… ${fmtDuration(exp.remaining)}`
+      // Voyage terminé mais la passe est noire : la barque attend l'aube au
+      // large. Le compte est bloqué à zéro par la sim, il ne dirait rien.
+      const text =
+        exp.remaining <= 0 && !g.seaOpen ? "Au large… attend l'aube" : `En route… ${fmtDuration(exp.remaining)}`
       if (this.lastExpLabel !== text) {
         label.textContent = text
         this.lastExpLabel = text
@@ -590,9 +604,11 @@ export class Hud {
       expBtn.disabled = !g.canExpedition()
       // Le SVG coûte un reparse : on ne le réécrit qu'au changement d'état
       // (le coût varie avec l'âge, il fait donc partie de la clé).
-      const key = `idle-${g.expeditionCost()}`
+      const key = g.seaOpen ? `idle-${g.expeditionCost()}` : 'idle-dark'
       if (this.lastExpLabel !== key) {
-        label.innerHTML = `Expédition <span class="cost">${icon('food', 14)}${fmt(g.expeditionCost())}</span>`
+        label.innerHTML = g.seaOpen
+          ? `Expédition <span class="cost">${icon('food', 14)}${fmt(g.expeditionCost())}</span>`
+          : 'La mer est noire — aucune barque avant l’aube'
         this.lastExpLabel = key
       }
       el('expedition-fill').style.transform = 'scaleX(0)'

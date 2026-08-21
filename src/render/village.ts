@@ -1359,7 +1359,6 @@ export class Village {
       p.push(part(new ConeGeometry(0.3, 0.24, 9), iron, 0.58, 3.3, 0))
     }
     this.camp(p)
-    this.jetty(p)
     const geo = mergeGeometries(p) ?? new BufferGeometry()
     grain(geo)
     bakeFirelight(geo)
@@ -2027,7 +2026,7 @@ export class Village {
         p.push(part(new BoxGeometry(0.56, 0.34, 0.02), C.plaster, 0, 0.56, 0.01))
         for (let i = 0; i < 6; i++)
           p.push(part(new BoxGeometry(0.02, 0.26, 0.025), C.woodDark, -0.25 + i * 0.1, 0.27, 0.01))
-        p.push(part(new BoxGeometry(0.16, 0.045, 0.06), C.ochre, 0.08, 0.4, 0.04))
+        // La navette va et vient (buildShuttle) : elle n'est plus ici.
         return p
       }
       case 'chopping': {
@@ -2107,7 +2106,7 @@ export class Village {
         p.push(part(new BoxGeometry(0.14, 0.18, 0.14), C.woodDark, -0.2, 0.09, 0))
         p.push(part(new BoxGeometry(0.3, 0.08, 0.12), iron, -0.2, 0.22, 0))
         p.push(part(new BoxGeometry(0.34, 0.12, 0.26), PALETTE.rockDark, 0.22, 0.06, 0))
-        p.push(part(new BoxGeometry(0.26, 0.05, 0.18), C.emberCore, 0.22, 0.14, 0))
+        // Le lit de braises PULSE (buildEmbers) : il vit dans son propre mesh.
         for (let i = 0; i < 4; i++) p.push(part(new DodecahedronGeometry(0.05, 0), C.char, 0.1 + (i % 2) * 0.2, 0.2, -0.05 + (i % 3) * 0.07))
         return p
       }
@@ -2377,8 +2376,7 @@ export class Village {
         p.push(part(new BoxGeometry(0.55, 0.14, 0.42), C.char, 0.02, 0.07, 0))
         p.push(part(new CylinderGeometry(0.22, 0.22, 0.72, 8).rotateZ(Math.PI / 2), iron, 0, 0.32, 0))
         p.push(part(new CylinderGeometry(0.07, 0.1, 0.5, 6), C.char, -0.22, 0.8, 0))
-        p.push(part(new TorusGeometry(0.22, 0.04, 6, 12).rotateY(Math.PI / 2), C.stoneDark, 0.5, 0.38, 0))
-        p.push(part(new BoxGeometry(0.4, 0.05, 0.05), C.stoneLight, 0.22, 0.38, 0.12))
+        // Volant d'inertie et bielle : ils TOURNENT (buildEngine).
         for (let i = 0; i < 3; i++)
           p.push(part(new SphereGeometry(0.09 + i * 0.05, 6, 5), C.smoke, -0.22 + i * 0.09, 1.1 + i * 0.24, 0.02 + i * 0.05))
         return p
@@ -2631,6 +2629,14 @@ export class Village {
   private solarPanels: Mesh[] = []
   private solarPivot: Group | null = null
   private dish: Mesh | null = null
+  private engineWheel: Mesh | null = null
+  private engineRod: Mesh | null = null
+  private enginePivot: Group | null = null
+  private shuttle: Mesh | null = null
+  private shuttlePivot: Group | null = null
+  private forgeEmbers: Mesh | null = null
+  private forgePivot: Group | null = null
+  private moverTime = 0
   private millPivot: Group | null = null
   private clockHands: { hour: Mesh; minute: Mesh } | null = null
   private windSpin = 0
@@ -2653,6 +2659,26 @@ export class Village {
       panel.rotation.x += (target - panel.rotation.x) * Math.min(1, dt * 0.8)
     }
     if (this.dish) this.dish.rotation.y += dt * 0.12
+    this.moverTime += dt
+    if (this.engineWheel && this.engineRod) {
+      // Le volant tourne, la bielle coulisse en suivant sa manivelle : c'est
+      // le décalage entre les deux qui fait lire un mécanisme.
+      this.engineWheel.rotation.x += dt * 3.1
+      this.engineRod.position.x = (0.22 + Math.cos(this.engineWheel.rotation.x) * 0.1) * 1.5
+      this.engineRod.position.z = 0.12 * 1.5
+    }
+    if (this.shuttle) {
+      // Va-et-vient net, avec un temps d'arrêt aux extrémités : une navette
+      // est LANCÉE, elle ne glisse pas d'un bord à l'autre.
+      const u = Math.sin(this.moverTime * 2.2)
+      this.shuttle.position.x = Math.sign(u) * Math.pow(Math.abs(u), 0.55) * 0.24
+    }
+    if (this.forgeEmbers) {
+      // Le lit de braises respire : le soufflet le réveille par bouffées.
+      const b = 0.75 + Math.sin(this.moverTime * 1.7) * 0.2 + Math.sin(this.moverTime * 5.3) * 0.05
+      this.forgeEmbers.scale.set(1, b, 1)
+      this.forgeEmbers.position.y = (b - 1) * 0.02
+    }
     if (this.millWheel) {
       // Une roue à aubes tourne lentement et régulièrement : c'est l'eau qui
       // la mène, pas le vent.
@@ -2683,6 +2709,10 @@ export class Village {
       this.dish.geometry.dispose()
       this.dish = null
     }
+    for (const g of [this.enginePivot, this.shuttlePivot, this.forgePivot]) if (g) this.group.remove(g)
+    for (const m of [this.engineWheel, this.engineRod, this.shuttle, this.forgeEmbers]) m?.geometry.dispose()
+    this.engineWheel = this.engineRod = this.shuttle = this.forgeEmbers = null
+    this.enginePivot = this.shuttlePivot = this.forgePivot = null
     if (this.millPivot) {
       this.group.remove(this.millPivot)
       this.millWheel?.geometry.dispose()
@@ -2716,6 +2746,67 @@ export class Village {
     mesh.rotation.y = pl.rot
     this.windmillSails = mesh
     this.group.add(mesh)
+  }
+
+  /** Volant d'inertie de la machine à vapeur, et sa bielle. Le volant tourne,
+   *  la bielle suit — c'est le geste qui dit « moteur » plutôt que « caisse
+   *  de métal ». */
+  private buildEngine(pl: { x: number; y: number; z: number; rot: number }): void {
+    const K = 1.5
+    const wheel: BufferGeometry[] = [
+      part(new TorusGeometry(0.22, 0.04, 6, 12).rotateY(Math.PI / 2), C.stoneDark, 0, 0, 0),
+    ]
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2
+      wheel.push(part(new BoxGeometry(0.03, 0.42, 0.03).rotateX(a), C.stoneDark, 0, 0, 0))
+    }
+    const gw = mergeGeometries(wheel.map((g) => g.scale(K, K, K)))
+    const rodGeo = mergeGeometries([part(new BoxGeometry(0.4, 0.05, 0.05), C.stoneLight, 0, 0, 0).scale(K, K, K)])
+    if (!gw || !rodGeo) return
+    grain(gw)
+    grain(rodGeo)
+    const pivot = new Group()
+    pivot.position.set(pl.x, pl.y + 0.38 * K, pl.z)
+    pivot.rotation.y = pl.rot
+    const w = new Mesh(gw, this.solid)
+    w.position.set(0.5 * K, 0, 0)
+    const rod = new Mesh(rodGeo, this.solid)
+    pivot.add(w, rod)
+    this.engineWheel = w
+    this.engineRod = rod
+    this.enginePivot = pivot
+    this.group.add(pivot)
+  }
+
+  /** La navette du métier à tisser : elle traverse la toile et revient. */
+  private buildShuttle(pl: { x: number; y: number; z: number; rot: number }): void {
+    const geo = mergeGeometries([part(new BoxGeometry(0.16, 0.045, 0.06), C.ochre, 0, 0, 0)])
+    if (!geo) return
+    grain(geo)
+    const pivot = new Group()
+    pivot.position.set(pl.x, pl.y + 0.4, pl.z)
+    pivot.rotation.y = pl.rot
+    const mesh = new Mesh(geo, this.solid)
+    mesh.position.set(0, 0, 0.04)
+    pivot.add(mesh)
+    this.shuttle = mesh
+    this.shuttlePivot = pivot
+    this.group.add(pivot)
+  }
+
+  /** Le lit de braises de la forge : il respire au rythme du soufflet. */
+  private buildEmbers(pl: { x: number; y: number; z: number; rot: number }): void {
+    const geo = mergeGeometries([part(new BoxGeometry(0.26, 0.05, 0.18), C.emberCore, 0, 0, 0)])
+    if (!geo) return
+    const pivot = new Group()
+    pivot.position.set(pl.x, pl.y + 0.14, pl.z)
+    pivot.rotation.y = pl.rot
+    const mesh = new Mesh(geo, this.solid)
+    mesh.position.set(0.22, 0, 0)
+    pivot.add(mesh)
+    this.forgeEmbers = mesh
+    this.forgePivot = pivot
+    this.group.add(pivot)
   }
 
   /** Les dalles solaires, montées sur leur mât : elles suivent la course du
@@ -2844,6 +2935,9 @@ export class Village {
       if (pl.id === 'watermill') this.buildMillWheel(pl)
       if (pl.id === 'solar') this.buildSolarPanels(pl)
       if (pl.id === 'dish') this.buildDish(pl)
+      if (pl.id === 'steamengine') this.buildEngine(pl)
+      if (pl.id === 'loom') this.buildShuttle(pl)
+      if (pl.id === 'forge') this.buildEmbers(pl)
     }
   }
 

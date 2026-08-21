@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.24.0',
+    title: 'Trois mécanismes de plus',
+    items: [
+      "Le volant de la machine à vapeur tourne et sa bielle coulisse en suivant la manivelle : c'est le décalage entre les deux qui fait lire un moteur.",
+      "La navette du métier à tisser traverse la toile et revient, avec un temps d'arrêt aux extrémités — une navette est lancée, elle ne glisse pas.",
+      "Le lit de braises de la forge respire au rythme du soufflet.",
+    ],
+  },
+  {
     version: '3.23.0',
     title: 'Le ponton accoste, et un compteur d’images',
     items: [
