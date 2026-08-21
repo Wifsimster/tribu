@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.16.0',
+    title: 'Le cheval, la mouette, et de l’air',
+    items: [
+      "Les cinq animaux sont détaillés : le cheval bai gagne son encolure, sa crinière en épis, sa liste blanche, sa balzane et ses sabots noirs ; la mouette, une aile en trois segments, une queue en éventail et les rémiges écartées du bout.",
+      "La forêt recule à mesure que le village s'étale : la clairière s'élargit avec l'île, et les plus hauts sapins ne dépassent plus les toits.",
+      "Sur grand écran, les messages se rangent en bas à droite au lieu de barrer le milieu de la scène, et le cadran d'horizon s'aligne sur la ligne du bouton de menu.",
+    ],
+  },
+  {
     version: '3.15.0',
     title: 'La poule, et deux choses qui s’enfonçaient',
     items: [

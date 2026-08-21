@@ -704,6 +704,20 @@ body {
   .fact p {
     font-size: 15.5px;
   }
+
+  /* Sur grand écran, les toasts n'ont plus à barrer le milieu de la scène :
+     ils s'empilent dans le coin bas-droit, hors du chemin du regard. */
+  .toasts {
+    left: auto;
+    right: 18px;
+    bottom: calc(18px + var(--safe-b));
+    transform: none;
+    width: min(380px, 34vw);
+    align-items: flex-end;
+  }
+  .toast {
+    text-align: right;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1295,3 +1309,14 @@ body.night .age-bar {
 .feat { opacity: 0.55; }
 .feat.done { opacity: 1; }
 .feat.done b { color: #b98a2e; }
+
+/* Sur grand écran, le cadran d'horizon se range sur la LIGNE du bouton de
+   menu — deux pastilles alignées en haut à droite au lieu d'une sous l'autre.
+   Cette règle DOIT rester en fin de feuille : `.daydial` est déclarée plus
+   bas que la media query générale, et l'aurait sinon emporté. */
+@media (min-width: 760px) {
+  .daydial {
+    top: calc(15px + var(--safe-t));
+    right: 60px;
+  }
+}

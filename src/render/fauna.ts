@@ -201,37 +201,84 @@ function henGeo(): BufferGeometry {
 }
 
 function horseGeo(): BufferGeometry {
-  const coat = new Color('#6f4a2d')
-  const mane = new Color('#33241a')
+  const coat = new Color('#6b4630')
+  // Un cheval bai : robe brune, extrémités et crinière noires, ventre plus
+  // clair. Sans ces trois valeurs, la bête lisait comme une caisse sur pieds.
+  const coatLight = new Color('#8a5d40')
+  const belly = new Color('#a67a56')
+  const mane = new Color('#241811')
+  const hoof = new Color('#17110c')
+  const sock = new Color('#e6dccb')
+  const eye = new Color('#120d09')
   const p: BufferGeometry[] = []
-  p.push(part(new CapsuleGeometry(0.2, 0.6, 2, 8).rotateX(Math.PI / 2).scale(1, 1.1, 1), coat, 0, 0.84, -0.04))
-  // Encolure massive et tête tombante : l'inverse du port de tête du cerf.
-  p.push(part(new CylinderGeometry(0.07, 0.13, 0.52, 6).rotateX(0.55), coat, 0, 1.1, 0.36))
-  p.push(part(new CapsuleGeometry(0.068, 0.2, 1, 6).rotateX(Math.PI / 2 + 0.5), coat, 0, 1.3, 0.56))
-  // Crinière sombre plaquée sur l'arrière de l'encolure.
-  p.push(part(new BoxGeometry(0.045, 0.5, 0.09).rotateX(0.55), mane, 0, 1.18, 0.24))
-  p.push(part(new BoxGeometry(0.07, 0.42, 0.07).rotateX(-0.25), mane, 0, 0.66, -0.44))
-  for (const s of [-1, 1]) p.push(part(new ConeGeometry(0.035, 0.1, 4), mane, s * 0.07, 1.44, 0.42))
-  for (const sx of [-1, 1])
-    for (const sz of [-1, 1])
-      p.push(part(new CylinderGeometry(0.032, 0.042, 0.68, 5), coat, sx * 0.13, 0.34, sz * 0.32))
+
+  // Tronc : une masse haute et courte, encolure puissante.
+  p.push(part(new CapsuleGeometry(0.22, 0.62, 2, 8).rotateX(Math.PI / 2).scale(1, 1.05, 1), coat, 0, 0.95, -0.02))
+  p.push(part(new CapsuleGeometry(0.19, 0.5, 2, 7).rotateX(Math.PI / 2).scale(1, 0.55, 1), coatLight, 0, 1.08, -0.02))
+  p.push(part(new CapsuleGeometry(0.17, 0.44, 2, 7).rotateX(Math.PI / 2).scale(1, 0.45, 1), belly, 0, 0.8, -0.02))
+  // Croupe arrondie et queue tombante.
+  p.push(part(new SphereGeometry(0.22, 8, 6).scale(1, 1, 0.85), coat, 0, 0.97, -0.34))
+  p.push(part(new CapsuleGeometry(0.045, 0.36, 1, 5).rotateX(0.25), mane, 0, 0.82, -0.5))
+
+  // Encolure, tête et chanfrein — c'est le profil qui fait le cheval.
+  p.push(part(new CylinderGeometry(0.1, 0.16, 0.5, 7).rotateX(0.42), coat, 0, 1.24, 0.3))
+  p.push(part(new CapsuleGeometry(0.085, 0.2, 1, 6).rotateX(Math.PI / 2 - 0.5), coat, 0, 1.5, 0.46))
+  p.push(part(new CapsuleGeometry(0.06, 0.14, 1, 6).rotateX(Math.PI / 2 - 0.6), coatLight, 0, 1.44, 0.56))
+  p.push(part(new SphereGeometry(0.055, 6, 5).scale(1.1, 0.9, 1), mane, 0, 1.38, 0.64))
+  // Liste blanche sur le chanfrein : la marque la plus reconnaissable.
+  p.push(part(new BoxGeometry(0.045, 0.02, 0.2).rotateX(-0.55), sock, 0, 1.47, 0.55))
+  // Crinière en épis le long de l'encolure.
+  for (let i = 0; i < 5; i++)
+    p.push(part(new BoxGeometry(0.045, 0.12 - i * 0.012, 0.09), mane, 0, 1.28 + i * 0.06, 0.2 + i * 0.075))
+  for (const s of [-1, 1]) {
+    p.push(part(new ConeGeometry(0.032, 0.11, 5).rotateZ(s * 0.3), coat, s * 0.055, 1.58, 0.42))
+    p.push(part(new SphereGeometry(0.02, 5, 4), eye, s * 0.065, 1.5, 0.5))
+  }
+
+  // Jambes : avant-bras épais, canon fin, un balzane blanche et un sabot noir.
+  const legs: [number, number][] = [[-0.13, 0.26], [0.13, 0.26], [-0.13, -0.24], [0.13, -0.24]]
+  legs.forEach(([lx, lz], i) => {
+    p.push(part(new CylinderGeometry(0.055, 0.04, 0.42, 6), coat, lx, 0.62, lz))
+    p.push(part(new CylinderGeometry(0.035, 0.032, 0.34, 5), coat, lx, 0.27, lz))
+    if (i % 3 === 0) p.push(part(new CylinderGeometry(0.037, 0.037, 0.1, 5), sock, lx, 0.14, lz))
+    p.push(part(new CylinderGeometry(0.042, 0.036, 0.08, 6), hoof, lx, 0.05, lz))
+  })
   return weld(p)
 }
 
 function gullGeo(): BufferGeometry {
   const body = new Color('#f4f6f4')
   const wing = new Color('#d9dfe0')
+  const wingDark = new Color('#b9c2c6')
   const tip = new Color('#4a5054')
   const beak = new Color('#d9a13c')
+  const eye = new Color('#1a1d20')
   const p: BufferGeometry[] = []
+
+  // Corps fuselé, tête ronde, bec crochu — une mouette de dessous, c'est
+  // surtout une croix blanche à bouts sombres.
   p.push(part(new CapsuleGeometry(0.05, 0.16, 1, 6).rotateX(Math.PI / 2), body, 0, 0, 0))
   p.push(part(new SphereGeometry(0.04, 5, 4), body, 0, 0.03, 0.14))
   p.push(part(new ConeGeometry(0.013, 0.06, 4).rotateX(Math.PI / 2), beak, 0, 0.03, 0.2))
+  // Tache rouge du bec adulte, et l'œil.
+  p.push(part(new SphereGeometry(0.008, 4, 3), new Color('#c2412c'), 0, 0.022, 0.215))
+  for (const s of [-1, 1]) p.push(part(new SphereGeometry(0.008, 4, 3), eye, s * 0.022, 0.045, 0.155))
+
+  // Queue en éventail, échancrée : sans elle l'oiseau lisait comme une croix.
   p.push(part(new BoxGeometry(0.1, 0.01, 0.12), wing, 0, 0, -0.16))
+  for (const s of [-1, 1])
+    p.push(part(new BoxGeometry(0.045, 0.009, 0.09).rotateY(s * 0.22), wing, s * 0.035, 0, -0.2))
+
   // Ailes en dièdre, bouts sombres : la signature de la mouette vue de loin.
+  // Trois segments par aile — l'épaule, le bras, la main — pour que le profil
+  // s'incurve au lieu de faire une planche.
   for (const s of [-1, 1]) {
-    p.push(part(new BoxGeometry(0.4, 0.012, 0.14).rotateZ(s * 0.14), wing, s * 0.24, 0.02, -0.02))
-    p.push(part(new BoxGeometry(0.12, 0.013, 0.11).rotateZ(s * 0.24), tip, s * 0.48, 0.06, -0.03))
+    p.push(part(new BoxGeometry(0.2, 0.014, 0.15).rotateZ(s * 0.1), wing, s * 0.12, 0.01, -0.01))
+    p.push(part(new BoxGeometry(0.24, 0.012, 0.13).rotateZ(s * 0.2), wingDark, s * 0.33, 0.045, -0.02))
+    p.push(part(new BoxGeometry(0.14, 0.011, 0.1).rotateZ(s * 0.32), tip, s * 0.51, 0.09, -0.03))
+    // Rémiges du bout, écartées comme des doigts.
+    for (let k = 0; k < 3; k++)
+      p.push(part(new BoxGeometry(0.07, 0.009, 0.022).rotateZ(s * 0.34).rotateY(s * (0.1 + k * 0.12)), tip, s * 0.6, 0.11, -0.05 + k * 0.03))
   }
   return weld(p)
 }

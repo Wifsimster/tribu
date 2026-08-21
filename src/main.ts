@@ -1403,6 +1403,8 @@ requestAnimationFrame((t) => {
   fauna: () => fauna,
   settler: () => settler,
   villagers: () => villagers,
+  village: () => village,
+  island: () => island,
 }
 
 // Credit real elapsed time when the tab comes back, and never lose a session.

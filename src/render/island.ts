@@ -162,13 +162,20 @@ const CLEAR_RADIUS = 8.6
  *  Au cadrage par défaut, la caméra regarde vers (−x,−z) : un sapin planté là
  *  monte à l'écran d'un demi-mètre par mètre de recul et vient poser sa base
  *  contre la pointe des tipis, alors qu'il en est loin dans le monde. */
-function clearRadius(x: number, z: number): number {
+/** Rayon de forêt interdite autour du foyer. Il s'élargit AVEC L'ÎLE : le
+ *  village s'étale d'âge en âge (moulin, aqueduc, cathédrale…) alors que le
+ *  dégagement, lui, était figé à 8,6 — la forêt finissait par pousser entre
+ *  les bâtiments et masquer les toits. `growth` vaut 1 au Paléolithique et
+ *  ~1,45 à l'ère contemporaine. */
+function clearRadius(x: number, z: number, growth = 1): number {
+  const base = CLEAR_RADIUS * (0.94 + 0.42 * (growth - 1) * 2.4)
   const dx = x - TROD.x
   const dz = z - TROD.z
   const d = Math.hypot(dx, dz)
-  if (d < 1e-3) return CLEAR_RADIUS
+  if (d < 1e-3) return base
+  // Derrière le feu, la forêt reste plus proche : c'est le fond du décor.
   const back = Math.max(0, -(dx + dz) / (Math.SQRT2 * d))
-  return CLEAR_RADIUS + back * back * back * 3.2
+  return base + back * back * back * 3.2
 }
 
 const EDGE_BASE = 9.6
@@ -1350,7 +1357,7 @@ export class Island {
     // Les sapins reculent bien au-delà de la place : le feu est le seul signe
     // d'habitat de la maquette, il lui faut de l'air autour.
     const wooded = open.filter(
-      (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z),
+      (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth),
     )
 
     const centers: Cell[] = []
@@ -1456,7 +1463,11 @@ export class Island {
       // Variance élargie (0,72–1,27) : à cette échelle, un semis uniforme se
       // lirait comme une plantation. Même nombre d'appels à rnd() qu'avant
       // pour garder les positions (jitter, faune, treeDist) stables.
-      const s = 0.72 + rnd() * 0.55
+      // Variance resserrée par le haut (0,72–1,12 au lieu de 0,72–1,27) : les
+      // plus hauts montaient à ~12 unités et coupaient les toits du village
+      // depuis la caméra par défaut. Le même tirage aléatoire est conservé,
+      // seule son amplitude change — positions, faune et treeDist ne bougent pas.
+      const s = 0.72 + rnd() * 0.4
       const jx = (rnd() - 0.5) * 0.5
       const jz = (rnd() - 0.5) * 0.5
       d.position.set(c.x + jx, c.height + 0.45 * s * TREE_H, c.z + jz)
