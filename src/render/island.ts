@@ -1125,18 +1125,21 @@ export class Island {
     // fenêtre en évitant l'îlot (3,95) et la côte (4,7), du plus visible au
     // plus périphérique : les voisins les plus récents obtiennent les
     // meilleures places, les suivants s'éloignent sur les côtés.
-    // Mesuré en capture : la fenêtre visible va de 3,58 à 4,63 (plus étroite
-    // encore en portrait). Les deux premiers créneaux tombent DEDANS, de part
-    // et d'autre de l'îlot ; les suivants attendent qu'on fasse tourner la vue.
-    const SLOT_AZ = [3.66, 4.3, 3.42, 3.15, 5.05, 2.9, 5.35, 2.6]
+    // Mesuré en capture, viewport par viewport : la fenêtre visible va de 3,58
+    // à 4,63 en paysage, mais seulement de 3,60 à 4,26 en portrait. Les DEUX
+    // premiers créneaux tombent dans la fenêtre étroite du téléphone, de part
+    // et d'autre de l'îlot ; les suivants attendent qu'on tourne la vue.
+    const SLOT_AZ = [3.72, 4.15, 3.42, 4.42, 3.15, 5.05, 2.9, 5.35]
 
     for (let i = 0; i < list.length && i < SLOT_AZ.length; i++) {
       const n = list[i]!
       const az = SLOT_AZ[i]!
       // Distance alternée : un horizon à deux profondeurs se lit mieux qu'un
-      // alignement au cordeau.
-      const R = i % 2 === 0 ? 104 : 122
-      const far = R > 112
+      // alignement au cordeau. Rapprochées à 92/100 (l'îlot est à 85, la côte
+      // à 115) : à 104/122 elles ne faisaient plus que 50 px de large et se
+      // collaient au bord haut de l'écran — vues, mais illisibles.
+      const R = i % 2 === 0 ? 92 : 100
+      const far = R > 96
       const skin = far ? hazeFar : haze
       const cx = Math.sin(az) * R
       const cz = Math.cos(az) * R
@@ -1151,54 +1154,54 @@ export class Island {
       ]
 
       // Le socle : une île basse, plus large que haute.
-      put(parts, new IcosahedronGeometry(3.2, 0).scale(1.9, 0.8, 1.3), skin, cx, 0.35, cz)
-      const [sx, sz] = at(4.2, 0.8)
-      put(parts, new IcosahedronGeometry(1.7, 0).scale(1.4, 0.7, 1.1), skin, sx, 0.15, sz)
+      put(parts, new IcosahedronGeometry(3.9, 0).scale(1.9, 0.85, 1.3), skin, cx, 0.35, cz)
+      const [sx, sz] = at(5.1, 0.8)
+      put(parts, new IcosahedronGeometry(2.1, 0).scale(1.4, 0.75, 1.1), skin, sx, 0.15, sz)
 
       const age = Math.max(0, Math.min(9, n.age))
       if (age <= 1) {
         // Deux tipis et rien d'autre : on devine à peine qu'il y a quelqu'un.
         for (const [u, h] of [
-          [-1.3, 2.2],
-          [0.9, 1.8],
+          [-1.6, 2.8],
+          [1.1, 2.3],
         ] as [number, number][]) {
           const [x, z] = at(u, 0)
-          put(parts, new ConeGeometry(0.85, h, 6), skin, x, 0.9 + h / 2 - 0.6, z)
+          put(parts, new ConeGeometry(1.05, h, 6), skin, x, 0.9 + h / 2 - 0.6, z)
         }
       } else if (age <= 5) {
         // Le hameau : murs bas, toits en pente, un arbre resté debout.
         for (const [u, w] of [
-          [-1.6, 1.5],
-          [0.4, 1.9],
-          [2.2, 1.3],
+          [-2.0, 1.9],
+          [0.5, 2.4],
+          [2.8, 1.7],
         ] as [number, number][]) {
           const [x, z] = at(u, 0)
-          put(parts, new BoxGeometry(w, 1.2, 1.4).rotateY(az), skin, x, 1.1, z)
-          put(parts, new BoxGeometry(w + 0.5, 0.45, 1.8).rotateY(az), skin, x, 1.9, z)
+          put(parts, new BoxGeometry(w, 1.6, 1.8).rotateY(az), skin, x, 1.25, z)
+          put(parts, new BoxGeometry(w + 0.6, 0.55, 2.3).rotateY(az), skin, x, 2.3, z)
         }
         const [tx2, tz2] = at(3.6, 0.4)
         put(parts, new ConeGeometry(0.7, 2.4, 6), skin, tx2, 2.0, tz2)
       } else {
         // La ville : un front bâti et un clocher — visible de très loin.
         for (const [u, w, h] of [
-          [-2.2, 1.8, 1.8],
-          [-0.2, 2.2, 2.4],
-          [1.9, 1.6, 1.6],
+          [-2.7, 2.2, 2.3],
+          [-0.2, 2.7, 3.1],
+          [2.4, 2.0, 2.0],
         ] as [number, number, number][]) {
           const [x, z] = at(u, 0)
-          put(parts, new BoxGeometry(w, h, 1.6).rotateY(az), skin, x, 0.8 + h / 2, z)
+          put(parts, new BoxGeometry(w, h, 2.0).rotateY(az), skin, x, 0.8 + h / 2, z)
         }
         const [bx, bz] = at(0.6, -0.6)
-        put(parts, new BoxGeometry(1.0, 4.2, 1.0).rotateY(az), skin, bx, 3.0, bz)
-        put(parts, new ConeGeometry(0.8, 1.6, 4).rotateY(az), skin, bx, 5.8, bz)
+        put(parts, new BoxGeometry(1.3, 5.4, 1.3).rotateY(az), skin, bx, 3.6, bz)
+        put(parts, new ConeGeometry(1.0, 2.0, 4).rotateY(az), skin, bx, 7.3, bz)
       }
 
       // La Merveille d'un voisin se voit d'ici : une flèche qui dépasse tout.
       if (n.wonders > 0) {
         const [wx, wz] = at(-3.4, -1.2)
-        const h = 5.5 + Math.min(3, n.wonders) * 1.4
-        put(parts, new CylinderGeometry(0.35, 0.7, h, 6), skin, wx, 0.8 + h / 2, wz)
-        put(parts, new ConeGeometry(0.75, 1.5, 6), skin, wx, 0.8 + h + 0.6, wz)
+        const h = 6.8 + Math.min(3, n.wonders) * 1.6
+        put(parts, new CylinderGeometry(0.45, 0.9, h, 6), skin, wx, 0.8 + h / 2, wz)
+        put(parts, new ConeGeometry(0.95, 1.9, 6), skin, wx, 0.8 + h + 0.8, wz)
       }
 
       // Les feux du soir : la preuve qu'il y a quelqu'un, même sans détail.
@@ -1208,8 +1211,8 @@ export class Island {
       // et elles regardent le centre du monde, donc la caméra qui orbite.
       const fireCount = age <= 1 ? 1 : age <= 5 ? 2 : 3
       for (let i = 0; i < fireCount; i++) {
-        const [fx, fz] = at(-1.8 + i * 1.9, -1.0)
-        put(fires, new PlaneGeometry(1.9, 1.9).rotateY(az + Math.PI), ember, fx, 3.2, fz)
+        const [fx, fz] = at(-2.1 + i * 2.2, -1.2)
+        put(fires, new PlaneGeometry(2.3, 2.3).rotateY(az + Math.PI), ember, fx, 3.6, fz)
       }
     }
 

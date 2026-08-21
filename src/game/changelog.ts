@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.4.0',
+    title: 'Un monde plus franc',
+    items: [
+      "Nouvelle palette : herbe vive, mer cobalt, hauts-fonds turquoise — et l'ardoise bleue sur les toits des époques tardives. Le monde est peint plus franchement, sans perdre la lecture de sa silhouette.",
+      "Les îles du voisinage se rapprochent et grossissent : elles s'accrochaient au bord haut de l'écran, larges de cinquante pixels. Deux voisins tiennent maintenant dans le cadre d'un téléphone, cinq sur un écran large.",
+      "« Comment jouer » racontait le jeu de la version 2.3 : saisons, pêche, Merveilles, hauts faits, Chronique, voisinage, comptoir, transfert et Exode y sont enfin.",
+    ],
+  },
+  {
     version: '3.3.0',
     title: 'Le comptoir des tribus',
     items: [

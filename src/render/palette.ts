@@ -7,22 +7,29 @@ import {
   SRGBColorSpace,
 } from 'three'
 
-/** Pastel, low-contrast, faintly desaturated — the palette a toy village is
- *  painted in. Saturated primaries read as "programmer art" at this scale.
- *  Les verts sont volontairement cassés vers l'olive : à côté d'une eau
- *  turquoise sourde, un vert pur vire au fluo. */
+/** Palette « maquette peinte » : teintes franches, valeurs tenues.
+ *
+ *  HISTORIQUE — jusqu'à la v3.3 elle était volontairement pastel et cassée vers
+ *  l'olive (un vert pur virait au fluo à côté d'une eau turquoise sourde).
+ *  Retour joueur 2026-08-21, référence à l'appui (hex builder saturé) : on va
+ *  vers des teintes plus vives. La leçon des rounds pastel reste vraie et
+ *  s'applique autrement : ce n'est pas la SATURATION qui faisait « programmer
+ *  art », c'est l'absence d'écart de VALEUR. Ici les verts montent en
+ *  saturation mais gardent leur hiérarchie clair/moyen/sombre, et l'eau garde
+ *  une valeur nettement plus basse que la terre — c'est elle qui détache la
+ *  silhouette de l'île. */
 export const PALETTE = {
   /** Couleur de l'eau *proche* : la brume se charge d'éclaircir le lointain.
    *  L'eau est franchement bleue et d'une valeur basse : c'est l'écart de
    *  luminosité avec la terre, plus que la teinte, qui détache la silhouette. */
-  water: new Color('#33697b'),
-  waterDeep: new Color('#183f4f'),
-  waterShallow: new Color('#65949e'),
+  water: new Color('#2b7fbe'),
+  waterDeep: new Color('#17548f'),
+  waterShallow: new Color('#5cb8dc'),
   /** Brume et fond de ciel — même teinte, pour que l'horizon disparaisse. */
-  haze: new Color('#7fa2ac'),
-  sky: new Color('#a3c4ce'),
+  haze: new Color('#93b8cc'),
+  sky: new Color('#aed3e4'),
   /** La 2e ride, au large : un souffle à peine plus clair que l'eau. */
-  foam: new Color('#7fadb5'),
+  foam: new Color('#8ed3ea'),
   /** Le trait de flottaison. Clair, oui — mais c'est sa FINESSE qui le
    *  distingue des halos des rounds passés : un trait dessiné de 2 px collé à
    *  la découpe, jamais un dégradé. La référence a les deux : ce trait ET un
@@ -30,10 +37,10 @@ export const PALETTE = {
   foamLine: new Color('#f2f9f3'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
-  sand: new Color('#dccb9c'),
-  grass: new Color('#9cb264'),
-  grassLight: new Color('#b7c877'),
-  grassDark: new Color('#7a9550'),
+  sand: new Color('#e3d3a2'),
+  grass: new Color('#5aa84b'),
+  grassLight: new Color('#76c25b'),
+  grassDark: new Color('#3f8340'),
   /** Terre du socle : ce qui affleure sous l'herbe dans les contre-marches. */
   earth: new Color('#a4906b'),
   earthDark: new Color('#6f6047'),
@@ -43,15 +50,20 @@ export const PALETTE = {
   dirt: new Color('#ab8352'),
   dirtDark: new Color('#8a6740'),
   trunk: new Color('#7d5d41'),
-  leafA: new Color('#5f9049'),
-  leafB: new Color('#79a355'),
-  leafC: new Color('#4c7c3f'),
+  leafA: new Color('#4f9e44'),
+  leafB: new Color('#6bbb51'),
+  leafC: new Color('#3a7f39'),
   thatch: new Color('#d0aa6a'),
   hide: new Color('#bb8a62'),
   skin: new Color('#dda878'),
   cloth: new Color('#c26b4d'),
   wheat: new Color('#dcbc65'),
   stoneWall: new Color('#c7bfaf'),
+  /** L'ardoise bleue des toits tardifs : c'est ELLE la signature de la
+   *  référence — un froid saturé posé sur des murs chauds. */
+  roof: new Color('#4260c4'),
+  roofDark: new Color('#31489b'),
+  roofLight: new Color('#6d87dd'),
 } as const
 
 /** Direction du soleil, en dur à un seul endroit. `scene.ts` la donne à la
