@@ -341,31 +341,58 @@ export class Fauna {
     }
 
     const land = island.cells.filter((c) => !c.beach && !inCamp(c.x, c.z, 0.3))
-    const pick = (...filters: ((c: (typeof land)[number]) => boolean)[]): Spot[] => {
-      // Filtres du plus exigeant au plus lâche : sur une petite île d'âge 0,
-      // l'habitat idéal peut ne pas exister — un animal échoué à (0,0) non plus.
-      for (const f of filters) {
-        const out = land.filter(f)
-        if (out.length >= 4) return out.map((c) => ({ x: c.x, z: c.z }))
-      }
-      return land.map((c) => ({ x: c.x, z: c.z }))
-    }
+    /** Rayon de l'île : les habitats se raisonnent en PART du rayon, pas en
+     *  unités monde — l'île double de taille entre l'âge 0 et l'âge 9. */
+    const R = Math.max(6, island.radius)
 
-    this.deerSpots = pick(
-      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 10 && objDist(c.x, c.z) > 1.1 && treeDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) < 3.2,
-      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 8 && objDist(c.x, c.z) > 0.8 && treeDist(c.x, c.z) < 4.5,
+    /** Une zone d'habitat, par NOTATION et non par filtre. L'ancien code
+     *  filtrait dur (« entre 9,5 et 14 unités du feu ») puis, faute de
+     *  candidats, retombait sur TOUTE l'île : sur une île jeune, moutons,
+     *  poules et chevreuils finissaient mélangés n'importe où. Ici chaque
+     *  cellule est notée et l'espèce prend les meilleures : il y a toujours
+     *  une zone cohérente, même quand l'île est minuscule. */
+    const zone = (score: (c: (typeof land)[number]) => number, frac = 0.16): Spot[] => {
+      const scored = land
+        .map((c) => ({ c, k: score(c) }))
+        .sort((a, b) => b.k - a.k)
+      const n = Math.max(4, Math.round(scored.length * frac))
+      return scored.slice(0, n).map((e) => ({ x: e.c.x, z: e.c.z }))
+    }
+    /** Pénalité commune : ni sur un chemin battu, ni collé au bâti. */
+    const room = (c: (typeof land)[number], need: number): number =>
+      (c.trod ? -6 : 0) + (objDist(c.x, c.z) > need ? 0.5 : -6)
+
+    // Le chevreuil vit EN LISIÈRE : sous le couvert, jamais en plein pré, et
+    // le plus loin possible du feu.
+    this.deerSpots = zone(
+      (c) =>
+        room(c, 1.0) -
+        Math.abs(treeDist(c.x, c.z) - 1.3) * 1.8 +
+        Math.min(fireDist(c.x, c.z) / R, 1.2) * 2.4 +
+        Math.min(c.inland, 3) * 0.3,
+      0.14,
     )
-    this.sheepSpots = pick(
-      (c) => !c.trod && c.inland > 1.4 && fireDist(c.x, c.z) > 9.5 && fireDist(c.x, c.z) < 14 && objDist(c.x, c.z) > 1.1 && treeDist(c.x, c.z) > 1.2,
-      (c) => !c.trod && fireDist(c.x, c.z) > 8 && fireDist(c.x, c.z) < 16 && objDist(c.x, c.z) > 0.8 && treeDist(c.x, c.z) > 1,
+    // Le mouton veut de la PLAINE : loin des arbres, à mi-distance du village
+    // — assez près pour être gardé, assez loin pour ne pas piétiner le camp.
+    this.sheepSpots = zone(
+      (c) =>
+        room(c, 1.0) +
+        Math.min(treeDist(c.x, c.z), 4) * 1.3 -
+        Math.abs(fireDist(c.x, c.z) / R - 0.6) * 4.5,
+      0.14,
     )
-    this.henSpots = pick(
-      (c) => fireDist(c.x, c.z) > 2.2 && fireDist(c.x, c.z) < 4.6 && objDist(c.x, c.z) > 0.7,
-      (c) => fireDist(c.x, c.z) < 6 && objDist(c.x, c.z) > 0.5,
+    // La poule ne quitte pas la basse-cour : quelques pas du foyer, dehors.
+    this.henSpots = zone(
+      (c) => room(c, 0.6) - Math.abs(fireDist(c.x, c.z) - 3.4) * 2.2,
+      0.08,
     )
-    this.horseSpots = pick(
-      (c) => !c.trod && c.inland > 2.2 && fireDist(c.x, c.z) > 11 && objDist(c.x, c.z) > 1.3 && treeDist(c.x, c.z) > 2.4,
-      (c) => !c.trod && c.inland > 1.6 && fireDist(c.x, c.z) > 9 && objDist(c.x, c.z) > 0.9 && treeDist(c.x, c.z) > 1.6,
+    // Le cheval : les grands prés du bout de l'île.
+    this.horseSpots = zone(
+      (c) =>
+        room(c, 1.2) +
+        Math.min(treeDist(c.x, c.z), 5) * 0.9 +
+        Math.min(fireDist(c.x, c.z) / R, 1.2) * 2.8,
+      0.12,
     )
 
     // Le troupeau de moutons reste groupé : ses cibles se limitent au voisinage

@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.6.0',
+    title: 'Chacun chez soi',
+    items: [
+      "La faune tient enfin ses quartiers : les chevreuils en lisière de forêt, les moutons en pleine plaine dégagée, les poules à quelques pas du foyer, les chevaux dans les grands prés du bout de l'île.",
+      "Les habitats existaient, mais dès que l'île était petite le jeu ne trouvait pas de terrain idéal et lâchait les bêtes n'importe où. Chaque parcelle est maintenant notée et chaque espèce prend les meilleures : il y a toujours une zone cohérente, même au premier jour.",
+    ],
+  },
+  {
     version: '3.5.0',
     title: 'Le lagon',
     items: [
