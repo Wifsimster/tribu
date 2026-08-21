@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.9.0',
+    title: 'De vrais sons',
+    items: [
+      "Quatre prises de son réelles rejoignent l'ambiance : le chœur de l'aube, les grillons de la nuit, la pluie sur les feuilles, et une vraie cloche — celle de Notre-Dame de Paris, enregistrée en 2011.",
+      "Le reste demeure synthétisé, et c'est voulu : le ressac enfle avec la nuit, le feu suit le foyer, la lampe bourdonne. Un échantillon ne sait pas faire ça.",
+      "Rien n'est téléchargé tant que tu n'as pas activé le son : l'application reste aussi légère à installer qu'avant.",
+    ],
+  },
+  {
     version: '3.8.0',
     title: 'L’île passe aux hexagones',
     items: [

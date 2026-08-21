@@ -24,6 +24,12 @@ export class Ambience {
   private birdTimer = 4
   private cricketTimer = 2
   private crackleTimer = 0.3
+  /** Échantillons réels chargés depuis public/audio/, s'ils existent. Le jeu
+   *  doit tourner exactement pareil sans eux : chaque couche a son repli
+   *  synthétisé, et un fichier manquant n'est PAS une erreur. */
+  private samples = new Map<string, AudioBuffer>()
+  /** Nappes échantillonnées en cours de lecture, avec leur gain propre. */
+  private beds = new Map<string, GainNode>()
 
   constructor() {
     let pref: string | null = null
@@ -68,6 +74,40 @@ export class Ambience {
     if (this.enabled) this.start()
     else this.stop()
     return this.enabled
+  }
+
+  /** Chargé SEULEMENT à la première activation du son : le son est coupé par
+   *  défaut, l'installation de la PWA ne doit pas payer ces kilo-octets. */
+  private async loadSamples(ctx: AudioContext): Promise<void> {
+    const ids = ['oiseaux', 'nuit', 'pluie', 'cloche']
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await fetch(`/audio/${id}.mp3`)
+          if (!res.ok) return
+          this.samples.set(id, await ctx.decodeAudioData(await res.arrayBuffer()))
+        } catch {
+          // Fichier absent, hors ligne, format refusé : le synthé prend le relais.
+        }
+      }),
+    )
+    for (const id of ['oiseaux', 'nuit', 'pluie']) this.startBed(id)
+  }
+
+  /** Une nappe échantillonnée tourne en boucle, gain à zéro : c'est `update`
+   *  qui la fait entrer et sortir, comme les couches synthétisées. */
+  private startBed(id: string): void {
+    const buf = this.samples.get(id)
+    if (!buf || !this.ctx || !this.master || this.beds.has(id)) return
+    const gain = this.ctx.createGain()
+    gain.gain.value = 0
+    gain.connect(this.master)
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    src.loop = true
+    src.connect(gain)
+    src.start()
+    this.beds.set(id, gain)
   }
 
   private start(): void {
@@ -155,10 +195,14 @@ export class Ambience {
     noiseSrc().connect(rainHp).connect(rain).connect(this.master)
 
     this.layers = { surf, fire, hum, rain }
+    // Les prises réelles arrivent après coup : le graphe synthétisé joue déjà,
+    // elles s'y ajoutent quand elles sont décodées.
+    void this.loadSamples(ctx)
     void swell
   }
 
   private stop(): void {
+    this.beds.clear()
     if (!this.ctx) return
     void this.ctx.suspend()
   }
@@ -298,6 +342,18 @@ export class Ambience {
 
   /** La cloche du campanile : une fondamentale et deux partiels inharmoniques. */
   bell(): void {
+    // Une vraie cloche enregistrée bat n'importe quelle synthèse additive :
+    // si l'échantillon est là, il gagne. Sinon, le carillon synthétisé reste.
+    const buf = this.samples.get('cloche')
+    if (buf && this.ctx && this.master) {
+      const src = this.ctx.createBufferSource()
+      src.buffer = buf
+      const g = this.ctx.createGain()
+      g.gain.value = 0.5
+      src.connect(g).connect(this.master)
+      src.start()
+      return
+    }
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
@@ -330,7 +386,19 @@ export class Ambience {
     const fireOn = fireMode !== 'lamp'
     to(L.fire, fireOn ? 0.05 + 0.05 * (1 - daylight) : 0)
     to(L.hum, fireMode === 'lamp' ? 0.008 + 0.012 * (1 - daylight) : 0)
-    to(L.rain, rainLevel * 0.16)
+    // Pluie : la prise réelle remplace le bruit filtré quand elle est chargée.
+    const rainBed = this.beds.get('pluie')
+    if (rainBed) {
+      to(rainBed, rainLevel * 0.5)
+      to(L.rain, 0)
+    } else {
+      to(L.rain, rainLevel * 0.16)
+    }
+    // Oiseaux et grillons : une nappe continue au lieu de notes égrenées.
+    const birdBed = this.beds.get('oiseaux')
+    if (birdBed) to(birdBed, daylight > 0.5 && !settlerAway ? 0.14 : 0)
+    const nightBed = this.beds.get('nuit')
+    if (nightBed) to(nightBed, daylight < 0.25 ? 0.1 * (1 - daylight) : 0)
 
     if (fireOn) {
       this.crackleTimer -= dt
@@ -339,14 +407,16 @@ export class Ambience {
         this.crackle(fireMode === 'brazier' ? 0.7 : 1)
       }
     }
-    if (daylight > 0.5 && !settlerAway) {
+    // Les égrenages synthétisés ne servent que de repli : muets dès que la
+    // prise réelle correspondante est là.
+    if (daylight > 0.5 && !settlerAway && !this.beds.has('oiseaux')) {
       this.birdTimer -= dt
       if (this.birdTimer <= 0) {
         this.birdTimer = 5 + Math.random() * 11
         this.chirp()
       }
     }
-    if (daylight < 0.2) {
+    if (daylight < 0.2 && !this.beds.has('nuit')) {
       this.cricketTimer -= dt
       if (this.cricketTimer <= 0) {
         this.cricketTimer = 2.5 + Math.random() * 5
