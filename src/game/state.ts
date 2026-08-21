@@ -49,6 +49,11 @@ export interface SaveV1 {
   chronicle: { w: number; d: number; k: string; x: string }[]
   /** Nombre d'Exodes accomplis : la constellation de la tribu. */
   legacy: number
+  /** Identité publique dans le voisinage — absente tant que le joueur n'a pas
+   *  choisi d'y paraître. Elle vit DANS la sauvegarde : elle voyage donc avec
+   *  le code de transfert, et une tribu restaurée ailleurs reste la même aux
+   *  yeux des autres. Le secret n'est jamais montré. */
+  tribe: { id: string; secret: string; name: string } | null
 }
 
 export const SAVE_KEY = 'tribu.save.v1'
@@ -81,6 +86,7 @@ export function emptySave(now: number): SaveV1 {
     wonder: null,
     wonders: [],
     legacy: 0,
+    tribe: null,
   }
 }
 

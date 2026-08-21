@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -17,6 +18,7 @@ import {
   MeshLambertMaterial,
   MeshToonMaterial,
   Object3D,
+  PlaneGeometry,
   Quaternion,
   Vector3,
 } from 'three'
@@ -221,6 +223,12 @@ export class Island {
   setDaylight(k: number): void {
     const c = tmpTint.setRGB(1, 1, 1).lerp(this.nightTint, 1 - k)
     for (const m of this.unlit) m.color.copy(c)
+    // Les feux du voisinage s'allument au crépuscule et s'éteignent à l'aube.
+    if (this.neighborFires && this.neighborFireMat) {
+      const night = 1 - k
+      this.neighborFires.visible = night > 0.2
+      this.neighborFireMat.opacity = Math.min(1, (night - 0.2) * 1.8)
+    }
   }
 
   /** Les reflets construits ailleurs (tipis de village.ts) vivent dans la même
@@ -1062,6 +1070,180 @@ export class Island {
     const mesh = new Mesh(geo, mat)
     mesh.renderOrder = 0
     this.group.add(mesh)
+  }
+
+  private neighborMesh: Mesh | null = null
+  private neighborFires: Mesh | null = null
+  private neighborFireMat: MeshBasicMaterial | null = null
+
+  /** Le voisinage : chaque tribu connue prend sa place à l'horizon, dans une
+   *  direction tirée de son identifiant — donc stable, et la même pour elle
+   *  d'une session à l'autre. Sa silhouette raconte son époque : tipis,
+   *  hameau de torchis, ville à clocher, et la flèche de sa Merveille quand
+   *  elle en a bâti une. Un seul mesh pour tout le monde, un second pour les
+   *  feux du soir : deux draw calls, quel que soit le nombre de voisins. */
+  setNeighbors(list: { id: string; age: number; wonders: number }[]): void {
+    for (const m of [this.neighborMesh, this.neighborFires]) {
+      if (!m) continue
+      this.group.remove(m)
+      m.geometry.dispose()
+    }
+    this.neighborMesh = null
+    this.neighborFires = null
+    this.neighborFireMat = null
+    if (list.length === 0) return
+
+    const parts: BufferGeometry[] = []
+    const fires: BufferGeometry[] = []
+    const put = (
+      into: BufferGeometry[],
+      src: BufferGeometry,
+      color: Color,
+      x: number,
+      y: number,
+      z: number,
+    ): void => {
+      const g = src.index ? src.toNonIndexed() : src
+      g.translate(x, y, z)
+      const n = g.attributes.position!.count
+      const rgb = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        rgb[i * 3] = color.r
+        rgb[i * 3 + 1] = color.g
+        rgb[i * 3 + 2] = color.b
+      }
+      g.setAttribute('color', new BufferAttribute(rgb, 3))
+      into.push(g)
+    }
+    const haze = new Color('#6d8794')
+    const hazeFar = new Color('#7a95a3')
+    const ember = new Color('#ffb457')
+
+    // Où poser les voisins : la caméra par défaut regarde vers l'azimut 3,93
+    // (l'opposé de sa position) — c'est là que l'horizon SE VOIT, et c'est
+    // pour ça que l'îlot y est. Les créneaux ci-dessous encadrent cette
+    // fenêtre en évitant l'îlot (3,95) et la côte (4,7), du plus visible au
+    // plus périphérique : les voisins les plus récents obtiennent les
+    // meilleures places, les suivants s'éloignent sur les côtés.
+    // Mesuré en capture : la fenêtre visible va de 3,58 à 4,63 (plus étroite
+    // encore en portrait). Les deux premiers créneaux tombent DEDANS, de part
+    // et d'autre de l'îlot ; les suivants attendent qu'on fasse tourner la vue.
+    const SLOT_AZ = [3.66, 4.3, 3.42, 3.15, 5.05, 2.9, 5.35, 2.6]
+
+    for (let i = 0; i < list.length && i < SLOT_AZ.length; i++) {
+      const n = list[i]!
+      const az = SLOT_AZ[i]!
+      // Distance alternée : un horizon à deux profondeurs se lit mieux qu'un
+      // alignement au cordeau.
+      const R = i % 2 === 0 ? 104 : 122
+      const far = R > 112
+      const skin = far ? hazeFar : haze
+      const cx = Math.sin(az) * R
+      const cz = Math.cos(az) * R
+      // Repère local : u court le long de la côte vue, v s'éloigne vers le large.
+      const tx = Math.cos(az)
+      const tz = -Math.sin(az)
+      const px = Math.sin(az)
+      const pz = Math.cos(az)
+      const at = (u: number, v: number): [number, number] => [
+        cx + tx * u + px * v,
+        cz + tz * u + pz * v,
+      ]
+
+      // Le socle : une île basse, plus large que haute.
+      put(parts, new IcosahedronGeometry(3.2, 0).scale(1.9, 0.8, 1.3), skin, cx, 0.35, cz)
+      const [sx, sz] = at(4.2, 0.8)
+      put(parts, new IcosahedronGeometry(1.7, 0).scale(1.4, 0.7, 1.1), skin, sx, 0.15, sz)
+
+      const age = Math.max(0, Math.min(9, n.age))
+      if (age <= 1) {
+        // Deux tipis et rien d'autre : on devine à peine qu'il y a quelqu'un.
+        for (const [u, h] of [
+          [-1.3, 2.2],
+          [0.9, 1.8],
+        ] as [number, number][]) {
+          const [x, z] = at(u, 0)
+          put(parts, new ConeGeometry(0.85, h, 6), skin, x, 0.9 + h / 2 - 0.6, z)
+        }
+      } else if (age <= 5) {
+        // Le hameau : murs bas, toits en pente, un arbre resté debout.
+        for (const [u, w] of [
+          [-1.6, 1.5],
+          [0.4, 1.9],
+          [2.2, 1.3],
+        ] as [number, number][]) {
+          const [x, z] = at(u, 0)
+          put(parts, new BoxGeometry(w, 1.2, 1.4).rotateY(az), skin, x, 1.1, z)
+          put(parts, new BoxGeometry(w + 0.5, 0.45, 1.8).rotateY(az), skin, x, 1.9, z)
+        }
+        const [tx2, tz2] = at(3.6, 0.4)
+        put(parts, new ConeGeometry(0.7, 2.4, 6), skin, tx2, 2.0, tz2)
+      } else {
+        // La ville : un front bâti et un clocher — visible de très loin.
+        for (const [u, w, h] of [
+          [-2.2, 1.8, 1.8],
+          [-0.2, 2.2, 2.4],
+          [1.9, 1.6, 1.6],
+        ] as [number, number, number][]) {
+          const [x, z] = at(u, 0)
+          put(parts, new BoxGeometry(w, h, 1.6).rotateY(az), skin, x, 0.8 + h / 2, z)
+        }
+        const [bx, bz] = at(0.6, -0.6)
+        put(parts, new BoxGeometry(1.0, 4.2, 1.0).rotateY(az), skin, bx, 3.0, bz)
+        put(parts, new ConeGeometry(0.8, 1.6, 4).rotateY(az), skin, bx, 5.8, bz)
+      }
+
+      // La Merveille d'un voisin se voit d'ici : une flèche qui dépasse tout.
+      if (n.wonders > 0) {
+        const [wx, wz] = at(-3.4, -1.2)
+        const h = 5.5 + Math.min(3, n.wonders) * 1.4
+        put(parts, new CylinderGeometry(0.35, 0.7, h, 6), skin, wx, 0.8 + h / 2, wz)
+        put(parts, new ConeGeometry(0.75, 1.5, 6), skin, wx, 0.8 + h + 0.6, wz)
+      }
+
+      // Les feux du soir : la preuve qu'il y a quelqu'un, même sans détail.
+      // Des lueurs additives comme celles de la côte — un solide de cette
+      // taille serait invisible à 100 unités. Elles se posent AU-DESSUS du
+      // dôme (y = 3,2) : plus bas, l'île elle-même les mangeait au depth test,
+      // et elles regardent le centre du monde, donc la caméra qui orbite.
+      const fireCount = age <= 1 ? 1 : age <= 5 ? 2 : 3
+      for (let i = 0; i < fireCount; i++) {
+        const [fx, fz] = at(-1.8 + i * 1.9, -1.0)
+        put(fires, new PlaneGeometry(1.9, 1.9).rotateY(az + Math.PI), ember, fx, 3.2, fz)
+      }
+    }
+
+    const geo = mergeGeometries(parts)
+    if (geo) {
+      const mat = new MeshBasicMaterial({ vertexColors: true, fog: false })
+      this.unlit.push(mat)
+      this.neighborMesh = new Mesh(geo, mat)
+      this.neighborMesh.renderOrder = 0
+      this.group.add(this.neighborMesh)
+    }
+    const fireGeo = mergeGeometries(fires)
+    if (fireGeo) {
+      // Hors de `unlit` : ces braises ne doivent PAS bleuir la nuit — c'est la
+      // nuit, au contraire, qui les allume (opacité pilotée par setDaylight).
+      const mat = new MeshBasicMaterial({
+        vertexColors: true,
+        fog: false,
+        transparent: true,
+        opacity: 0,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+        map: rampTexture(32, 32, (u, v, out) => {
+          const d = Math.hypot(u - 0.5, v - 0.5) * 2
+          out.set('#ffab52')
+          return Math.pow(Math.max(0, 1 - d), 2.4)
+        }),
+      })
+      this.neighborFireMat = mat
+      this.neighborFires = new Mesh(fireGeo, mat)
+      this.neighborFires.visible = false
+      this.group.add(this.neighborFires)
+    }
   }
 
   private outpostMesh: Mesh | null = null

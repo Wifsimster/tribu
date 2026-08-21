@@ -660,7 +660,10 @@ export class Game {
     const legacy = this.save.legacy + 1
     this.record('exodus', "L'Exode : la tribu largue les amarres, l'île retourne au silence")
     const chronicle = this.save.chronicle
-    this.save = { ...emptySave(Date.now()), relics, legacy, chronicle }
+    // L'identité du voisinage traverse l'Exode : c'est la même tribu qui
+    // recommence, et les voisins doivent continuer à la reconnaître.
+    const tribe = this.save.tribe
+    this.save = { ...emptySave(Date.now()), relics, legacy, chronicle, tribe }
     this.record('exodus', 'La tribu débarque sur une île inconnue')
     this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
     this.buildings = new Set()

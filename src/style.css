@@ -901,6 +901,32 @@ body.night .age-bar {
   width: 100%;
 }
 
+/* Le voisinage : les autres tribus, et la façon dont on y paraît. */
+.neighbor-list {
+  max-height: 34dvh;
+}
+
+.neighbor-me {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.neighbor-name {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+#neighbors-name-row .btn {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 14px;
+}
+
 /* Transfert de tribu : la sauvegarde s'emporte en fichier ou en code. */
 .transfer-list {
   max-height: 22dvh;

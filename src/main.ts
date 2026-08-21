@@ -17,6 +17,17 @@ import './style.css'
 import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { decodeSave, encodeSave, transferFilename } from './game/transfer'
+import {
+  cacheNeighbors,
+  cachedNeighbors,
+  fetchNeighbors,
+  makeIdentity,
+  leave,
+  publish,
+  publishBeacon,
+  type Neighbor,
+  type Snapshot,
+} from './net/neighbors'
 import { CHANGELOG } from './game/changelog'
 import { FEATS, WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
@@ -31,8 +42,8 @@ import { Fauna } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
-import { Hud, fmt } from './ui/hud'
-import { RESOURCES, TECHS } from './game/content'
+import { Hud, escapeHtml, fmt } from './ui/hud'
+import { AGES, RESOURCES, TECHS } from './game/content'
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
@@ -68,6 +79,14 @@ function disposeWorld(): void {
     })
   }
 }
+
+// Le voisinage, connu dès le lancement grâce au cache local : l'horizon est
+// peuplé avant même la première réponse du serveur — et le reste hors ligne.
+// Déclaré AVANT buildWorld, qui le repose sur chaque île reconstruite.
+let neighbors: Neighbor[] = cachedNeighbors()
+// Déclaré ICI, et pas près de la boucle de synchro : le bloc du menu s'exécute
+// AVANT elle et s'y abonne — un `let` plus bas serait dans sa zone morte.
+let onNeighborsChange: (() => void) | null = null
 
 // La pêche : un état de surface — le colon récolte SA nourriture, mais au
 // rivage, avec la baie qui vit autour de lui. Déclarée AVANT buildWorld qui
@@ -113,6 +132,7 @@ function buildWorld(): void {
   village.sync(game.buildings)
   village.setRelics(game.save.relics.length)
   island.setOutpost(game.save.outpost)
+  island.setNeighbors(neighbors)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
   nodeSpots.clear()
@@ -615,6 +635,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('menu-chronicle').hidden = true
     menuEl('menu-feats').hidden = true
     menuEl('menu-transfer').hidden = true
+    menuEl('menu-neighbors').hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -735,6 +756,101 @@ function menuEl<T extends HTMLElement>(id: string): T {
     news.hidden = false
   })
   menuEl('menu-news-close').addEventListener('click', showHome)
+
+  // Le voisinage : qui d'autre allume un feu à l'horizon. On peut regarder
+  // sans y paraître — publier reste un choix explicite.
+  {
+    const panel = menuEl('menu-neighbors')
+    const list = menuEl('neighbors-list')
+    const me = menuEl('neighbors-me')
+    const nameRow = menuEl('neighbors-name-row')
+    const nameInput = menuEl<HTMLInputElement>('neighbors-name')
+    const joinBtn = menuEl('neighbors-join')
+    const leaveBtn = menuEl('neighbors-leave')
+
+    const ago = (t: number): string => {
+      const m = Math.max(0, Math.round((Date.now() - t) / 60_000))
+      if (m < 2) return "à l'instant"
+      if (m < 60) return `il y a ${m} min`
+      const h = Math.round(m / 60)
+      if (h < 24) return `il y a ${h} h`
+      return `il y a ${Math.round(h / 24)} j`
+    }
+
+    const render = (): void => {
+      list.textContent = ''
+      if (neighbors.length === 0) {
+        const li = document.createElement('li')
+        li.textContent =
+          "Personne à l'horizon pour l'instant. Les tribus qui paraissent au voisinage apparaissent ici — et leurs îles s'allument au loin, le soir venu."
+        list.appendChild(li)
+      }
+      for (const n of neighbors) {
+        const li = document.createElement('li')
+        const stars = n.legacy > 0 ? ` ${'★'.repeat(Math.min(3, n.legacy))}` : ''
+        const wonder = n.wonders > 0 ? ` — ${n.wonders} merveille${n.wonders > 1 ? 's' : ''}` : ''
+        li.innerHTML =
+          `<b>${escapeHtml(n.name)}${stars}</b> ` +
+          `${escapeHtml(AGES[Math.min(n.age, AGES.length - 1)]!.name)}, jour ${n.day} — ` +
+          `${n.techs} savoir${n.techs > 1 ? 's' : ''}${wonder}<br><span class="chron-day">vue ${ago(n.seen)}</span>`
+        list.appendChild(li)
+      }
+      const t = game.save.tribe
+      if (t) {
+        me.textContent = `Ta tribu paraît à l'horizon des autres sous le nom « ${t.name} ».`
+        nameRow.hidden = false
+        nameInput.value = t.name
+        joinBtn.hidden = true
+        leaveBtn.hidden = false
+      } else {
+        me.textContent =
+          "Tu regardes l'horizon sans y paraître. Rejoindre publie un pseudo et quelques compteurs — époque, jour, nombre de savoirs. Jamais ta sauvegarde, jamais ta Chronique."
+        nameRow.hidden = true
+        joinBtn.hidden = false
+        leaveBtn.hidden = true
+      }
+    }
+    // Le rafraîchissement de fond redessine le panneau s'il est ouvert.
+    onNeighborsChange = () => {
+      if (!panel.hidden) render()
+    }
+
+    menuEl('menu-neighbors-open').addEventListener('click', () => {
+      render()
+      home.hidden = true
+      panel.hidden = false
+      void syncNeighborhood()
+    })
+    menuEl('menu-neighbors-close').addEventListener('click', showHome)
+
+    joinBtn.addEventListener('click', () => {
+      game.save.tribe = makeIdentity(game.save.seed)
+      game.flush(Date.now())
+      render()
+      void syncNeighborhood()
+    })
+
+    menuEl('neighbors-rename').addEventListener('click', () => {
+      const t = game.save.tribe
+      if (!t) return
+      const name = nameInput.value.trim().slice(0, 20)
+      if (!name) return
+      t.name = name
+      game.flush(Date.now())
+      render()
+      void syncNeighborhood()
+    })
+
+    leaveBtn.addEventListener('click', () => {
+      const t = game.save.tribe
+      if (!t) return
+      // On efface d'abord côté serveur, tant qu'on a encore le secret.
+      void leave(t.id, t.secret)
+      game.save.tribe = null
+      game.flush(Date.now())
+      render()
+    })
+  }
 
   // Transfert de tribu : la partie s'emporte en fichier ou en code, et se
   // rouvre ailleurs. Sans ça, vider les données du navigateur efface tout.
@@ -1064,4 +1180,56 @@ document.addEventListener('visibilitychange', () => {
     last = performance.now()
   }
 })
-window.addEventListener('pagehide', () => game.flush(Date.now()))
+window.addEventListener('pagehide', () => {
+  game.flush(Date.now())
+  const snap = snapshot()
+  if (snap) publishBeacon(snap)
+})
+
+// ── Le voisinage ───────────────────────────────────────────────────────────
+// Les silhouettes de l'horizon sont d'autres tribus. Tout ici est facultatif :
+// serveur éteint ou avion activé, le jeu ne s'en aperçoit pas.
+
+/** L'instantané public — un pseudo et des compteurs, rien d'autre. `null`
+ *  tant que le joueur n'a pas rejoint le voisinage. */
+function snapshot(): Snapshot | null {
+  const t = game.save.tribe
+  if (!t) return null
+  return {
+    id: t.id,
+    secret: t.secret,
+    name: t.name,
+    age: game.save.age,
+    day: Math.floor(game.save.totalPlaySeconds / DAY_SECONDS) + 1,
+    techs: game.save.techs.length,
+    wonders: game.save.wonders.length,
+    feats: game.save.feats.length,
+    relics: game.save.relics.length,
+    legacy: game.save.legacy,
+    seed: game.save.seed,
+  }
+}
+
+/** Ce qui, dans le voisinage, change ce qu'on DESSINE : identité, époque,
+ *  merveilles. Un simple jour de plus chez le voisin ne reconstruit rien. */
+const horizonKey = (list: Neighbor[]): string =>
+  list
+    .slice(0, 8)
+    .map((n) => `${n.id}:${n.age}:${n.wonders}`)
+    .join('|')
+
+async function syncNeighborhood(): Promise<void> {
+  const snap = snapshot()
+  if (snap) await publish(snap)
+  const list = await fetchNeighbors(game.save.tribe?.id ?? '', 8)
+  if (!list) return
+  const before = horizonKey(neighbors)
+  neighbors = list
+  cacheNeighbors(list)
+  if (horizonKey(list) !== before) island.setNeighbors(list)
+  onNeighborsChange?.()
+}
+
+// Premier appel décalé : la première image du jeu passe avant le réseau.
+setTimeout(() => void syncNeighborhood(), 4000)
+setInterval(() => void syncNeighborhood(), 5 * 60_000)

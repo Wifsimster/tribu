@@ -166,6 +166,9 @@
           <button class="btn ghost" id="menu-news-open" type="button">
             <span class="label">Nouveautés</span>
           </button>
+          <button class="btn ghost" id="menu-neighbors-open" type="button">
+            <span class="label">Le voisinage</span>
+          </button>
           <button class="btn ghost" id="menu-transfer-open" type="button">
             <span class="label">Transférer ma tribu</span>
           </button>
@@ -195,6 +198,35 @@
         <div class="menu-tuto" id="menu-news" hidden>
           <ul class="tuto-list" id="news-list"></ul>
           <button class="btn" id="menu-news-close" type="button">
+            <span class="label">Retour</span>
+          </button>
+        </div>
+
+        <div class="menu-tuto" id="menu-neighbors" hidden>
+          <p class="transfer-sep">Les îles de l'horizon</p>
+          <ul class="tuto-list neighbor-list" id="neighbors-list"></ul>
+          <p class="neighbor-me" id="neighbors-me"></p>
+          <div class="transfer-actions" id="neighbors-name-row" hidden>
+            <input
+              class="transfer-code neighbor-name"
+              id="neighbors-name"
+              type="text"
+              maxlength="20"
+              spellcheck="false"
+              placeholder="Le nom de ta tribu"
+              aria-label="Le nom de ta tribu"
+            />
+            <button class="btn" id="neighbors-rename" type="button">
+              <span class="label">Renommer</span>
+            </button>
+          </div>
+          <button class="btn primary" id="neighbors-join" type="button">
+            <span class="label">Rejoindre le voisinage</span>
+          </button>
+          <button class="btn ghost" id="neighbors-leave" type="button" hidden>
+            <span class="label">Quitter le voisinage</span>
+          </button>
+          <button class="btn ghost" id="menu-neighbors-close" type="button">
             <span class="label">Retour</span>
           </button>
         </div>

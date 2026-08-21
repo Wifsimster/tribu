@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.0.0',
+    title: 'Le voisinage',
+    items: [
+      "Les silhouettes de l'horizon ne sont plus des décors : ce sont d'autres tribus. Leur île montre leur époque — tipis, hameau de torchis, ville à clocher — et la flèche de leur Merveille quand elles en ont bâti une. Le soir, leurs feux s'allument au loin.",
+      "Tu peux regarder sans y paraître. « Le voisinage » dans le menu publie, si tu le choisis, un pseudo et quelques compteurs — époque, jour, savoirs. Jamais ta sauvegarde, jamais ta Chronique, et quitter efface vraiment.",
+      "Serveur injoignable, avion activé, hors-ligne : le jeu est exactement le même, avec le dernier horizon connu.",
+    ],
+  },
+  {
     version: '2.12.0',
     title: 'Transférer sa tribu',
     items: [

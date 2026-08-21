@@ -56,7 +56,8 @@ const EMOJI: Array<[string, ResourceId]> = (Object.keys(RESOURCES) as ResourceId
 ])
 const EMOJI_RE = new RegExp(EMOJI.map(([char]) => char).join('|'), 'g')
 
-function escapeHtml(s: string): string {
+/** Texte d'ailleurs (pseudo d'un voisin, par exemple) : jamais injecté brut. */
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
   )
