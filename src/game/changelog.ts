@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.28.0',
+    title: 'L’horizon remis d’aplomb',
+    items: [
+      "Le soleil et la lune se posent désormais sur l'horizon RÉEL et le suivent quand tu inclines la caméra. Ils étaient épinglés à une hauteur d'écran fixe : dès que tu redressais la vue, ils passaient sous la ligne d'horizon — peints sur la mer, devant l'île.",
+      "Les étoiles se resserrent près de l'horizon : les plus basses tapissaient l'eau et la silhouette de l'île.",
+      "L'hiver ne tombe plus d'un bloc : la neige PREND, sur la moitié de la saison. Tu la vois gagner l'herbe, puis les falaises, puis la pinède.",
+      "Un bâtiment ne s'installe plus à cheval sur une marche de terrasse — phare compris. La tolérance de pente a été ramenée sous la hauteur d'un palier.",
+    ],
+  },
+  {
     version: '3.27.0',
     title: 'Les saisons se voient',
     items: [

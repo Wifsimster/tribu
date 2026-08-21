@@ -508,12 +508,20 @@ export class Island {
   private terrainMesh: InstancedMesh | null = null
   private terrainBase: Float32Array | null = null
   private seasonId = -1
+  private seasonRamp = -1
 
   /** Repeint l'île à la saison : feuillage lerpé vers le roux ou le givre,
    *  buissons assortis, et un léger étalonnage global du terrain. */
-  setSeason(id: number): void {
-    if (id === this.seasonId) return
+  setSeason(id: number, u = 1): void {
+    // L'hiver ne tombe pas d'un bloc : la neige PREND, sur la moitié de la
+    // saison. Les autres saisons virent plus vite — c'est l'hiver qu'on
+    // regarde arriver. Repeint quand la saison change, ou tous les 2 % de
+    // saison écoulée : une soixantaine de repeints par saison de douze
+    // minutes, pour six cents cellules — invisible au profileur.
+    const ramp = smoothstep(0, id === 3 ? 0.55 : 0.3, u)
+    if (id === this.seasonId && Math.abs(ramp - this.seasonRamp) < 0.02) return
     this.seasonId = id
+    this.seasonRamp = ramp
     const target = id === 2 ? new Color('#b96f35') : id === 3 ? new Color('#c2cfcc') : null
     const mixK = id === 2 ? 0.48 : id === 3 ? 0.55 : 0
     const mul: [number, number, number] =
@@ -531,9 +539,9 @@ export class Island {
       }
       mesh.instanceColor.needsUpdate = true
     }
-    repaint(this.leavesMesh, this.leafBase, 1)
-    repaint(this.bushMesh, this.bushBase, 0.7)
-    this.paintGround(id)
+    repaint(this.leavesMesh, this.leafBase, ramp)
+    repaint(this.bushMesh, this.bushBase, 0.7 * ramp)
+    this.paintGround(id, ramp)
     if (this.terrainMat) {
       const grade: [number, number, number] =
         id === 0
@@ -543,7 +551,11 @@ export class Island {
             : id === 2
               ? [1.04, 0.965, 0.885]
               : [0.965, 0.99, 1.05]
-      this.terrainMat.color.setRGB(grade[0], grade[1], grade[2])
+      this.terrainMat.color.setRGB(
+        1 + (grade[0] - 1) * ramp,
+        1 + (grade[1] - 1) * ramp,
+        1 + (grade[2] - 1) * ramp,
+      )
     }
   }
 
@@ -553,7 +565,7 @@ export class Island {
    *  jusqu'au ras de l'eau efface le trait de côte), l'automne roussit l'herbe,
    *  le printemps la reverdit, l'été la fonce. Seules les faces SUPÉRIEURES
    *  sont touchées : les falaises restent de la terre, en toute saison. */
-  private paintGround(id: number): void {
+  private paintGround(id: number, ramp: number): void {
     const mesh = this.terrainMesh
     const base = this.terrainBase
     if (!mesh?.instanceColor || !base) return
@@ -565,7 +577,7 @@ export class Island {
           : id === 2
             ? new Color('#c08a3c')
             : new Color('#eef5fa')
-    const mix = id === 0 ? 0.2 : id === 1 ? 0.16 : id === 2 ? 0.34 : 0.72
+    const mix = (id === 0 ? 0.2 : id === 1 ? 0.16 : id === 2 ? 0.34 : 0.72) * ramp
     const arr = mesh.instanceColor.array as Float32Array
     const c = new Color()
     this.cells.forEach((cell, i) => {

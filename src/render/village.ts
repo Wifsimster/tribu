@@ -1732,12 +1732,16 @@ export class Village {
       if (this.treeDist(c.x, c.z) < 2.6) continue
       const k = (c.x * camX + c.z * camZ) / r + r * 0.06
       if (k > bestK) {
-        bestK = k
         // Rentré d'une cellule et demie : posé sur la cellule de bord même,
         // un socle de trois unités de rayon déborde dans le vide.
         const ix = c.x - dx * 1.5
         const iz = c.z - dz * 1.5
-        best = new Vector3(ix, this.island.heightAt(ix, iz), iz)
+        const slot = new Vector3(ix, this.island.heightAt(ix, iz), iz)
+        // Un phare à cheval sur une marche de terrasse a un pied dans le vide :
+        // même exigence de sol plat que pour les bâtiments du village.
+        if (!this.flatEnough(slot, 2.6)) continue
+        bestK = k
+        best = slot
       }
     }
     return best ?? this.nextSlot(3, 2.6, false)
@@ -1954,7 +1958,10 @@ export class Village {
         const px = slot.x + Math.cos(a) * footprint * k
         const pz = slot.z + Math.sin(a) * footprint * k
         if (!this.island.isLand(px, pz)) return false
-        if (Math.abs(this.island.heightAt(px, pz) - slot.y) > 0.12) return false
+        // Tolérance ramenée sous la MARCHE d'une terrasse (~0,3) : à 0,12 un
+        // bâtiment pouvait encore chevaucher un demi-palier et présenter un
+        // mur enterré et l'autre en l'air.
+        if (Math.abs(this.island.heightAt(px, pz) - slot.y) > 0.07) return false
       }
     }
     return true

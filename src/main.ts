@@ -141,7 +141,7 @@ function buildWorld(): void {
   villagers.setPopulation(game.save.age >= 4 ? 2 : game.save.age >= 1 ? 1 : 0)
   stage.scene.add(island.group, village.group, settler.group, fauna.group, villagers.group)
   stage.islandRadius = island.radius
-  island.setSeason(game.season.id)
+  island.setSeason(game.season.id, game.seasonU)
   stage.winter = game.season.id === 3
   {
     // La Merveille d'abord : elle réserve sa place au cœur de la clairière
@@ -426,7 +426,7 @@ game.on((e) => {
       hud.toast('La tribu, inspirée, récolte 4 % plus vite — pour toujours sur cette île')
       break
     case 'season':
-      island.setSeason(e.id)
+      island.setSeason(e.id, game.seasonU)
       stage.winter = e.id === 3
       hud.toast(`${e.name} s'installe${e.id === 3 && !game.knows('granary') ? ' — sans grenier, la récolte souffrira' : ''}`)
       hud.toast(e.fact)
@@ -1393,6 +1393,9 @@ function frame(now: number): void {
     forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
   )
   island.setDaylight(daylight)
+  // L'enneigement progresse DANS la saison : l'appel est gardé côté île (il ne
+  // repeint qu'aux 2 % de saison écoulée).
+  island.setSeason(game.season.id, game.seasonU)
   // Les ailes du moulin tournent, et le cadran du campanile donne l'heure
   // qu'il est sur l'île — la même fraction de journée que celle du soleil.
   village.tickMovers(dt, forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1)

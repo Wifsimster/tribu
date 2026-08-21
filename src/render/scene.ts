@@ -41,6 +41,24 @@ function targetPixelRatio(): number {
  *  comme une maquette. Un grand angle proche donnait un point de vue de joueur
  *  posé dans l'herbe. */
 const FOV = 27
+
+/** Hauteur de la voûte d'étoiles : 30 unités pour un rayon de 320, soit 5,4°
+ *  de ciel au-dessus de l'horizon. C'est EXACTEMENT la bande visible : à 27°
+ *  de champ vertical et l'horizon aux deux tiers de l'écran, le ciel tient en
+ *  quatre ou cinq degrés. Une voûte plus haute étale sa texture d'étoiles
+ *  au-dessus du cadre et n'en laisse voir aucune.
+ */
+const STAR_H = 130
+/** Altitude de la voûte. MESURE (2026-08-21) : avec ce cadrage, l'horizon VRAI
+ *  tombe au ras du bord haut de l'écran (NDC ≥ 0,95) — il n'y a, à proprement
+ *  parler, pas de ciel visible. La voûte est donc peinte SOUS l'horizon, sur
+ *  la mer lointaine, et c'est la seule façon d'avoir des étoiles du tout : la
+ *  poser sur l'horizon vrai la réduit à une bande de dix pixels, vide.
+ *  Ce qui est corrigé, c'est qu'elle ne descende plus jusqu'à l'île — le fondu
+ *  du bas (dans la texture) éteint les étoiles basses bien avant. */
+const STAR_Y = -14
+/** Résolution de la texture de la voûte. */
+const STAR_TEX_W = 256
 /** Valeur historique de `distance` : le zoom du doigt reste un multiplicateur
  *  autour du cadrage nominal, sans jamais sortir des bornes de controls.ts. */
 const BASE_ZOOM = 34
@@ -55,6 +73,11 @@ const FILL_HEIGHT = 0.5
  *  faisait se coucher le soleil derrière la caméra : personne ne le voyait. */
 const NOON_AZ = Math.atan2(SUN_DIR.x, SUN_DIR.z)
 const ARC = 1.45
+/** Vecteurs de travail pour la projection de l'horizon : appelée à chaque
+ *  image, elle n'a pas à allouer. */
+const tmpDir = new Vector3()
+const tmpHorizon = new Vector3()
+
 const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
 const SUN_DAY = new Color('#fff1d8')
@@ -233,10 +256,13 @@ export class Stage {
     this.moonDisc.position.z = 1
     this.moonGlow.add(this.moonDisc)
     this.moonGlow.renderOrder = 989
-    // Astre-monde : il se lève, traverse et se couche à son propre azimut —
-    // orbiter le déplace dans le cadre au lieu de l'y épingler.
-    this.moonGlow.scale.setScalar(2.1)
-    this.scene.add(this.moonGlow)
+    // Enfant de la caméra, comme le soleil. Elle vivait dans le monde à
+    // y = −60 : sous la hauteur de l'œil, donc SOUS l'horizon — peinte sur la
+    // mer, devant l'île. Remontée au-dessus de l'horizon en coordonnées
+    // monde, elle sortait du cadre par le haut (la bande de ciel visible ne
+    // fait que quelques degrés à 27° de champ). Elle se place donc à l'écran,
+    // sur l'horizon perçu, à son azimut réel près — comme le soleil.
+    this.camera.add(this.moonGlow)
 
     // La traînée de lumière sur l'eau : le chemin scintillant vers l'astre —
     // soleil le jour (embrasé aux heures basses), lune la nuit. Un quad posé
@@ -308,7 +334,12 @@ export class Stage {
       return s - Math.floor(s)
     }
     const starMat = new MeshBasicMaterial({
-      map: rampTexture(256, 256, (u, v, out) => {
+      // Texture BASSE : la voûte ne couvre plus que 5° de ciel (sa base est
+      // posée sur l'horizon), et 256 texels étalés sur ces 5° font 0,4 pixel
+      // par texel — une étoile d'un texel et quart devenait SOUS-PIXEL, donc
+      // rendue mais invisible. À 32 texels de haut, un texel vaut trois
+      // pixels et une étoile se voit.
+      map: rampTexture(STAR_TEX_W, STAR_TEX_W, (u, v, out) => {
         const cells = 22
         const cx = Math.floor(u * cells)
         const cy = Math.floor(v * cells)
@@ -317,13 +348,16 @@ export class Stage {
         if (h > 0.16) return 0
         const sx = (cx + 0.2 + 0.6 * starHash(cx * 91.7 + cy * 17.3)) / cells
         const sy = (cy + 0.2 + 0.6 * starHash(cx * 41.9 + cy * 73.1)) / cells
-        const d = Math.hypot(u - sx, v - sy) * 256
-        const bright = 0.25 + 0.75 * starHash(cx * 13.7 + cy * 219.4)
-        // Fondu vers le bas de la voûte : sans depth test (voulu — la voûte
-        // peint le ciel PAR-DESSUS la mer lointaine, indiscernable de nuit),
-        // les étoiles basses tapissaient l'eau proche et la silhouette de
-        // l'île dès qu'on inclinait la caméra. Elles meurent avant.
-        return bright * Math.pow(Math.max(0, 1 - d / 1.25), 1.6) * smoothstep(0.16, 0.44, v)
+        const d = Math.hypot(u - sx, v - sy) * STAR_TEX_W
+        const bright = 0.55 + 0.45 * starHash(cx * 13.7 + cy * 219.4)
+        // PLUS de fondu vers le bas : la base de la voûte est désormais posée
+        // SUR l'horizon (updateCamera la suit), donc rien n'est peint sous
+        // lui. L'ancien fondu (0,16 → 0,44) servait à cacher la partie qui
+        // tapissait la mer ; il éteindrait maintenant la seule bande de ciel
+        // que la caméra laisse voir.
+        // Fondu du bas RELEVÉ (0,16→0,44 à l'origine) : ce sont les étoiles
+        // basses qui tapissaient l'eau proche et la silhouette de l'île.
+        return bright * Math.pow(Math.max(0, 1 - d / 2.6), 1.4) * smoothstep(0.52, 0.78, v)
       }),
       transparent: true,
       blending: AdditiveBlending,
@@ -341,8 +375,12 @@ export class Stage {
     ;(starMat.map as DataTexture).repeat.set(7, 1)
     starMat.side = BackSide
     starMat.depthWrite = false
-    this.stars = new Mesh(new CylinderGeometry(320, 320, 130, 48, 1, true), starMat)
-    this.stars.position.y = -14
+    // Le rayon est bien plus grand que la scène : la base du cylindre, à la
+    // hauteur de l'œil, tombe pile sur la ligne d'horizon quel que soit le
+    // décentrage de la caméra. La hauteur (STAR_H) ne couvre que 22° de ciel,
+    // ce qui suffit largement : à 27° de champ vertical, la bande de ciel
+    // visible au-dessus de l'horizon fait quelques degrés.
+    this.stars = new Mesh(new CylinderGeometry(320, 320, STAR_H, 48, 1, true), starMat)
     this.scene.add(this.stars)
 
     // Nuages : des blobs facettés dans le style du jeu, une seule géométrie
@@ -1022,7 +1060,7 @@ export class Stage {
     this.moonDiscBase = smoothstep(-0.03, 0.1, moonElev) * 0.95
     this.moonGlowBase = smoothstep(0.0, 0.2, moonElev) * 0.3
     // Les étoiles s'allument au crépuscule, pleines en nuit noire.
-    this.starsBase = (1 - k) * 0.7
+    this.starsBase = (1 - k) * 0.95
     this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
     this.sun.intensity = 2.35 * k * this.wCur.sun
     // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
@@ -1084,6 +1122,20 @@ export class Stage {
     return Math.max(halfV / (FILL_HEIGHT * vTan), this.islandRadius / (FILL_WIDTH * hTan))
   }
 
+  /** Où tombe l'HORIZON VRAI à l'écran, en coordonnées normalisées (1 = bord
+   *  haut). Mesuré, pas calculé de tête : on projette un point lointain à la
+   *  hauteur de l'œil — c'est la définition de l'horizon. Tout ce qui se pose
+   *  sous cette valeur est peint sur la mer, donc devant l'île. */
+  private horizonNdc(): number {
+    this.camera.getWorldDirection(tmpDir)
+    tmpHorizon
+      .set(tmpDir.x, 0, tmpDir.z)
+      .normalize()
+      .multiplyScalar(1500)
+      .add(this.camera.position)
+    return tmpHorizon.project(this.camera).y
+  }
+
   updateCamera(): void {
     const d = this.frameDistance() * (this.distance / BASE_ZOOM)
     const sinP = Math.sin(this.polar)
@@ -1104,7 +1156,13 @@ export class Stage {
     const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * D
     const halfW = halfH * this.camera.aspect
     const gx = D * Math.tan(Math.max(-1.2, Math.min(1.2, dAz)))
-    const gy = halfH * (0.52 + Math.max(0, this.sunElev) * 0.75)
+    // Le soleil se lève DEPUIS l'horizon vrai, pas depuis une hauteur d'écran
+    // fixe. Le 0,52 d'avant était calibré sur une seule inclinaison : dès que
+    // le joueur redressait la caméra, l'horizon descendait sous lui et le
+    // soleil se retrouvait peint sur la mer, devant l'île. Plafonné à 0,95
+    // pour rester dans le cadre quand l'horizon sort par le haut.
+    const hz = Math.min(this.horizonNdc(), 0.95)
+    const gy = halfH * Math.min(hz + Math.max(0, this.sunElev) * 0.55, 0.92)
     this.sunGlow.position.set(gx, gy, -D)
     // Taille relative au cadre, pas au monde : ~120 % de la demi-hauteur pour
     // le halo, le disque suit (enfant). Sans ça, le quad de 72 unités à 30
@@ -1125,17 +1183,28 @@ export class Stage {
     const moonElev = Math.max(0, -this.sunElev)
     // La lune vit dans le monde : elle se lève bas au col d'horizon, culmine,
     // et l'orbite du joueur la déplace naturellement dans le cadre.
-    this.moonGlow.position.set(
-      Math.sin(moonAzWorld) * 300,
-      // Course basse : vue plongeante oblige, le ciel visible est sous
-      // l'horizontale — culmination à −27 pour rester dans le cadre.
-      -60 + Math.min(moonElev, 0.55) * 60,
-      Math.cos(moonAzWorld) * 300,
-    )
-    this.moonGlow.lookAt(this.camera.position)
-    ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase
-    ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase
-    this.moonGlow.visible = this.moonDiscBase > 0.01
+    // Même géométrie d'écran que le soleil : décalage horizontal = écart entre
+    // son azimut et le centre de l'horizon visible, hauteur = horizon perçu.
+    let mAz = moonAzWorld - (this.azimuth + Math.PI)
+    while (mAz > Math.PI) mAz -= Math.PI * 2
+    while (mAz < -Math.PI) mAz += Math.PI * 2
+    const mx = D * Math.tan(Math.max(-1.2, Math.min(1.2, mAz)))
+    this.moonGlow.position.set(mx, halfH * Math.min(hz + moonElev * 0.42, 0.92), -D)
+    this.moonGlow.scale.setScalar((halfH * 0.8) / 52)
+    const mEdge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(mx))
+    // La voûte d'étoiles s'ancre à l'HORIZON, pas à une altitude fixe. Elle
+    // vivait à y = −79..51 : avec cette caméra, l'horizon vrai tombe au ras du
+    // bord haut du cadre (mesuré : NDC ≥ 0,95), donc TOUT ce qui est sous la
+    // hauteur d'œil est peint sur la mer — et comme la voûte ignore la
+    // profondeur, elle tapissait l'eau et la silhouette de l'île.
+    // Sa base descend maintenant de STAR_DIP sous l'œil, soit 1,5° sous la
+    // ligne d'horizon : juste de quoi que la bande étoilée la touche, jamais
+    // de quoi atteindre l'île.
+    this.stars.position.y = STAR_Y
+    if (this.auroraMesh) this.auroraMesh.position.y = this.camera.position.y + 34
+    ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase * mEdge
+    ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase * mEdge
+    this.moonGlow.visible = this.moonDiscBase * mEdge > 0.01
 
     // Traînée sur l'eau : vers le soleil tant qu'il fait jour, vers la lune
     // la nuit. Large et ardente aux heures basses, fine et froide sous la lune.

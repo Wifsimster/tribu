@@ -837,6 +837,13 @@ export class Game {
     return true
   }
 
+  /** Où en est-on DANS la saison, de 0 à 1. L'île s'enneige avec, au lieu de
+   *  blanchir d'un coup au changement de saison. */
+  get seasonU(): number {
+    const len = DAY_SECONDS * SEASON_DAYS
+    return (this.save.totalPlaySeconds % len) / len
+  }
+
   /** La saison courante, calculée sur le temps de jeu cumulé. */
   get season(): (typeof SEASONS)[number] {
     return SEASONS[Math.floor(this.save.totalPlaySeconds / (DAY_SECONDS * SEASON_DAYS)) % 4]!
