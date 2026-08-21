@@ -791,19 +791,42 @@ function fieldParts(): BufferGeometry[] {
       ),
     )
   }
+  // Sillons et récolte. Chaque touffe était un cône unique : à la taille du
+  // champ, ça lisait comme une rangée de quilles. Une GERBE — trois tiges
+  // serrées de hauteurs différentes, coiffées d'un épi plus clair — donne la
+  // même silhouette de loin et tient le regard de près.
   for (let i = 0; i < 5; i++) {
     const z = -0.7 + i * 0.35
-    p.push(part(new BoxGeometry(1.76, 0.1, 0.13), C.soilDark, -0.5, 0.22, z))
+    // Sillons alternés : la terre retournée est plus sombre que la butte.
+    p.push(part(new BoxGeometry(1.76, 0.1, 0.13), i % 2 === 0 ? C.soilDark : C.soil, -0.5, 0.22, z))
+    // Une rangée sur cinq est encore verte : un champ ne mûrit pas d'un bloc.
+    const green = i === 2
     for (let j = 0; j < 6; j++) {
-      p.push(
-        part(
-          new ConeGeometry(0.095, 0.34, 4).rotateY(i + j),
-          tint(C.wheat, i * 6 + j, 0.09),
-          -1.24 + j * 0.3,
-          0.37,
-          z,
-        ),
-      )
+      const base = green ? new Color('#8fae52') : C.wheat
+      for (let k = 0; k < 3; k++) {
+        const lean = (k - 1) * 0.16
+        const h = 0.3 + ((i + j + k) % 3) * 0.06
+        p.push(
+          part(
+            new ConeGeometry(0.045, h, 4).rotateZ(lean).rotateY(i + j + k),
+            tint(base, i * 6 + j + k * 3, 0.09),
+            -1.24 + j * 0.3 + lean * 0.12,
+            0.28 + h / 2,
+            z + (k - 1) * 0.035,
+          ),
+        )
+        // L'épi : une tête plus claire et plus large que la tige.
+        if (!green)
+          p.push(
+            part(
+              new ConeGeometry(0.055, 0.11, 4).rotateZ(lean),
+              tint(C.bone, i * 3 + j + k, 0.05),
+              -1.24 + j * 0.3 + lean * 0.2,
+              0.28 + h + 0.03,
+              z + (k - 1) * 0.035,
+            ),
+          )
+      }
     }
   }
   // Clôture: quelques traits sombres qui donnent une échelle au champ.

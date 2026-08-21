@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.17.0',
+    title: 'Le champ moissonne mieux',
+    items: [
+      "Les touffes de blé deviennent des gerbes : trois tiges serrées de hauteurs différentes, coiffées d'un épi plus clair. Les sillons alternent terre retournée et butte, et une rangée sur cinq est encore verte — un champ ne mûrit pas d'un bloc.",
+    ],
+  },
+  {
     version: '3.16.2',
     title: 'Les buissons aussi',
     items: [
