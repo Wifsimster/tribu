@@ -2177,6 +2177,23 @@ export class Village {
         for (const sz of [-0.44, 0.44]) p.push(part(new CylinderGeometry(0.04, 0.05, 0.7, 5), C.wood, 0, 0.35, sz))
         p.push(part(new BoxGeometry(0.18, 0.06, 1.05).rotateX(0.22), C.woodDark, 0.26, 0.8, -0.1))
         p.push(part(new BoxGeometry(0.1, 0.035, 0.95).rotateX(0.22), C.water, 0.26, 0.85, -0.1))
+        // La roue tourne : il faut que ça se VOIE. Éclaboussures au point de
+        // chute, écume dans le bassin, mousse sur la pierre mouillée.
+        for (let i = 0; i < 5; i++) {
+          const a = i * 1.3
+          p.push(part(new SphereGeometry(0.035, 5, 4), C.ridge, 0.06 + Math.sin(a) * 0.08, 0.2 + (i % 3) * 0.07, 0.3 + Math.cos(a) * 0.1))
+        }
+        p.push(part(new BoxGeometry(0.6, 0.02, 0.3), C.ridge, -0.1, 0.16, 0.02))
+        p.push(part(new BoxGeometry(0.9, 0.05, 0.1), new Color('#5d7a48'), 0, 0.1, 0.3))
+        // Un moyeu et quatre rayons : le centre de la roue était vide.
+        p.push(part(new CylinderGeometry(0.06, 0.06, 0.2, 8).rotateY(Math.PI / 2), C.woodDark, 0, 0.46, 0))
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.4
+          p.push(part(new BoxGeometry(0.05, 0.62, 0.04).rotateX(a), C.wood, 0, 0.46, 0))
+        }
+        // Le meunier a laissé ses sacs sur la berge.
+        for (const [gx, gz] of [[-0.5, -0.3], [-0.36, -0.4]] as const)
+          p.push(part(new SphereGeometry(0.08, 6, 5).scale(1, 0.85, 1), C.hideLight, gx, 0.1, gz))
         // ×2.5 : une roue à aubes réelle fait ~3.5 m — la roue de Ø 0.78 u
         // tournait sous la ceinture du colon.
         for (const g of p) g.scale(2.5, 2.5, 2.5)
@@ -2246,6 +2263,22 @@ export class Village {
           p.push(part(new BoxGeometry(0.09, 0.5, 0.02).rotateZ(a), C.wood, Math.sin(a) * -0.28, 0.78 + Math.cos(a) * 0.28, 0.26))
         }
         p.push(part(new CylinderGeometry(0.03, 0.03, 0.14, 5).rotateX(Math.PI / 2), C.woodDark, 0, 0.78, 0.2))
+        // Toile sur les ailes : une aile nue n'est qu'une latte. Chaque bras
+        // reçoit son entoilage clair, un peu plus étroit que le bâti.
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.4
+          p.push(part(new BoxGeometry(0.055, 0.34, 0.012).rotateZ(a), C.hidePale, Math.sin(a) * -0.34, 0.78 + Math.cos(a) * 0.34, 0.265))
+        }
+        // Porte, fenêtre haute, et la queue de rotation qui oriente le moulin
+        // au vent — c'est elle qui dit « moulin-pivot » plutôt que « tour ».
+        p.push(part(new BoxGeometry(0.16, 0.3, 0.04), C.woodDark, 0, 0.19, -0.28))
+        p.push(part(new BoxGeometry(0.1, 0.1, 0.04), C.glass, 0.18, 0.6, -0.16))
+        p.push(part(new BoxGeometry(0.05, 0.05, 0.6).rotateX(0.42), C.wood, 0, 0.5, -0.4))
+        p.push(part(new BoxGeometry(0.24, 0.04, 0.1), C.woodDark, 0, 0.28, -0.62))
+        // Deux sacs de farine au pied, et la meule usée posée à plat.
+        for (const [gx, gz] of [[0.3, 0.26], [0.42, 0.12]] as const)
+          p.push(part(new SphereGeometry(0.09, 6, 5).scale(1, 0.85, 1), C.hideLight, gx, 0.08, gz))
+        p.push(part(new CylinderGeometry(0.15, 0.15, 0.05, 10), C.stoneDark, -0.36, 0.03, 0.22))
         // ×5.5 (round 2) : à ×4 le chapeau restait à 4,5 u (3 colons), au
         // coude à coude avec le tipi du camp. Un moulin-pivot fait ~6 m au
         // chapeau : 6,2 u (~4,1 colons), le monument domine le bâti bas.
@@ -2260,6 +2293,21 @@ export class Village {
         p.push(part(new BoxGeometry(0.02, 0.09, 0.015), C.char, 0, 0.81, 0.2))
         p.push(part(new BoxGeometry(0.07, 0.02, 0.015), C.char, 0.025, 0.78, 0.2))
         p.push(part(new SphereGeometry(0.05, 6, 5), gold, 0, 0.99, 0))
+        // Le beffroi : la cloche doit se VOIR, donc une baie ouverte sous le
+        // toit, et la cloche dedans. Une tour pleine ne sonne pas.
+        p.push(part(new BoxGeometry(0.2, 0.22, 0.04), C.char, 0, 0.93, 0.16))
+        p.push(part(new ConeGeometry(0.07, 0.12, 8), gold, 0, 0.92, 0.14))
+        p.push(part(new BoxGeometry(0.22, 0.03, 0.03), C.woodDark, 0, 1.0, 0.14))
+        // Cadran cerclé, chiffres aux quarts, et une corniche sous le toit.
+        p.push(part(new CylinderGeometry(0.14, 0.14, 0.02, 12).rotateX(Math.PI / 2), C.stoneDark, 0, 0.78, 0.175))
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2
+          p.push(part(new BoxGeometry(0.02, 0.02, 0.01), C.char, Math.sin(a) * 0.09, 0.78 + Math.cos(a) * 0.09, 0.2))
+        }
+        p.push(part(new BoxGeometry(0.42, 0.05, 0.42), C.ridge, 0, 0.96, 0))
+        // Contreforts d'angle : une tour de pierre n'est jamais un simple pilier.
+        for (const [bx, bz] of [[-0.19, -0.19], [0.19, -0.19], [-0.19, 0.19], [0.19, 0.19]] as const)
+          p.push(part(new BoxGeometry(0.1, 0.5, 0.1), tint(C.stone, bx * 90, 0.05), bx, 0.25, bz))
         // ×4.5 : un campanile de ~7 m. À 1.21 u la « tour » de l'horloge
         // arrivait au menton du colon.
         for (const g of p) g.scale(4.5, 4.5, 4.5)
@@ -2398,6 +2446,16 @@ export class Village {
         p.push(part(new BoxGeometry(0.44, 0.14, 0.48), new Color(0.75, 0.95, 1.1), -0.1, 0.44, 0))
         for (const sx of [-0.38, 0.38]) for (const sz of [-0.28, 0.28]) p.push(part(new CylinderGeometry(0.11, 0.11, 0.07, 8).rotateX(Math.PI / 2), C.char, sx, 0.13, sz))
         for (const sz of [-0.17, 0.17]) p.push(part(new SphereGeometry(0.04, 5, 4), new Color(1.7, 1.55, 1.0), 0.58, 0.28, sz))
+        // Feux arrière, calandre, pare-chocs et jantes claires : une auto sans
+        // rien devant ni derrière est une savonnette.
+        for (const sz of [-0.17, 0.17]) p.push(part(new BoxGeometry(0.04, 0.06, 0.1), new Color('#a8302a'), -0.58, 0.3, sz))
+        p.push(part(new BoxGeometry(0.04, 0.1, 0.4), C.stoneDark, 0.58, 0.22, 0))
+        p.push(part(new BoxGeometry(0.04, 0.08, 0.42), C.stoneDark, -0.58, 0.2, 0))
+        for (const sx of [-0.38, 0.38]) for (const sz of [-0.29, 0.29])
+          p.push(part(new CylinderGeometry(0.05, 0.05, 0.03, 8).rotateX(Math.PI / 2), C.ridge, sx, 0.13, sz))
+        // Vitres latérales et un rétroviseur : le volume de l'habitacle se lit.
+        for (const sz of [-0.24, 0.24]) p.push(part(new BoxGeometry(0.4, 0.1, 0.02), new Color(0.75, 0.95, 1.1), -0.1, 0.46, sz))
+        p.push(part(new BoxGeometry(0.05, 0.04, 0.04), C.tileDark, 0.14, 0.46, 0.26))
         // ×2 : une auto fait ~4.2 m — à 1.15 u elle était plus COURTE que le
         // cheval (1.25 u) posé deux cases plus loin.
         for (const g of p) g.scale(2, 2, 2)

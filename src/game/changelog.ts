@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.20.0',
+    title: 'Les moulins, le campanile et l’auto',
+    items: [
+      "Le moulin à vent gagne l'entoilage de ses ailes, sa porte, sa queue de rotation, deux sacs de farine et sa meule usée posée à plat.",
+      "Le moulin à eau éclabousse : gouttes au point de chute, écume dans le bassin, mousse sur la pierre mouillée — et sa roue a enfin un moyeu et des rayons.",
+      "Le campanile ouvre son beffroi : la cloche se voit, le cadran est cerclé et chiffré aux quarts, et quatre contreforts d'angle épaulent la tour.",
+      "L'automobile reçoit feux arrière, calandre, pare-chocs, jantes claires et vitres latérales.",
+    ],
+  },
+  {
     version: '3.19.0',
     title: 'La villa et l’aqueduc',
     items: [
