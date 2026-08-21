@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.20.1',
+    title: 'L’antenne relais',
+    items: [
+      "Le mât devient un vrai pylône : croisillons en treillis sur trois étages, chemin de câbles depuis le coffret jusqu'aux panneaux, échelle d'accès, plateforme d'intervention avec son garde-corps, et un grillage au pied.",
+    ],
+  },
+  {
     version: '3.20.0',
     title: 'Les moulins, le campanile et l’auto',
     items: [

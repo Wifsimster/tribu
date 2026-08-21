@@ -2559,6 +2559,51 @@ export class Village {
         // Balise aérienne : le point rouge qui luit la nuit, comme les diodes
         // de la baie de serveurs.
         p.push(part(new SphereGeometry(0.07, 6, 5), new Color(2.4, 0.4, 0.35), 0, 5.52, 0))
+
+        // Ce qui manquait : le TREILLIS. Un mât lisse à quatre pans lit comme
+        // un poteau ; ce sont les croisillons entre colliers qui font
+        // « pylône ». Quatre diagonales par étage, alternées d'un étage à
+        // l'autre — la trame en zigzag d'un vrai treillis.
+        const stages: [number, number, number][] = [
+          [0.35, 1.5, 0.34],
+          [1.5, 2.9, 0.28],
+          [2.9, 4.2, 0.22],
+        ]
+        stages.forEach(([y0, y1, r], k) => {
+          const h = y1 - y0
+          const len = Math.hypot(h, r * 1.6)
+          for (let i = 0; i < 4; i++) {
+            const a = (i / 4) * Math.PI * 2 + (k % 2 ? 0.78 : 0)
+            const lean = Math.atan2(r * 1.6, h) * (i % 2 ? 1 : -1)
+            p.push(
+              part(
+                new BoxGeometry(0.035, len, 0.035).rotateZ(lean).rotateY(a),
+                C.char,
+                Math.sin(a) * r * 0.72,
+                (y0 + y1) / 2,
+                Math.cos(a) * r * 0.72,
+              ),
+            )
+          }
+        })
+        // Chemin de câbles le long du mât, du coffret jusqu'aux panneaux :
+        // une antenne sans descente d'alimentation ne dessert rien.
+        p.push(part(new BoxGeometry(0.05, 4.3, 0.05), C.char, 0.13, 2.6, 0.13))
+        p.push(part(new BoxGeometry(0.32, 0.05, 0.05).rotateY(0.8), C.char, 0.28, 0.52, 0.22))
+        // Échelle d'accès sur la face avant, jusqu'au premier collier.
+        for (let i = 0; i < 6; i++)
+          p.push(part(new BoxGeometry(0.16, 0.025, 0.025), iron, 0, 0.4 + i * 0.2, 0.2 - i * 0.012))
+        // Garde-corps de la plateforme d'intervention, sous les panneaux.
+        p.push(part(new CylinderGeometry(0.3, 0.3, 0.03, 10), C.char, 0, 4.72, 0))
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2
+          p.push(part(new BoxGeometry(0.025, 0.2, 0.025), iron, Math.sin(a) * 0.28, 4.82, Math.cos(a) * 0.28))
+        }
+        // Grillage et petit portail au pied : un pylône est toujours clôturé.
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.78
+          p.push(part(new BoxGeometry(0.9, 0.42, 0.03).rotateY(a), tint(C.stoneDark, i * 7, 0.05), Math.sin(a) * 0.62, 0.28, Math.cos(a) * 0.62))
+        }
         return p
       }
       // Bâtiments hérités : générés en local puis fondus comme les ateliers.
