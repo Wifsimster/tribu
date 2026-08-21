@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.10.0',
+    title: 'L’île sonne pour de vrai',
+    items: [
+      "Onze sons remplacent le synthétiseur : le ressac, le feu, la pluie, les grillons, le chœur de l'aube, le bourdon du réverbère — et les quatre gestes du jeu, le toc du bois, le carillon d'une découverte, le tintement des pièces, le plouf de la ligne.",
+      "Le pilotage, lui, ne change pas : le ressac enfle avec la nuit, le feu se tait quand le lampadaire s'allume. C'est ce mouvement qui fait vivre l'île, pas les fichiers.",
+      "Rien n'est téléchargé tant que le son est coupé, et si un fichier manque, la synthèse d'origine reprend la main sans un hoquet.",
+    ],
+  },
+  {
     version: '3.9.0',
     title: 'De vrais sons',
     items: [

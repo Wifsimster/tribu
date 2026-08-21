@@ -29,9 +29,26 @@
  * Les fichiers atterrissent dans public/audio/<id>.mp3. Rien n'est écrasé
  * sans --force : une génération réussie est un tirage, on la garde.
  */
-import { mkdir, writeFile, stat } from 'node:fs/promises'
+import { mkdir, writeFile, stat, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const run = promisify(execFile)
+
+/** Le modèle rend des niveaux très inégaux d'un tirage à l'autre (mesuré :
+ *  de -23 dB à -64 dB de moyenne sur la même série). Ces sons se mélangent à
+ *  un synthé calibré : ils doivent viser la même cible de sonie. */
+async function normalize(file, kind) {
+  const tmp = `${file}.tmp.mp3`
+  await run('ffmpeg', [
+    '-y', '-i', file,
+    '-af', `loudnorm=I=${kind === 'bed' ? -23 : -18}:LRA=7:TP=-1.5`,
+    '-c:a', 'libmp3lame', '-q:a', kind === 'bed' ? '7' : '4', tmp,
+  ])
+  await rename(tmp, file)
+}
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = join(ROOT, 'public', 'audio')
@@ -82,7 +99,7 @@ const SOUNDS = [
     id: 'bourdon',
     kind: 'bed',
     seconds: 8,
-    text: 'Faint low electrical hum of an old street lamp at night, steady, very quiet, no buzzing insects, no music',
+    text: 'Low steady electrical hum of a street lamp ballast, continuous drone, clear and present, no buzzing insects, no music',
   },
   // ── Sons d'interaction (coups uniques) ──────────────────────────────────
   {
@@ -191,9 +208,11 @@ for (const s of wanted) {
   }
   const buf = Buffer.from(await res.arrayBuffer())
   await writeFile(file, buf)
+  await normalize(file, s.kind)
   written++
-  bytes += buf.length
-  console.log(`✓ ${s.id.padEnd(9)} ${(buf.length / 1024).toFixed(0).padStart(4)} ko  ${fmt}`)
+  const st = await stat(file)
+  bytes += st.size
+  console.log(`✓ ${s.id.padEnd(9)} ${(st.size / 1024).toFixed(0).padStart(4)} ko  ${fmt}`)
 }
 
 console.log(`\n${written} fichier(s), ${(bytes / 1024).toFixed(0)} ko au total dans public/audio/.`)

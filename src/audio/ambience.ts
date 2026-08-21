@@ -79,7 +79,7 @@ export class Ambience {
   /** Chargé SEULEMENT à la première activation du son : le son est coupé par
    *  défaut, l'installation de la PWA ne doit pas payer ces kilo-octets. */
   private async loadSamples(ctx: AudioContext): Promise<void> {
-    const ids = ['oiseaux', 'nuit', 'pluie', 'cloche']
+    const ids = ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon', 'toc', 'carillon', 'piece', 'plouf', 'cloche']
     await Promise.all(
       ids.map(async (id) => {
         try {
@@ -91,7 +91,21 @@ export class Ambience {
         }
       }),
     )
-    for (const id of ['oiseaux', 'nuit', 'pluie']) this.startBed(id)
+    for (const id of ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon']) this.startBed(id)
+  }
+
+  /** Joue un coup échantillonné. Renvoie faux si l'échantillon n'est pas là :
+   *  l'appelant enchaîne alors sur sa version synthétisée. */
+  private shot(id: string, gain: number): boolean {
+    const buf = this.samples.get(id)
+    if (!buf || !this.ctx || !this.master) return false
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    const g = this.ctx.createGain()
+    g.gain.value = gain
+    src.connect(g).connect(this.master)
+    src.start()
+    return true
   }
 
   /** Une nappe échantillonnée tourne en boucle, gain à zéro : c'est `update`
@@ -269,6 +283,7 @@ export class Ambience {
 
   /** Toc de bois : le retour du doigt quand on désigne un arbre, un rocher. */
   knock(): void {
+    if (this.shot('toc', 0.5)) return
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
@@ -286,6 +301,7 @@ export class Ambience {
 
   /** Carillon de découverte : deux notes claires, une tierce au-dessus. */
   chime(): void {
+    if (this.shot('carillon', 0.4)) return
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
@@ -307,6 +323,7 @@ export class Ambience {
 
   /** Tintement de pièces : le marchand est passé par là. */
   coin(): void {
+    if (this.shot('piece', 0.45)) return
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
@@ -326,6 +343,7 @@ export class Ambience {
 
   /** Plop d'un poisson qui retombe : un thump grave très bref. */
   plop(): void {
+    if (this.shot('plouf', 0.4)) return
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
@@ -344,16 +362,7 @@ export class Ambience {
   bell(): void {
     // Une vraie cloche enregistrée bat n'importe quelle synthèse additive :
     // si l'échantillon est là, il gagne. Sinon, le carillon synthétisé reste.
-    const buf = this.samples.get('cloche')
-    if (buf && this.ctx && this.master) {
-      const src = this.ctx.createBufferSource()
-      src.buffer = buf
-      const g = this.ctx.createGain()
-      g.gain.value = 0.5
-      src.connect(g).connect(this.master)
-      src.start()
-      return
-    }
+    if (this.shot('cloche', 0.5)) return
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
@@ -382,25 +391,35 @@ export class Ambience {
       g.gain.value += (v - g.gain.value) * ease
     }
 
-    to(L.surf, 0.1 + 0.03 * (1 - daylight))
-    const fireOn = fireMode !== 'lamp'
-    to(L.fire, fireOn ? 0.05 + 0.05 * (1 - daylight) : 0)
-    to(L.hum, fireMode === 'lamp' ? 0.008 + 0.012 * (1 - daylight) : 0)
-    // Pluie : la prise réelle remplace le bruit filtré quand elle est chargée.
-    const rainBed = this.beds.get('pluie')
-    if (rainBed) {
-      to(rainBed, rainLevel * 0.5)
-      to(L.rain, 0)
-    } else {
-      to(L.rain, rainLevel * 0.16)
+    // Chaque couche a deux incarnations possibles : la prise réelle si elle est
+    // chargée, le synthé sinon. Le PILOTAGE est le même dans les deux cas —
+    // c'est lui qui fait vivre l'ambiance (le ressac enfle la nuit, le feu
+    // s'éteint quand le lampadaire s'allume), et un échantillon seul ne le
+    // ferait pas.
+    const bedOr = (id: string, synth: GainNode, sample: number, synthGain: number): void => {
+      const bed = this.beds.get(id)
+      if (bed) {
+        to(bed, sample)
+        to(synth, 0)
+      } else {
+        to(synth, synthGain)
+      }
     }
+    const surfLevel = 0.1 + 0.03 * (1 - daylight)
+    bedOr('mer', L.surf, surfLevel * 2.6, surfLevel)
+    const fireOn = fireMode !== 'lamp'
+    const fireLevel = fireOn ? 0.05 + 0.05 * (1 - daylight) : 0
+    bedOr('feu', L.fire, fireLevel * 3, fireLevel)
+    const humLevel = fireMode === 'lamp' ? 0.008 + 0.012 * (1 - daylight) : 0
+    bedOr('bourdon', L.hum, humLevel * 4, humLevel)
+    bedOr('pluie', L.rain, rainLevel * 0.5, rainLevel * 0.16)
     // Oiseaux et grillons : une nappe continue au lieu de notes égrenées.
     const birdBed = this.beds.get('oiseaux')
     if (birdBed) to(birdBed, daylight > 0.5 && !settlerAway ? 0.14 : 0)
     const nightBed = this.beds.get('nuit')
     if (nightBed) to(nightBed, daylight < 0.25 ? 0.1 * (1 - daylight) : 0)
 
-    if (fireOn) {
+    if (fireOn && !this.beds.has('feu')) {
       this.crackleTimer -= dt
       if (this.crackleTimer <= 0) {
         this.crackleTimer = 0.12 + Math.random() * 0.7
