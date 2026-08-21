@@ -941,11 +941,14 @@ export class Island {
       out.copy(PALETTE.water).multiplyScalar(1 - smoothstep(0.4, 3.2, d) * 0.1)
       // Tout ce qui suit meurt avant deux cellules. Le large, qui est
       // l'essentiel de la texture, ne paie pas l'ourlet de rive.
+      // LE LAGON (v3.5.0, direction visuelle demandée) : une vraie ceinture de
+      // haut-fond turquoise autour de l'île, large de ~4 cellules. Les rounds
+      // gauntlet avaient réduit ce dégradé à 7 % parce qu'il lisait comme un
+      // HALO — le halo, c'était une auréole molle centrée sur l'île ; ici la
+      // bande suit l'empreinte réelle de la côte (shoreDist), donc elle épouse
+      // la découpe au lieu de la cercler.
+      out.lerp(PALETTE.waterShallow, smoothstep(4.2, 0.1, d) * 0.62)
       if (d < 2.2) {
-        // Haut-fond : eau plus claire au large de la ride. La retenue à 0,06
-        // venait de l'œil — la mesure dit que l'eau de la référence est en
-        // moyenne +27 plus claire sous la flottaison, halo laiteux compris.
-        out.lerp(PALETTE.waterShallow, smoothstep(1.7, 0.5, d) * 0.07)
         // Ombre de contact IRRÉGULIÈRE : portée et densité suivent le profil
         // cuit par secteur (profondeur de la fondation + creux de la côte) et
         // la direction du soleil. Dense dans les échancrures à l'ombre, quasi
@@ -1341,11 +1344,14 @@ export class Island {
       return out
     }
 
-    this.addTrees(take(Math.round(50 * this.growth * this.growth), clustered(wooded, 3.4), () => true), rnd)
+    // Densité baissée d'un tiers et bosquets plus lâches : la référence
+    // laisse voir son sol et ses bâtiments entre les arbres. À 50 sapins
+    // serrés, notre village disparaissait derrière sa propre forêt.
+    this.addTrees(take(Math.round(34 * this.growth * this.growth), clustered(wooded, 5.2), () => true), rnd)
     // Pierres et buissons, eux, ont le droit de border la clairière : ce sont
     // eux qui l'encadrent une fois les sapins reculés.
     this.addRocks(take(Math.round(24 * this.growth * this.growth), clustered(free, 9), (c) => c.height > 1.2), rnd)
-    this.addBushes(take(Math.round(28 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
+    this.addBushes(take(Math.round(34 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
   }
 
   // Audit échelles 2026-08, round 2 : à ~5 u de moyenne les cimes rasaient

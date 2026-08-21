@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.5.0',
+    title: 'Le lagon',
+    items: [
+      "Une vraie ceinture de haut-fond turquoise épouse la côte : l'île n'est plus posée sur du bleu uni, elle a sa plage sous l'eau.",
+      'La pinède respire — un tiers de sapins en moins et des bosquets plus lâches. On voit enfin le sol, les clairières et le village qui disparaissait derrière sa propre forêt.',
+      'Un ponton de planches pousse sur l’eau depuis la plage, pieux et caisse oubliée compris.',
+    ],
+  },
+  {
     version: '3.4.0',
     title: 'Un monde plus franc',
     items: [

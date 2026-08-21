@@ -1294,6 +1294,7 @@ export class Village {
       p.push(part(new ConeGeometry(0.3, 0.24, 9), iron, 0.58, 3.3, 0))
     }
     this.camp(p)
+    this.jetty(p)
     const geo = mergeGeometries(p) ?? new BufferGeometry()
     grain(geo)
     bakeFirelight(geo)
@@ -1517,6 +1518,72 @@ export class Village {
    *  campement: une tente fermée qui masse derrière la flamme, un appentis, un
    *  séchoir, du bois rangé. Tout est fondu dans le foyer — un seul draw call
    *  pour l'ensemble — et tout existe avant la première recherche. */
+  /** Un ponton de planches, poussé sur l'eau depuis la plage la plus proche
+   *  de la caméra par défaut. C'est un décor pur — il n'occupe aucun
+   *  emplacement de bâtiment et la faune l'ignore, il est au-dessus de l'eau
+   *  — mais c'est LE prop qui dit « on vit avec la mer ». Fondu dans la même
+   *  géométrie que le reste du village : zéro draw call de plus. */
+  private jetty(p: BufferGeometry[]): void {
+    // La caméra par défaut regarde depuis l'azimut 0,785 : la plage qui lui
+    // fait face est celle dont la direction s'en approche le plus.
+    const camX = Math.sin(0.785)
+    const camZ = Math.cos(0.785)
+    let best: { x: number; z: number; h: number } | null = null
+    let bestK = -Infinity
+    for (const c of this.island.cells) {
+      if (!c.beach || !c.rim) continue
+      const r = Math.hypot(c.x, c.z) + 1e-6
+      // On veut à la fois « face à la caméra » et « bien au bord ».
+      const k = (c.x * camX + c.z * camZ) / r + r * 0.03
+      if (k > bestK) {
+        bestK = k
+        best = { x: c.x, z: c.z, h: c.height }
+      }
+    }
+    if (!best) return
+    const dir = Math.atan2(best.x, best.z)
+    const dx = Math.sin(dir)
+    const dz = Math.cos(dir)
+    const y = Math.max(0.16, best.h - 0.18)
+    // Tablier : cinq planches en travers, du sable vers le large.
+    for (let i = 0; i < 5; i++) {
+      const t = 0.5 + i * 0.62
+      p.push(
+        part(
+          new BoxGeometry(1.35, 0.09, 0.44).rotateY(dir),
+          i % 2 === 0 ? C.wood : C.woodDark,
+          best.x + dx * t,
+          y,
+          best.z + dz * t,
+        ),
+      )
+    }
+    // Pieux : deux paires, plantées dans l'eau.
+    for (const t of [1.15, 2.95]) {
+      for (const side of [-1, 1]) {
+        p.push(
+          part(
+            new CylinderGeometry(0.075, 0.09, y + 0.5, 6),
+            C.woodDark,
+            best.x + dx * t + dz * side * 0.5,
+            y * 0.5 - 0.12,
+            best.z + dz * t - dx * side * 0.5,
+          ),
+        )
+      }
+    }
+    // Une caisse oubliée au bout : le détail qui fait vivant.
+    p.push(
+      part(
+        new BoxGeometry(0.4, 0.4, 0.4).rotateY(dir + 0.4),
+        C.wood,
+        best.x + dx * 2.6 + dz * 0.28,
+        y + 0.24,
+        best.z + dz * 2.6 - dx * 0.28,
+      ),
+    )
+  }
+
   private camp(p: BufferGeometry[]): void {
     const put = (parts: BufferGeometry[], s: { x: number; z: number }, yaw?: number): void =>
       place(p, parts, yaw ?? facingFire(s.x, s.z), s.x, s.z)
