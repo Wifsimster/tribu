@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.7.0',
+    title: 'Le pré et la basse-cour',
+    items: [
+      "Les quartiers de la faune se voient : une clôture de piquets ceint le pré des moutons — ouverte côté village, c'est une barrière, pas une cage — et une cabane à poules avec sa planche d'envol se dresse près du foyer.",
+      'Les lieux apparaissent avec leurs bêtes : pas de clôture avant le troupeau.',
+    ],
+  },
+  {
     version: '3.6.0',
     title: 'Chacun chez soi',
     items: [

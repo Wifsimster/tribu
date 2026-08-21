@@ -258,6 +258,12 @@ export class Fauna {
   private readonly henMesh: InstancedMesh
   private readonly horseMesh: InstancedMesh
   private readonly gullMesh: InstancedMesh
+  /** Centre de l'enclos et du poulailler, déduits des zones d'habitat. */
+  private penCenter: { x: number; z: number; h: number } | null = null
+  private coopAt: { x: number; z: number; h: number } | null = null
+  /** Décor fixe des zones : la clôture du pré et la cabane à poules. La faune
+   *  bouge, ses lieux non — un seul mesh fusionné pour les deux. */
+  private pens: Mesh | null = null
 
   private readonly deer: Beast[]
   private readonly sheep: Beast[]
@@ -341,6 +347,19 @@ export class Fauna {
     }
 
     const land = island.cells.filter((c) => !c.beach && !inCamp(c.x, c.z, 0.3))
+    /** Altitude du sol au point le plus proche : les clôtures se posent dessus. */
+    const heightAt = (x: number, z: number): number => {
+      let best = Infinity
+      let h = 0
+      for (const c of island.cells) {
+        const d = (c.x - x) ** 2 + (c.z - z) ** 2
+        if (d < best) {
+          best = d
+          h = c.height
+        }
+      }
+      return h
+    }
     /** Rayon de l'île : les habitats se raisonnent en PART du rayon, pas en
      *  unités monde — l'île double de taille entre l'âge 0 et l'âge 9. */
     const R = Math.max(6, island.radius)
@@ -400,6 +419,12 @@ export class Fauna {
     const anchor = this.sheepSpots[(Math.random() * this.sheepSpots.length) | 0]!
     const nearAnchor = this.sheepSpots.filter((s) => Math.hypot(s.x - anchor.x, s.z - anchor.z) < 2.6)
     if (nearAnchor.length >= 3) this.sheepSpots = nearAnchor
+    this.penCenter = { x: anchor.x, z: anchor.z, h: heightAt(anchor.x, anchor.z) }
+    const coop = this.henSpots.reduce(
+      (a, s) => ({ x: a.x + s.x / this.henSpots.length, z: a.z + s.z / this.henSpots.length }),
+      { x: 0, z: 0 },
+    )
+    this.coopAt = { x: coop.x, z: coop.z, h: heightAt(coop.x, coop.z) }
 
     const build = (geo: BufferGeometry, n: number, spread: number): InstancedMesh => {
       const mesh = new InstancedMesh(geo, this.skin, n)
@@ -421,6 +446,8 @@ export class Fauna {
     this.henMesh.visible = false
     this.horseMesh.visible = false
     this.gullMesh.visible = false
+
+    this.buildPens()
 
     this.deer = makeHerd(3, this.deerSpots)
     this.sheep = makeHerd(4, this.sheepSpots)
@@ -444,9 +471,68 @@ export class Fauna {
     }
   }
 
+
+  /** Les zones d'habitat DEVIENNENT visibles : une clôture de piquets autour
+   *  du pré des moutons — ouverte côté village, c'est une barrière et pas une
+   *  cage : les bêtes ne la franchissent jamais puisque toutes leurs cibles
+   *  sont dedans — et une cabane à poules près du foyer. */
+  private buildPens(): void {
+    const p: BufferGeometry[] = []
+    const wood = new Color('#9a7248')
+    const woodDark = new Color('#6d4f31')
+    const roof = new Color('#4260c4')
+    const plaster = new Color('#efe3cc')
+
+    if (this.penCenter) {
+      const { x, z, h } = this.penCenter
+      const R = 3.1
+      const N = 12
+      const gate = 3
+      for (let i = 0; i < N; i++) {
+        if (i === gate || i === gate + 1) continue
+        const a = (i / N) * Math.PI * 2
+        const px = x + Math.cos(a) * R
+        const pz = z + Math.sin(a) * R
+        p.push(part(new CylinderGeometry(0.055, 0.07, 0.72, 5), woodDark, px, h + 0.34, pz))
+        if (i === gate - 1 || i === gate + 1) continue
+        const b = ((i + 1) / N) * Math.PI * 2
+        const qx = x + Math.cos(b) * R
+        const qz = z + Math.sin(b) * R
+        const len = Math.hypot(qx - px, qz - pz)
+        for (const y of [0.28, 0.52]) {
+          p.push(
+            part(
+              new BoxGeometry(len, 0.05, 0.05).rotateY(-Math.atan2(qz - pz, qx - px)),
+              wood,
+              (px + qx) / 2,
+              h + y,
+              (pz + qz) / 2,
+            ),
+          )
+        }
+      }
+    }
+
+    if (this.coopAt) {
+      const { x, z, h } = this.coopAt
+      p.push(part(new BoxGeometry(0.95, 0.6, 0.8), plaster, x, h + 0.3, z))
+      p.push(part(new BoxGeometry(1.15, 0.16, 1.0).rotateZ(0.13), roof, x, h + 0.68, z))
+      p.push(part(new BoxGeometry(0.5, 0.05, 0.24).rotateZ(-0.22), wood, x + 0.66, h + 0.16, z))
+      p.push(part(new CylinderGeometry(0.035, 0.035, 0.5, 5), woodDark, x - 0.62, h + 0.25, z + 0.3))
+    }
+
+    const geo = mergeGeometries(p)
+    if (!geo) return
+    this.pens = new Mesh(geo, this.skin)
+    this.pens.visible = false
+    this.group.add(this.pens)
+  }
+
   /** Chaque espèce apparaît avec le savoir qui la fait entrer dans la vie de la
    *  tribu. Appelé chaque frame depuis main — quatre booléens, rien de plus. */
   setKnown(agriculture: boolean, granary: boolean, horsecollar: boolean, sail: boolean): void {
+    // Les lieux apparaissent avec leurs bêtes : pas de clôture sans troupeau.
+    if (this.pens) this.pens.visible = agriculture || granary
     this.sheepMesh.visible = agriculture
     this.henMesh.visible = granary
     this.horseMesh.visible = horsecollar
