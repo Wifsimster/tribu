@@ -901,7 +901,9 @@ export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]))
 // ── Expéditions : destinations et reliques ───────────────────────────────────
 
 export interface DestinationDef {
-  id: 'ilot' | 'cote' | 'large'
+  /** 'ilot' | 'cote' | 'large' — ou 'visite', la destination fabriquée à la
+   *  volée quand on met le cap sur l'île d'un voisin. */
+  id: string
   name: string
   /** Une ligne d'intention : le joueur choisit un tempérament, pas des chiffres. */
   blurb: string
@@ -961,6 +963,22 @@ export const DESTINATIONS: DestinationDef[] = [
 export const DESTINATION_BY_ID = new Map<string, DestinationDef>(
   DESTINATIONS.map((d) => [d.id, d]),
 )
+
+/** Mettre le cap sur l'île d'un voisin : plus loin que la côte, moins que le
+ *  grand large, et payant — on ne rentre pas les mains vides de chez les
+ *  autres. Il faut une vraie barque : leurs îles sont au-delà de la côte. */
+export const VISIT_DEST: DestinationDef = {
+  id: 'visite',
+  name: 'Chez le voisin',
+  blurb: "Mettre le cap sur l'île d'une autre tribu.",
+  durationK: 1.25,
+  lootK: 1.4,
+  risk: 0.16,
+  relicChance: 0.5,
+  azimuth: 3.66,
+  minTier: 2,
+  needs: 'la barque à voile',
+}
 
 export interface RelicDef {
   id: string

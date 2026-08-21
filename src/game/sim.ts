@@ -4,6 +4,7 @@ import {
   DAY_START,
   DESTINATION_BY_ID,
   DESTINATIONS,
+  VISIT_DEST,
   SEASON_DAYS,
   SEASONS,
   FEATS,
@@ -48,6 +49,11 @@ export type GameEvent =
       setback: boolean
     }
   | { type: 'encourage' }
+  /** Le colon a débarqué chez un voisin : main.ts le fera savoir au serveur,
+   *  qui glissera le mot dans SA boîte aux lettres. */
+  | { type: 'visitDone'; neighborId: string; name: string }
+  /** Une nouvelle venue d'une autre tribu, appliquée au retour du joueur. */
+  | { type: 'mail'; text: string; relic: RelicDef | null }
   | { type: 'offline'; seconds: number; gained: Partial<Record<ResourceId, number>> }
   | { type: 'caravanArrive'; merchant: string }
   | {
@@ -164,6 +170,39 @@ const FINDS = [
   'une coquille venue d’une mer lointaine',
   'un os d’oiseau creusé de quatre trous',
   'une empreinte de main soufflée sur la roche',
+]
+
+/** Le musée d'un voisin, déduit de son identité : le serveur ne transporte que
+ *  le NOMBRE de reliques, et cette liste doit être la même pour tout le monde
+ *  — donc tirée du seul identifiant, sans hasard. */
+export function museumOf(id: string, count: number): RelicDef[] {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0
+  const pool = [...RELICS]
+  // Mélange de Fisher-Yates piloté par un PRNG semé sur l'identifiant.
+  for (let i = pool.length - 1; i > 0; i--) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0
+    const j = h % (i + 1)
+    ;[pool[i], pool[j]] = [pool[j]!, pool[i]!]
+  }
+  return pool.slice(0, Math.max(0, Math.min(RELICS.length, count)))
+}
+
+/** Le profil d'une destination — 'visite' n'est pas dans la table : elle est
+ *  fabriquée à la volée pour l'île d'un voisin. */
+function destProfile(id: string): DestinationDef {
+  return id === 'visite' ? VISIT_DEST : (DESTINATION_BY_ID.get(id) ?? DESTINATIONS[1]!)
+}
+
+/** Ce que le colon rapporte de chez les autres : ce sont des gens, pas un
+ *  décor — ce qu'il raconte parle toujours d'eux. */
+const VISIT_SIGHTS = [
+  'leurs feux répondre aux nôtres depuis la grève',
+  "des maisons qu'on ne bâtit pas comme ici, et qui tiennent aussi bien",
+  "leurs enfants courir jusqu'à la barque pour voir de quel bois elle était",
+  'un vieux dessiner leur île dans le sable pour lui expliquer où il avait accosté',
+  "qu'ils comptaient les jours autrement, et qu'ils avaient pourtant le même hiver",
+  'leur feu commun brûler au milieu du village, exactement comme le nôtre',
 ]
 
 export class Game {
@@ -502,7 +541,7 @@ export class Game {
   expeditionDuration(destId = 'cote'): number {
     const base = EXPEDITION_SECONDS + this.save.age * 45
     const damp = 0.45 + 0.55 / this.expeditionSpeed
-    const k = DESTINATION_BY_ID.get(destId)?.durationK ?? 1
+    const k = destProfile(destId).durationK
     return Math.max(45, base * damp * k)
   }
 
@@ -531,7 +570,53 @@ export class Game {
   }
 
   canReach(destId: string): boolean {
-    return this.boatTier >= (DESTINATION_BY_ID.get(destId)?.minTier ?? 0)
+    return this.boatTier >= destProfile(destId).minTier
+  }
+
+  /** Les voisins joignables, posés par main.ts à chaque synchro. Hors
+   *  sauvegarde : c'est une vue du monde, pas un état de la partie. */
+  visitable: { id: string; name: string; age: number; relics: number }[] = []
+
+  /** Mettre le cap sur l'île d'un voisin. Même économie qu'une expédition,
+   *  mais on sait chez QUI on va — et eux le sauront aussi. */
+  startVisit(id: string, name: string): boolean {
+    if (!this.canExpedition() || !this.canReach('visite')) return false
+    const cost = this.expeditionCost()
+    if (this.amount('food') < cost) return false
+    this.save.res.food = this.amount('food') - cost
+    const total = this.expeditionDuration('visite')
+    this.save.expedition = { remaining: total, total, dest: 'visite', visit: { id, name } }
+    this.refreshRates()
+    this.emit({ type: 'expeditionStart' })
+    return true
+  }
+
+  /** Le courrier des autres tribus, relevé par main.ts. Le serveur n'écrit
+   *  que des faits ; c'est ici qu'ils deviennent des lignes de Chronique. */
+  receiveMail(events: { kind: string; from?: string; relic?: string }[]): void {
+    for (const e of events) {
+      const who = (e.from ?? 'Une tribu inconnue').slice(0, 24)
+      if (e.kind === 'visit') {
+        // Tournure qui marche avec n'importe quel nom de tribu : « X est
+        // venu » se casse dès que le nom est pluriel, et ils le sont presque tous.
+        const text = `Une barque de ${who} a accosté sur notre rivage.`
+        this.record('visit', text)
+        this.emit({ type: 'mail', text, relic: null })
+      } else if (e.kind === 'gift') {
+        const def = RELICS.find((r) => r.id === e.relic)
+        if (!def) continue
+        // Une relique déjà exposée ne se dédouble pas : le geste compte quand
+        // même, il s'écrit dans la Chronique.
+        const isNew = !this.save.relics.includes(def.id)
+        if (isNew) this.save.relics.push(def.id)
+        const text = isNew
+          ? `${who} nous fait don d'une relique : ${def.name.toLowerCase()}.`
+          : `${who} nous offre ${def.name.toLowerCase()} — le musée en possédait déjà une.`
+        this.record('relic', text)
+        this.emit({ type: 'mail', text, relic: isNew ? def : null })
+      }
+    }
+    if (events.length > 0) writeSave(this.save, Date.now())
   }
 
   canExpedition(): boolean {
@@ -563,7 +648,8 @@ export class Game {
     // encaisse ×20 de portage, le voyage rien) ; en plein, elle redevenait
     // dominante. La racine garde la tension.
     const carryBonus = Math.sqrt(1 + this.carry * 0.02)
-    const dest = DESTINATION_BY_ID.get(this.save.expedition?.dest ?? 'cote') ?? DESTINATIONS[1]!
+    const visit = this.save.expedition?.visit ?? null
+    const dest = destProfile(this.save.expedition?.dest ?? 'cote')
     // Le tempérament de la destination joue sur le butin — la durée a déjà
     // payé sa part via ratio, lootK est le pari en plus.
     const lootBias = dest.lootK / dest.durationK
@@ -585,7 +671,14 @@ export class Game {
     // Une relique pour le musée — jamais deux fois la même.
     let relic: RelicDef | null = null
     if (Math.random() < dest.relicChance) {
-      const pool = RELICS.filter((r) => !this.save.relics.includes(r.id))
+      // Chez un voisin, on ne ramène pas n'importe quoi : une pièce de LEUR
+      // musée. Leur collection est déduite de leur identité et de leur nombre
+      // de reliques — le serveur n'en transporte que le compte.
+      const pool = visit
+        ? museumOf(visit.id, this.visitable.find((v) => v.id === visit.id)?.relics ?? 0).filter(
+            (r) => !this.save.relics.includes(r.id),
+          )
+        : RELICS.filter((r) => !this.save.relics.includes(r.id))
       relic = pool[Math.floor(Math.random() * pool.length)] ?? null
       if (relic) this.save.relics.push(relic.id)
     }
@@ -608,13 +701,19 @@ export class Game {
       this.emit({ type: 'outpostFounded' })
       return
     }
-    const sights = SIGHTS[dest.id] ?? []
+    const sights = visit ? VISIT_SIGHTS : (SIGHTS[dest.id] ?? [])
     const sight = sights[Math.floor(Math.random() * sights.length)] ?? 'la mer, longtemps'
-    let journal = `${dest.name} — le colon a vu ${sight}.`
+    // « Chez X » plutôt que « L'île de X » : aucun nom de tribu ne s'élide
+    // proprement derrière « de » (« l'île de Les Veilleurs »…).
+    let journal = visit
+      ? `Chez ${visit.name} — le colon a vu ${sight}.`
+      : `${dest.name} — le colon a vu ${sight}.`
     if (setback)
       journal += ` Mais ${SETBACKS[Math.floor(Math.random() * SETBACKS.length)]}.`
     this.save.expedition = null
-    this.record('exp', `Expédition — ${journal}`)
+    this.record('exp', visit ? `Visite — ${journal}` : `Expédition — ${journal}`)
+    // Ils sauront qu'on est venu : main.ts porte le mot au serveur.
+    if (visit) this.emit({ type: 'visitDone', neighborId: visit.id, name: visit.name })
     if (relic) this.record('relic', `Relique rapportée : ${relic.name.toLowerCase()}`)
     this.refreshRates()
     this.emit({ type: 'expeditionEnd', loot, find, journal, relic, setback })

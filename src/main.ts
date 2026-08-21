@@ -18,8 +18,10 @@ import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { decodeSave, encodeSave, transferFilename } from './game/transfer'
 import {
+  announceVisit,
   cacheNeighbors,
   cachedNeighbors,
+  drainInbox,
   fetchNeighbors,
   makeIdentity,
   leave,
@@ -87,6 +89,9 @@ let neighbors: Neighbor[] = cachedNeighbors()
 // Déclaré ICI, et pas près de la boucle de synchro : le bloc du menu s'exécute
 // AVANT elle et s'y abonne — un `let` plus bas serait dans sa zone morte.
 let onNeighborsChange: (() => void) | null = null
+// Le choix de destination doit connaître les voisins DÈS le premier menu,
+// même hors ligne : le cache d'hier fait l'affaire.
+game.visitable = neighbors.map((n) => ({ id: n.id, name: n.name, age: n.age, relics: n.relics }))
 
 // La pêche : un état de surface — le colon récolte SA nourriture, mais au
 // rivage, avec la baie qui vit autour de lui. Déclarée AVANT buildWorld qui
@@ -339,6 +344,20 @@ game.on((e) => {
       island.setOutpost(true)
       ambience.chime()
       break
+    // Le colon a débarqué chez un voisin : on le leur fait savoir. Si le
+    // réseau est absent, tant pis — la visite a quand même eu lieu chez nous.
+    case 'visitDone': {
+      const t = game.save.tribe
+      if (t) void announceVisit(t.id, t.secret, e.neighborId)
+      break
+    }
+    // Le courrier des autres tribus, relevé à la synchro.
+    case 'mail': {
+      hud.toast(e.text)
+      notify(e.text)
+      if (e.relic) village.setRelics(game.save.relics.length)
+      break
+    }
     case 'outpostTribute': {
       stage.outpostRun()
       const parts = Object.entries(e.loot)
@@ -833,7 +852,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('neighbors-rename').addEventListener('click', () => {
       const t = game.save.tribe
       if (!t) return
-      const name = nameInput.value.trim().slice(0, 20)
+      const name = nameInput.value.trim().slice(0, 24)
       if (!name) return
       t.name = name
       game.flush(Date.now())
@@ -1221,8 +1240,16 @@ const horizonKey = (list: Neighbor[]): string =>
 async function syncNeighborhood(): Promise<void> {
   const snap = snapshot()
   if (snap) await publish(snap)
+  // Le courrier d'abord : ce que les autres ont fait pendant l'absence.
+  const t = game.save.tribe
+  if (t) {
+    const mail = await drainInbox(t.id, t.secret)
+    if (mail.length > 0) game.receiveMail(mail)
+  }
   const list = await fetchNeighbors(game.save.tribe?.id ?? '', 8)
   if (!list) return
+  // Les îles joignables par le colon : le choix de destination s'en sert.
+  game.visitable = list.map((n) => ({ id: n.id, name: n.name, age: n.age, relics: n.relics }))
   const before = horizonKey(neighbors)
   neighbors = list
   cacheNeighbors(list)

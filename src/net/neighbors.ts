@@ -109,6 +109,30 @@ export async function leave(id: string, secret: string): Promise<boolean> {
   return !!(out as { ok?: boolean } | null)?.ok
 }
 
+/** Prévenir un voisin qu'on a accosté chez lui. Le texte du message est écrit
+ *  par le SERVEUR : un client ne doit pas pouvoir dicter ce qui s'inscrira
+ *  dans la Chronique de quelqu'un d'autre. */
+export async function announceVisit(id: string, secret: string, to: string): Promise<void> {
+  await call('/visit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, secret, to }),
+  })
+}
+
+/** Relève du courrier : lit ET vide la boîte côté serveur. */
+export async function drainInbox(
+  id: string,
+  secret: string,
+): Promise<{ kind: string; from?: string; relic?: string }[]> {
+  const out = (await call('/inbox', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, secret }),
+  })) as { events?: { kind: string }[] } | null
+  return Array.isArray(out?.events) ? (out.events as { kind: string; from?: string }[]) : []
+}
+
 /** Publication de dernière seconde, au moment où l'onglet part : `keepalive`
  *  laisse la requête vivre après la page. Aucune réponse n'est attendue. */
 export function publishBeacon(snap: Snapshot): void {

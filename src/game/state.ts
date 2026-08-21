@@ -8,6 +8,9 @@ export interface Expedition {
   dest?: string
   /** Vrai si ce voyage est l'ambassade qui fonde le comptoir. */
   embassy?: boolean
+  /** Cap sur l'île d'un voisin : son identité voyage AVEC l'expédition, sinon
+   *  un rechargement en cours de traversée ne saurait plus chez qui on va. */
+  visit?: { id: string; name: string }
 }
 
 export interface CaravanState {

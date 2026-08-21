@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.1.0',
+    title: 'En visite chez le voisin',
+    items: [
+      "Les îles du voisinage deviennent des destinations : avec la barque à voile, le colon peut mettre le cap sur l'île d'une autre tribu. Il en revient chargé, et souvent avec une pièce de LEUR musée.",
+      "Et eux le sauront : à leur retour, leur Chronique dira qu'une barque étrangère a accosté. La visite se raconte des deux côtés.",
+      "Le courrier des autres tribus se relève tout seul, et attend patiemment que tu reviennes.",
+    ],
+  },
+  {
     version: '3.0.1',
     title: 'Le menu tient dans l’écran',
     items: [

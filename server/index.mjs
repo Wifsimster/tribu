@@ -131,7 +131,7 @@ function cleanName(v) {
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 20)
+    .slice(0, 24)
   return s || 'Tribu sans nom'
 }
 

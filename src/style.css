@@ -1205,6 +1205,10 @@ body.night .age-bar {
 /* L'ambassade : la ligne dorée du sélecteur. */
 .dest.embassy { border: 1px solid rgba(185, 138, 46, 0.55); background: rgba(42, 36, 20, 0.85); }
 
+/* Les îles du voisinage : bleu-vert, pour se distinguer des trois horizons
+   de toujours sans crier plus fort qu'eux. */
+.dest.visit { border: 1px solid rgba(96, 168, 178, 0.5); background: rgba(18, 40, 46, 0.85); }
+
 
 /* Hauts faits : étoiles pleines pour l'accompli, estompé pour le reste. */
 .feat { opacity: 0.55; }

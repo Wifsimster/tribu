@@ -336,6 +336,34 @@ export class Hud {
       })
       host.appendChild(row)
     }
+    // Les îles du voisinage : de vraies tribus, à visiter comme on visite une
+    // côte — mais elles, elles le sauront.
+    for (const v of this.game.visitable.slice(0, 4)) {
+      const reachable = this.game.canReach('visite')
+      const sec = this.game.expeditionDuration('visite')
+      const dur = sec < 100 ? `${Math.round(sec / 10) * 10} s` : `${Math.round(sec / 60)} min`
+      const row = document.createElement('button')
+      row.type = 'button'
+      row.className = reachable ? 'dest visit' : 'dest visit locked'
+      row.innerHTML =
+        `<span class="dest-name">Chez ${escapeHtml(v.name)}</span>` +
+        `<span class="dest-blurb">${
+          reachable
+            ? 'Une autre tribu, en chair et en feux — ils sauront que nous sommes venus.'
+            : "Nécessite la barque à voile — leur île est au-delà de la côte."
+        }</span>` +
+        `<span class="dest-meta">${reachable ? `~${dur} · risque modéré` : 'hors de portée'}</span>`
+      row.addEventListener('click', () => {
+        if (!reachable) {
+          this.toast('Il faut la barque à voile pour aller chez eux')
+          return
+        }
+        this.toggleDest(false)
+        if (!this.game.startVisit(v.id, v.name)) this.toast('Pas assez de nourriture pour partir')
+      })
+      host.appendChild(row)
+    }
+
     // L'ambassade : fonder le comptoir de l'îlot, une seule fois, avec la voile.
     if (this.game.knows('sail') && !this.game.save.outpost) {
       const row = document.createElement('button')
