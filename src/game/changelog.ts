@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.16.2',
+    title: 'Les buissons aussi',
+    items: [
+      "Dernier étage du ménage : les buissons sont moins nombreux, un peu plus bas, et laissent le cœur de la clairière au village. Ils la bordent de plus près que les rochers — ce sont aussi tes nœuds de nourriture, les éloigner allongerait les trajets du colon.",
+    ],
+  },
+  {
     version: '3.16.1',
     title: 'Les rochers reculent aussi',
     items: [

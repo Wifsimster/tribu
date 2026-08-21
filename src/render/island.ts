@@ -1409,7 +1409,18 @@ export class Island {
       ),
       rnd,
     )
-    this.addBushes(take(Math.round(34 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
+    // Les buissons sont aussi les nœuds de NOURRITURE : les raréfier allonge
+    // les trajets du colon. On les réduit donc moins que les rochers, et on
+    // les tient à distance plus courte encore — ce sont eux qui bordent la
+    // clairière de plus près, une fois sapins et blocs écartés.
+    this.addBushes(
+      take(
+        Math.round(24 * this.growth * this.growth),
+        clustered(free, 6),
+        (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth) * 0.5,
+      ),
+      rnd,
+    )
   }
 
   // Audit échelles 2026-08, round 2 : à ~5 u de moyenne les cimes rasaient
@@ -1542,7 +1553,10 @@ export class Island {
     const berry = new Color('#4a7340')
     cells.forEach((c, i) => {
       // Audit échelles : ×1,5 pour viser ~1 m réel (le colon = 1,5 u ≙ 1,75 m).
-      const s = (0.7 + rnd() * 0.5) * 1.5
+      // Amplitude resserrée par le haut (0,7–1,05 au lieu de 0,7–1,2) : les
+      // plus gros buissons montaient à 1,44 unité, soit la hauteur d'un
+      // villageois assis — ils encombraient le sol de la clairière.
+      const s = (0.7 + rnd() * 0.35) * 1.5
       d.position.set(c.x + (rnd() - 0.5) * 0.7, c.height + 0.22 * s, c.z + (rnd() - 0.5) * 0.7)
       d.rotation.set(0, rnd() * Math.PI, 0)
       d.scale.set(s, s * 0.8, s)
