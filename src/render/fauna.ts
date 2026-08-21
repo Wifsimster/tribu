@@ -154,17 +154,49 @@ function sheepGeo(): BufferGeometry {
 
 function henGeo(): BufferGeometry {
   const body = new Color('#f2efe4')
+  // Une poule blanche n'est pas uniforme : son dos est plus chaud, ses
+  // rémiges plus grises, et sa queue franchement plus sombre. À quarante
+  // pixels, ce sont ces trois valeurs qui la font lire comme un animal.
+  const backWarm = new Color('#e2d6bd')
+  const wing = new Color('#cfc4ae')
+  const tail = new Color('#9c8f7c')
   const red = new Color('#c8402f')
+  const redDark = new Color('#9c2f22')
   const beak = new Color('#d99a3c')
+  const leg = new Color('#c8862f')
+  const eye = new Color('#211a13')
   const p: BufferGeometry[] = []
+
+  // Corps ovoïde, un peu penché en avant comme une poule qui picore.
   p.push(part(new SphereGeometry(0.085, 7, 5).scale(1, 0.95, 1.25), body, 0, 0.13, 0))
-  // Queue relevée : le triangle qui fait « poule » de profil.
-  p.push(part(new ConeGeometry(0.05, 0.12, 4).rotateX(-1.15), body, 0, 0.2, -0.12))
+  p.push(part(new SphereGeometry(0.07, 7, 5).scale(1, 0.6, 1.1), backWarm, 0, 0.18, -0.01))
+  // Ailes plaquées : deux écailles sur les flancs, la marque la plus lisible
+  // d'un oiseau posé.
+  for (const s of [-1, 1])
+    p.push(part(new SphereGeometry(0.055, 6, 5).scale(0.45, 0.85, 1.35).rotateY(s * 0.18), wing, s * 0.07, 0.14, -0.01))
+
+  // Queue relevée : le triangle qui fait « poule » de profil, plus deux
+  // rectrices qui en débordent.
+  p.push(part(new ConeGeometry(0.05, 0.12, 4).rotateX(-1.15), tail, 0, 0.2, -0.12))
+  for (const s of [-1, 1])
+    p.push(part(new BoxGeometry(0.012, 0.075, 0.035).rotateX(-1.0).rotateZ(s * 0.25), tail, s * 0.022, 0.235, -0.155))
+
+  // Tête, crête dentelée, barbillon et bec.
   p.push(part(new SphereGeometry(0.045, 6, 4), body, 0, 0.24, 0.08))
-  p.push(part(new BoxGeometry(0.014, 0.05, 0.055), red, 0, 0.29, 0.075))
-  p.push(part(new SphereGeometry(0.016, 4, 3), red, 0, 0.21, 0.11))
+  p.push(part(new CylinderGeometry(0.028, 0.032, 0.05, 6), body, 0, 0.205, 0.06))
+  for (let i = 0; i < 3; i++)
+    p.push(part(new BoxGeometry(0.013, 0.03 + i * 0.012, 0.016), red, 0, 0.295 + i * 0.004, 0.095 - i * 0.028))
+  p.push(part(new SphereGeometry(0.016, 4, 3), redDark, 0, 0.21, 0.11))
   p.push(part(new ConeGeometry(0.015, 0.05, 4).rotateX(Math.PI / 2), beak, 0, 0.24, 0.13))
-  for (const s of [-1, 1]) p.push(part(new CylinderGeometry(0.008, 0.008, 0.09, 3), beak, s * 0.03, 0.045, 0.01))
+  for (const s of [-1, 1]) p.push(part(new SphereGeometry(0.009, 4, 3), eye, s * 0.03, 0.253, 0.105))
+
+  // Pattes : le tarse orange, et trois doigts posés au sol — sans eux la
+  // poule flottait au-dessus de son ombre.
+  for (const s of [-1, 1]) {
+    p.push(part(new CylinderGeometry(0.008, 0.008, 0.09, 4), leg, s * 0.03, 0.045, 0.01))
+    for (const [tx, tz] of [[0, 0.035], [0.022, 0.018], [-0.022, 0.018]] as [number, number][])
+      p.push(part(new BoxGeometry(0.009, 0.007, 0.03).rotateY(tx * 8), leg, s * 0.03 + tx, 0.006, 0.01 + tz))
+  }
   return weld(p)
 }
 
@@ -232,6 +264,12 @@ interface LandCfg {
   pauseMax: number
   bobAmp: number
   bobFreq: number
+  /** De combien la bête s'enfonce dans l'herbe quand elle broute ou dort.
+   *  DOIT être proportionnel à sa taille : un décalage fixe de 0,1 unité, ce
+   *  n'est rien sous un cheval et c'est le quart d'un mouton — la nuit, le
+   *  troupeau disparaissait sous le sol, ne laissant que le dessus de la
+   *  toison à ras de terre. */
+  sink: number
 }
 
 interface Gull {
@@ -344,10 +382,10 @@ export class Fauna {
 
   // Les allures sont figées ici plutôt qu'en littéraux dans update : zéro objet
   // construit par frame.
-  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5 }
-  private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, bobFreq: 5 }
-  private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16 }
-  private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8 }
+  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5, sink: 0.05 }
+  private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, bobFreq: 5, sink: 0.02 }
+  private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16, sink: 0.008 }
+  private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8, sink: 0.07 }
 
   /** Un trajet est-il dégagé ? Vrai si le segment ne coupe l'emprise d'aucun
    *  bâtiment ni du camp : les bêtes contournent, elles ne traversent plus. */
@@ -799,7 +837,11 @@ export class Fauna {
       b.pitch += (wantPitch - b.pitch) * Math.min(1, dt * 3)
 
       const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp : 0
-      dummy.position.set(b.x, this.island.heightAt(b.x, b.z) + bob - b.pitch * 0.1 - b.sleep * 0.1, b.z)
+      dummy.position.set(
+        b.x,
+        this.island.heightAt(b.x, b.z) + bob - (b.pitch + b.sleep) * cfg.sink,
+        b.z,
+      )
       dummy.rotation.set(b.pitch, b.heading, moving ? Math.sin(b.phase) * 0.05 : 0)
       // La nuit : couché sur place — tassé, immobile, un peu élargi.
       dummy.scale.set(1 + b.sleep * 0.12, 1 - b.sleep * 0.55, 1 + b.sleep * 0.06)

@@ -1700,12 +1700,22 @@ export class Village {
    *  sur une marche de terrasse a le mur arrière noyé dans le bloc de terrain:
    *  on échantillonne le pourtour et on refuse les slots qui enjambent un
    *  dénivelé. */
+  /** Le sol sous une emprise doit être plat ET EXISTER. Le second point
+   *  manquait : `heightAt` renvoyant la hauteur de la cellule la plus proche,
+   *  un point au-dessus de l'eau rendait celle de la berge — donc « plat ».
+   *  Des bâtiments se posaient ainsi à cheval sur le bord de l'île. */
   private flatEnough(slot: Vector3, footprint: number): boolean {
     if (footprint <= 0) return true
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2
-      const h = this.island.heightAt(slot.x + Math.cos(a) * footprint, slot.z + Math.sin(a) * footprint)
-      if (Math.abs(h - slot.y) > 0.12) return false
+    // Deux couronnes : le pourtour de l'emprise, et une intermédiaire — un
+    // bâtiment large peut enjamber une échancrure que le seul bord manquerait.
+    for (const k of [1, 0.6]) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        const px = slot.x + Math.cos(a) * footprint * k
+        const pz = slot.z + Math.sin(a) * footprint * k
+        if (!this.island.isLand(px, pz)) return false
+        if (Math.abs(this.island.heightAt(px, pz) - slot.y) > 0.12) return false
+      }
     }
     return true
   }
@@ -1823,7 +1833,10 @@ export class Village {
       // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
       // villa de 4 u posée à 2 u d'une hutte lui rentrait dans le toit — et à
       // ×2.2 d'emprise elle venait encore s'accoler aux arches de l'aqueduc.
-      const fp = Village.FOOTPRINT[b] ?? 0.5
+      // Aucun bâtiment n'a une emprise nulle : sans plancher, `flatEnough`
+      // renvoyait vrai sans rien vérifier et le bord de l'île redevenait
+      // constructible.
+      const fp = Math.max(0.6, Village.FOOTPRINT[b] ?? 0.5)
       const s = Village.LEGACY.has(b)
         ? this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
         : this.nextSlot(Math.max(2.0, fp * 2.6), fp, Village.MONUMENTS.has(b))

@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.15.0',
+    title: 'La poule, et deux choses qui s’enfonçaient',
+    items: [
+      "Troisième animal détaillé : la poule gagne sa crête dentelée, son barbillon, des ailes plaquées, une queue à rectrices, un dos plus chaud, des yeux et trois doigts au sol.",
+      "Les bêtes ne s'enfoncent plus dans le sol la nuit : elles se tassaient toutes de la même hauteur, ce qui est un rien sous un cheval et le quart d'un mouton — le troupeau disparaissait sous l'herbe.",
+      "Les bâtiments ne débordent plus du bord de l'île : le terrain sait enfin répondre « ici, c'est de l'eau ».",
+    ],
+  },
+  {
     version: '3.14.0',
     title: 'Le mouton de plus près',
     items: [

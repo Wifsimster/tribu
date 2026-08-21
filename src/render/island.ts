@@ -1552,14 +1552,46 @@ export class Island {
   }
 
   /** Ground height under a world position, for anything that walks. */
+  /** La cellule sous un point du monde, ou `null` si c'est de l'eau.
+   *  Inverse exacte de `hexCenter` suivie de l'arrondi cubique : en O(1), là
+   *  où l'ancien `heightAt` balayait les six cents cellules à chaque appel —
+   *  soit un demi-million de comparaisons par seconde rien que pour la faune. */
+  cellAt(x: number, z: number): Cell | null {
+    const q = x / HEX_DX
+    const r = z / HEX_DZ - q / 2
+    const sAx = -q - r
+    let rq = Math.round(q)
+    let rr = Math.round(r)
+    const rs = Math.round(sAx)
+    const dq = Math.abs(rq - q)
+    const dr = Math.abs(rr - r)
+    const ds = Math.abs(rs - sAx)
+    if (dq > dr && dq > ds) rq = -rr - rs
+    else if (dr > ds) rr = -rq - rs
+    return this.byKey.get(key(rq, rr)) ?? null
+  }
+
+  /** Y a-t-il de la terre ici ? La question que `heightAt` ne pouvait PAS
+   *  poser : il renvoyait la hauteur de la cellule la plus proche, donc
+   *  au-dessus de l'eau il rendait celle de la berge voisine — et le vide
+   *  passait pour du sol plat. C'est ainsi que des bâtiments se posaient à
+   *  cheval sur le bord de l'île. */
+  isLand(x: number, z: number): boolean {
+    return this.cellAt(x, z) !== null
+  }
+
   heightAt(x: number, z: number): number {
+    const c = this.cellAt(x, z)
+    if (c) return c.height
+    // Hors de l'île : on retombe sur la cellule la plus proche, pour que les
+    // bêtes et les props posés en bordure ne tombent pas à zéro d'un coup.
     let best = 0
     let bestD = Infinity
-    for (const c of this.cells) {
-      const d = (c.x - x) ** 2 + (c.z - z) ** 2
+    for (const o of this.cells) {
+      const d = (o.x - x) ** 2 + (o.z - z) ** 2
       if (d < bestD) {
         bestD = d
-        best = c.height
+        best = o.height
       }
     }
     return best
