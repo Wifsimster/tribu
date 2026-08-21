@@ -979,6 +979,20 @@ function aqueductParts(): BufferGeometry[] {
   p.push(part(new BoxGeometry(3.18, 0.3, 0.2), warmDark, 0, 2.43, -0.29))
   p.push(part(new BoxGeometry(3.06, 0.16, 0.38), C.water, 0, 2.4, 0))
   p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, 0.29))
+  // Ce qui manquait à l'ouvrage : la trace de l'EAU. Une coulure sombre sous
+  // la conduite, de la mousse au pied des piles, et un filet qui tombe d'une
+  // fuite — un aqueduc sec n'est qu'un pont.
+  p.push(part(new BoxGeometry(0.1, 0.5, 0.12), tint(C.water, 4, 0.05), -0.66, 2.1, 0.36))
+  p.push(part(new BoxGeometry(0.07, 1.5, 0.07), tint(C.water, 9, 0.05), -0.66, 1.3, 0.38))
+  for (let i = 0; i < 3; i++) {
+    const x = -1.32 + i * 1.32
+    p.push(part(new BoxGeometry(0.56, 0.14, 0.68), new Color('#5d7a48'), x, 0.1, 0))
+    // Assises usées au pied : la pierre du bas est toujours plus sombre.
+    p.push(part(new BoxGeometry(0.54, 0.22, 0.66), tint(warmDark, i * 6, 0.05), x, 0.2, 0))
+  }
+  // Un bassin de réception au bout de l'ouvrage.
+  p.push(part(new CylinderGeometry(0.42, 0.34, 0.26, 10), warmDark, 1.9, 0.13, 0))
+  p.push(part(new CylinderGeometry(0.34, 0.34, 0.04, 10), tint(C.water, 2, 0.04), 1.9, 0.25, 0))
   p.push(part(new BoxGeometry(3.26, 0.07, 0.26), warmLight, 0, 2.62, -0.29))
   // ×1.7 : un aqueduc porte son eau à ~8 m — à 2.65 u, le colon touchait le
   // canal du bout de la lance. Le slot ne bouge pas, seule la pierre grandit.
@@ -2123,7 +2137,27 @@ export class Village {
         p.push(part(new BoxGeometry(0.36, 0.5, 0.06), C.woodDark, 0, 0.45, 0.46))
         for (let i = 0; i < 6; i++)
           p.push(part(new CylinderGeometry(0.06, 0.075, 0.74, 6), C.bone, -0.8 + i * 0.32, 0.57, 0.62))
+        // Chapiteaux et bases : une colonne sans ni l'un ni l'autre est un
+        // tuyau. Ce sont eux qui font lire « romain » à cette taille.
+        for (let i = 0; i < 6; i++) {
+          const cx = -0.8 + i * 0.32
+          p.push(part(new BoxGeometry(0.16, 0.06, 0.16), C.bone, cx, 0.23, 0.62))
+          p.push(part(new BoxGeometry(0.17, 0.07, 0.17), C.ridge, cx, 0.95, 0.62))
+        }
         p.push(part(new BoxGeometry(1.82, 0.09, 0.34), C.plaster, 0, 0.98, 0.58))
+        // Fronton : le triangle au-dessus du péristyle, avec son tympan clair.
+        p.push(part(new CylinderGeometry(0.5, 0.5, 0.3, 3).rotateX(Math.PI / 2).rotateZ(Math.PI), C.ridge, 0, 1.16, 0.6))
+        // Deux fenêtres sombres et un enduit qui s'écaille au bas du mur.
+        for (const wx of [-0.55, 0.55]) {
+          p.push(part(new BoxGeometry(0.22, 0.26, 0.05), C.glass, wx, 0.68, 0.44))
+          p.push(part(new BoxGeometry(0.26, 0.05, 0.06), C.ridge, wx, 0.83, 0.45))
+        }
+        p.push(part(new BoxGeometry(1.72, 0.16, 1.17), tint(C.stoneLight, 5, 0.05), 0, 0.28, -0.12))
+        // Vasque du jardin et deux cyprès taillés : la villa a une cour.
+        p.push(part(new CylinderGeometry(0.17, 0.13, 0.12, 9), C.stoneLight, 0.72, 0.26, 0.5))
+        p.push(part(new CylinderGeometry(0.12, 0.12, 0.03, 9), C.water, 0.72, 0.33, 0.5))
+        for (const cx of [-0.86, 0.86])
+          p.push(part(new ConeGeometry(0.13, 0.6, 6), new Color('#3f6f3c'), cx, 0.5, 0.9))
         gableRoof(p, 2.0, 0.85, 0.52, 1.02, 5)
         // ×2 : à 1.56 u de faîte, la villa restait sous la hutte paléolithique.
         // Une villa de ~5 m doit dominer le colon de deux fois sa taille.

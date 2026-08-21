@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.19.0',
+    title: 'La villa et l’aqueduc',
+    items: [
+      "La villa gagne ses chapiteaux et ses bases de colonnes, un fronton au-dessus du péristyle, deux fenêtres, une vasque de jardin et deux cyprès taillés.",
+      "L'aqueduc a enfin l'air de porter de l'eau : une coulure sombre sous la conduite, un filet qui tombe d'une fuite, de la mousse au pied des piles, des assises usées, et un bassin de réception au bout de l'ouvrage.",
+    ],
+  },
+  {
     version: '3.18.0',
     title: 'La hutte et le grenier',
     items: [
