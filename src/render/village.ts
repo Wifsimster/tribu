@@ -2258,17 +2258,10 @@ export class Village {
         // Moulin-pivot : tour tronconique, quatre ailes croisées.
         p.push(part(new CylinderGeometry(0.2, 0.3, 0.85, 8), C.plaster, 0, 0.42, 0))
         p.push(part(new ConeGeometry(0.24, 0.3, 8), C.tileDark, 0, 0.98, 0))
-        for (let i = 0; i < 4; i++) {
-          const a = (i / 4) * Math.PI * 2 + 0.4
-          p.push(part(new BoxGeometry(0.09, 0.5, 0.02).rotateZ(a), C.wood, Math.sin(a) * -0.28, 0.78 + Math.cos(a) * 0.28, 0.26))
-        }
+        // Les ailes ne sont PLUS ici : elles tournent, donc elles vivent dans
+        // leur propre mesh (buildWindmillSails). Ne reste que l'arbre.
+
         p.push(part(new CylinderGeometry(0.03, 0.03, 0.14, 5).rotateX(Math.PI / 2), C.woodDark, 0, 0.78, 0.2))
-        // Toile sur les ailes : une aile nue n'est qu'une latte. Chaque bras
-        // reçoit son entoilage clair, un peu plus étroit que le bâti.
-        for (let i = 0; i < 4; i++) {
-          const a = (i / 4) * Math.PI * 2 + 0.4
-          p.push(part(new BoxGeometry(0.055, 0.34, 0.012).rotateZ(a), C.hidePale, Math.sin(a) * -0.34, 0.78 + Math.cos(a) * 0.34, 0.265))
-        }
         // Porte, fenêtre haute, et la queue de rotation qui oriente le moulin
         // au vent — c'est elle qui dit « moulin-pivot » plutôt que « tour ».
         p.push(part(new BoxGeometry(0.16, 0.3, 0.04), C.woodDark, 0, 0.19, -0.28))
@@ -2290,8 +2283,9 @@ export class Village {
         p.push(part(new BoxGeometry(0.34, 0.95, 0.34), C.stone, 0, 0.48, 0))
         p.push(part(new ConeGeometry(0.28, 0.26, 4).rotateY(Math.PI / 4), C.tileDark, 0, 1.08, 0))
         p.push(part(new CylinderGeometry(0.12, 0.12, 0.03, 12).rotateX(Math.PI / 2), C.bone, 0, 0.78, 0.18))
-        p.push(part(new BoxGeometry(0.02, 0.09, 0.015), C.char, 0, 0.81, 0.2))
-        p.push(part(new BoxGeometry(0.07, 0.02, 0.015), C.char, 0.025, 0.78, 0.2))
+        // Les aiguilles ne sont plus ici non plus : elles tournent avec
+        // l'heure du jeu (buildClockHands). Reste l'axe central.
+        p.push(part(new CylinderGeometry(0.012, 0.012, 0.02, 6).rotateX(Math.PI / 2), C.char, 0, 0.78, 0.195))
         p.push(part(new SphereGeometry(0.05, 6, 5), gold, 0, 0.99, 0))
         // Le beffroi : la cloche doit se VOIR, donc une baie ouverte sous le
         // toit, et la cloche dedans. Une tour pleine ne sonne pas.
@@ -2627,12 +2621,94 @@ export class Village {
 
   /** Reconstruit le mesh unique des ateliers ; transformations cuites dans la
    *  géométrie, un draw call pour tous les savoirs. */
+  /** Les pièces qui BOUGENT ne peuvent pas vivre dans la géométrie fusionnée
+   *  des bâtiments : elles ont besoin de leur propre transformation. Deux
+   *  petits meshes autonomes, créés seulement si le bâtiment est posé. */
+  private windmillSails: Mesh | null = null
+  private clockHands: { hour: Mesh; minute: Mesh } | null = null
+  private windSpin = 0
+
+  /** Appelé chaque frame par main.ts. `dayU` est la fraction de journée du
+   *  jeu (0 = minuit), la même qui pilote le soleil : le cadran de la tour
+   *  affiche donc l'heure qu'il est vraiment sur l'île. */
+  tickMovers(dt: number, dayU: number): void {
+    if (this.windmillSails) {
+      // Un moulin tourne lentement et jamais tout à fait régulièrement.
+      this.windSpin += dt * (0.55 + Math.sin(this.windSpin * 0.21) * 0.13)
+      this.windmillSails.rotation.z = this.windSpin
+    }
+    if (this.clockHands) {
+      // Cadran de douze heures : la petite aiguille fait deux tours par
+      // journée de jeu, la grande vingt-quatre.
+      this.clockHands.hour.rotation.z = -dayU * Math.PI * 4
+      this.clockHands.minute.rotation.z = -dayU * Math.PI * 48
+    }
+  }
+
+  private clearMovers(): void {
+    for (const m of [this.windmillSails, this.clockHands?.hour, this.clockHands?.minute]) {
+      if (!m) continue
+      this.group.remove(m)
+      m.geometry.dispose()
+    }
+    this.windmillSails = null
+    this.clockHands = null
+  }
+
+  /** Les ailes du moulin, hors de la fusion : quatre bras entoilés montés sur
+   *  un pivot, à l'échelle et à la place du moulin réellement posé. */
+  private buildWindmillSails(pl: { x: number; y: number; z: number; rot: number }): void {
+    const K = 5.5
+    const p: BufferGeometry[] = []
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4
+      p.push(part(new BoxGeometry(0.09, 0.5, 0.02).rotateZ(a), C.wood, Math.sin(a) * -0.28, Math.cos(a) * 0.28, 0))
+      p.push(part(new BoxGeometry(0.055, 0.34, 0.012).rotateZ(a), C.hidePale, Math.sin(a) * -0.34, Math.cos(a) * 0.34, 0.005))
+    }
+    const geo = mergeGeometries(p.map((g) => g.scale(K, K, K)))
+    if (!geo) return
+    grain(geo)
+    const mesh = new Mesh(geo, this.solid)
+    mesh.castShadow = true
+    // Le pivot des ailes, dans le repère du moulin : hauteur 0,78 et 0,26
+    // vers l'avant, le tout à l'échelle ×5,5 puis tourné comme le bâtiment.
+    const fx = Math.sin(pl.rot) * 0.26 * K
+    const fz = Math.cos(pl.rot) * 0.26 * K
+    mesh.position.set(pl.x + fx, pl.y + 0.78 * K, pl.z + fz)
+    mesh.rotation.y = pl.rot
+    this.windmillSails = mesh
+    this.group.add(mesh)
+  }
+
+  /** Les deux aiguilles du campanile, montées sur le cadran. */
+  private buildClockHands(pl: { x: number; y: number; z: number; rot: number }): void {
+    const K = 4.5
+    const make = (w: number, h: number, off: number): Mesh => {
+      const g = new BoxGeometry(w, h, 0.015).translate(0, h / 2 - off, 0).scale(K, K, K)
+      const col = new Float32Array(g.attributes.position!.count * 3)
+      const c = C.char
+      for (let i = 0; i < col.length; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b }
+      g.setAttribute('color', new BufferAttribute(col, 3))
+      const m = new Mesh(g, this.solid)
+      const fx = Math.sin(pl.rot) * 0.205 * K
+      const fz = Math.cos(pl.rot) * 0.205 * K
+      m.position.set(pl.x + fx, pl.y + 0.78 * K, pl.z + fz)
+      m.rotation.y = pl.rot
+      return m
+    }
+    const hour = make(0.022, 0.075, 0.012)
+    const minute = make(0.016, 0.105, 0.012)
+    this.clockHands = { hour, minute }
+    this.group.add(hour, minute)
+  }
+
   private rebuildProps(): void {
     if (this.propsMesh) {
       this.group.remove(this.propsMesh)
       this.propsMesh.geometry.dispose()
       this.propsMesh = null
     }
+    this.clearMovers()
     if (this.propPlacements.length === 0) return
     const all: BufferGeometry[] = []
     for (const pl of this.propPlacements) {
@@ -2649,6 +2725,11 @@ export class Village {
     // sinon leurs murs sous corniche s'éclaircissent.
     this.propsMesh.receiveShadow = true
     this.group.add(this.propsMesh)
+
+    for (const pl of this.propPlacements) {
+      if (pl.id === 'windmill') this.buildWindmillSails(pl)
+      if (pl.id === 'clock') this.buildClockHands(pl)
+    }
   }
 
   /** Emprises au sol de tout ce qui est posé — la faune les évite. Le rayon

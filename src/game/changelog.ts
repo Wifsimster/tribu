@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.21.0',
+    title: 'Le moulin tourne, l’horloge donne l’heure',
+    items: [
+      "Les ailes du moulin tournent, d'un pas jamais tout à fait régulier — c'est le vent, pas un moteur.",
+      "Le cadran du campanile donne l'heure qu'il est vraiment sur l'île : ses deux aiguilles suivent la même course de journée que le soleil. Un tour de petite aiguille toutes les deux minutes de jeu.",
+    ],
+  },
+  {
     version: '3.20.1',
     title: 'L’antenne relais',
     items: [

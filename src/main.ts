@@ -1350,6 +1350,9 @@ function frame(now: number): void {
     forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
   )
   island.setDaylight(daylight)
+  // Les ailes du moulin tournent, et le cadran du campanile donne l'heure
+  // qu'il est sur l'île — la même fraction de journée que celle du soleil.
+  village.tickMovers(dt, forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1)
   stage.driftSky(dt)
   // Hystérésis : l'encre du HUD ne doit pas clignoter pendant tout un crépuscule.
   if (hudNight ? daylight > 0.55 : daylight < 0.4) {
