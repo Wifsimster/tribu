@@ -27,6 +27,7 @@ import {
   leave,
   publish,
   publishBeacon,
+  sendGift,
   type Neighbor,
   type Snapshot,
 } from './net/neighbors'
@@ -45,7 +46,7 @@ import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
 import { Hud, escapeHtml, fmt } from './ui/hud'
-import { AGES, RESOURCES, TECHS } from './game/content'
+import { AGES, RELIC_BY_ID, RESOURCES, TECHS } from './game/content'
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
@@ -784,6 +785,9 @@ function menuEl<T extends HTMLElement>(id: string): T {
     const me = menuEl('neighbors-me')
     const nameRow = menuEl('neighbors-name-row')
     const nameInput = menuEl<HTMLInputElement>('neighbors-name')
+    const giftRow = menuEl('gift-row')
+    const giftWhat = menuEl<HTMLSelectElement>('gift-what')
+    const giftWho = menuEl<HTMLSelectElement>('gift-who')
     const joinBtn = menuEl('neighbors-join')
     const leaveBtn = menuEl('neighbors-leave')
 
@@ -813,6 +817,28 @@ function menuEl<T extends HTMLElement>(id: string): T {
           `${escapeHtml(AGES[Math.min(n.age, AGES.length - 1)]!.name)}, jour ${n.day} — ` +
           `${n.techs} savoir${n.techs > 1 ? 's' : ''}${wonder}<br><span class="chron-day">vue ${ago(n.seen)}</span>`
         list.appendChild(li)
+      }
+      // Le coin des présents : il faut une identité, des voisins, et quelque
+      // chose à donner.
+      const canGift = !!game.save.tribe && neighbors.length > 0 && game.save.relics.length > 0
+      giftRow.hidden = !canGift
+      if (canGift) {
+        giftWhat.textContent = ''
+        for (const id of game.save.relics) {
+          const def = RELIC_BY_ID.get(id)
+          if (!def) continue
+          const opt = document.createElement('option')
+          opt.value = id
+          opt.textContent = def.name
+          giftWhat.appendChild(opt)
+        }
+        giftWho.textContent = ''
+        for (const n of neighbors) {
+          const opt = document.createElement('option')
+          opt.value = n.id
+          opt.textContent = n.name
+          giftWho.appendChild(opt)
+        }
       }
       const t = game.save.tribe
       if (t) {
@@ -858,6 +884,18 @@ function menuEl<T extends HTMLElement>(id: string): T {
       game.flush(Date.now())
       render()
       void syncNeighborhood()
+    })
+
+    menuEl('gift-send').addEventListener('click', () => {
+      const t = game.save.tribe
+      const to = neighbors.find((n) => n.id === giftWho.value)
+      if (!t || !to) return
+      const def = game.giveRelic(giftWhat.value, to.name)
+      if (!def) return
+      void sendGift(t.id, t.secret, to.id, def.id)
+      village.setRelics(game.save.relics.length)
+      hud.toast(`${def.name} part pour ${to.name}`)
+      render()
     })
 
     leaveBtn.addEventListener('click', () => {

@@ -591,6 +591,18 @@ export class Game {
     return true
   }
 
+  /** Offrir une relique : elle QUITTE le musée. Un présent qui ne coûte rien
+   *  n'est pas un présent — et la pièce redevient trouvable en expédition. */
+  giveRelic(relicId: string, toName: string): RelicDef | null {
+    const def = RELIC_BY_ID.get(relicId)
+    const at = this.save.relics.indexOf(relicId)
+    if (!def || at < 0) return null
+    this.save.relics.splice(at, 1)
+    this.record('relic', `${def.name} part en présent pour ${toName}.`)
+    writeSave(this.save, Date.now())
+    return def
+  }
+
   /** Le courrier des autres tribus, relevé par main.ts. Le serveur n'écrit
    *  que des faits ; c'est ici qu'ils deviennent des lignes de Chronique. */
   receiveMail(events: { kind: string; from?: string; relic?: string }[]): void {
@@ -609,9 +621,11 @@ export class Game {
         // même, il s'écrit dans la Chronique.
         const isNew = !this.save.relics.includes(def.id)
         if (isNew) this.save.relics.push(def.id)
+        // Même précaution que pour les visites : la tournure ne doit pas
+        // supposer le nombre ni le genre du nom de la tribu.
         const text = isNew
-          ? `${who} nous fait don d'une relique : ${def.name.toLowerCase()}.`
-          : `${who} nous offre ${def.name.toLowerCase()} — le musée en possédait déjà une.`
+          ? `Un présent de ${who} : ${def.name.toLowerCase()} entre au musée.`
+          : `Un présent de ${who} : ${def.name.toLowerCase()} — le musée en possédait déjà une.`
         this.record('relic', text)
         this.emit({ type: 'mail', text, relic: isNew ? def : null })
       }

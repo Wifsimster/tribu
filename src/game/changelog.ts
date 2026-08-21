@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.2.0',
+    title: 'Le présent',
+    items: [
+      "Une relique de ton musée peut partir chez une autre tribu : choisis la pièce, choisis l'île, elle traverse la mer. Chez eux, elle entre au musée avec le nom de qui l'a offerte.",
+      "Un présent qui ne coûte rien n'en est pas un : la pièce quitte vraiment tes vitrines. Elle redevient trouvable en expédition — et le geste, lui, reste écrit dans la Chronique des deux tribus.",
+    ],
+  },
+  {
     version: '3.1.0',
     title: 'En visite chez le voisin',
     items: [

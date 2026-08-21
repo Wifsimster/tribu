@@ -957,6 +957,44 @@ body.night .age-bar {
   padding: 0 14px;
 }
 
+/* Le coin des présents : deux listes et un bouton, sous l'état du voisinage. */
+.gift-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.gift-row[hidden] {
+  display: none;
+}
+
+.gift-label {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.gift-select {
+  min-width: 0;
+  padding: 9px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 164, 65, 0.35);
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.gift-row .btn {
+  width: auto;
+  padding: 0 14px;
+  min-height: 40px;
+}
+
 /* Transfert de tribu : la sauvegarde s'emporte en fichier ou en code. */
 .transfer-list {
   max-height: 22dvh;

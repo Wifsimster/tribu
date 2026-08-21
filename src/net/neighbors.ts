@@ -120,6 +120,21 @@ export async function announceVisit(id: string, secret: string, to: string): Pro
   })
 }
 
+/** Offrir une relique à une autre tribu. */
+export async function sendGift(
+  id: string,
+  secret: string,
+  to: string,
+  relic: string,
+): Promise<boolean> {
+  const out = await call('/gift', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, secret, to, relic }),
+  })
+  return !!(out as { ok?: boolean } | null)?.ok
+}
+
 /** Relève du courrier : lit ET vide la boîte côté serveur. */
 export async function drainInbox(
   id: string,

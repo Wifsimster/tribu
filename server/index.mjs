@@ -230,6 +230,24 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
 
+    // Un présent d'une tribu à une autre. Le serveur ne vérifie pas que
+    // l'expéditeur possédait vraiment la relique — il ne connaît pas les
+    // musées, et un menteur ne peut ici que DONNER, jamais prendre.
+    if (req.method === 'POST' && url.pathname === '/api/gift') {
+      const body = JSON.parse((await readBody(req)) || '{}')
+      const from = String(body.id ?? '')
+      const to = String(body.to ?? '')
+      const relic = String(body.relic ?? '')
+      if (!owner(from, body.secret)) return send(res, 403, { error: 'secret invalide' })
+      if (!/^[a-z_]{2,32}$/.test(relic)) return send(res, 400, { error: 'relique invalide' })
+      const host = findTribe.get(to)
+      const me = findTribe.get(from)
+      if (!host || !me) return send(res, 404, { error: 'tribu inconnue' })
+      pushEvent.run(to, 'gift', JSON.stringify({ from: me.name, relic }), Date.now())
+      if (countEvents.get(to).n > MAX_INBOX) trimEvents.run(to, to, MAX_INBOX)
+      return send(res, 200, { ok: true })
+    }
+
     // Relève du courrier : on lit ET on vide, dans la même requête. Un message
     // lu ne doit pas revenir au prochain réveil.
     if (req.method === 'POST' && url.pathname === '/api/inbox') {

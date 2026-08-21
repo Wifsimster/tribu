@@ -210,6 +210,14 @@
           <p class="transfer-sep">Les îles de l'horizon</p>
           <ul class="tuto-list neighbor-list" id="neighbors-list"></ul>
           <p class="neighbor-me" id="neighbors-me"></p>
+          <div class="gift-row" id="gift-row" hidden>
+            <label class="gift-label" for="gift-what">Offrir une relique</label>
+            <select class="gift-select" id="gift-what" aria-label="La relique à offrir"></select>
+            <select class="gift-select" id="gift-who" aria-label="La tribu qui la recevra"></select>
+            <button class="btn" id="gift-send" type="button">
+              <span class="label">Offrir</span>
+            </button>
+          </div>
           <div class="transfer-actions" id="neighbors-name-row" hidden>
             <input
               class="transfer-code neighbor-name"
