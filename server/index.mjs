@@ -56,6 +56,22 @@ db.exec(`
     created INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS events_dest ON events (dest, seq);
+
+  -- Le comptoir : des offres déposées, dont la marchandise est déjà partie du
+  -- camp de celui qui propose. Le serveur ne fait que la garder le temps que
+  -- quelqu'un vienne — ou que le déposant la reprenne.
+  CREATE TABLE IF NOT EXISTS offers (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner    TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    age      INTEGER NOT NULL,
+    give_res TEXT NOT NULL,
+    give_qty INTEGER NOT NULL,
+    want_res TEXT NOT NULL,
+    want_qty INTEGER NOT NULL,
+    created  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS offers_owner ON offers (owner);
 `)
 
 const upsert = db.prepare(`
@@ -88,6 +104,29 @@ const trimEvents = db.prepare(
 /** Une boîte aux lettres a un fond : au-delà, les plus vieux messages sautent.
  *  Personne ne doit pouvoir remplir le disque d'un autre joueur. */
 const MAX_INBOX = 40
+
+const insertOffer = db.prepare(
+  'INSERT INTO offers (owner, name, age, give_res, give_qty, want_res, want_qty, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+)
+const myOffers = db.prepare('SELECT * FROM offers WHERE owner = ? ORDER BY id DESC')
+const openOffers = db.prepare(`
+  SELECT * FROM offers
+  WHERE owner <> ? AND age BETWEEN ? AND ? AND created > ?
+  ORDER BY id DESC LIMIT 12
+`)
+const findOffer = db.prepare('SELECT * FROM offers WHERE id = ?')
+const dropOffer = db.prepare('DELETE FROM offers WHERE id = ?')
+const countOffers = db.prepare('SELECT COUNT(*) AS n FROM offers WHERE owner = ?')
+
+/** Les seules marchandises échangeables : le savoir ne se troque pas. */
+const TRADABLE = new Set(['food', 'wood', 'stone', 'fiber', 'clay', 'copper', 'iron'])
+/** Une offre vit une semaine, puis se périme (la marchandise reste reprenable). */
+const OFFER_DAYS = 7
+/** Trois offres ouvertes par tribu : un comptoir, pas un entrepôt. */
+const MAX_OFFERS = 3
+/** Plafond par offre, très large mais borné — il suit la croissance
+ *  exponentielle d'un jeu idle sans laisser passer de nombre absurde. */
+const qtyCap = (age) => Math.pow(10, 3 + Math.min(9, Math.max(0, age)))
 
 const sha = (s) => createHash('sha256').update(s).digest('hex')
 
@@ -227,6 +266,90 @@ const server = createServer(async (req, res) => {
       if (!host || !me) return send(res, 200, { ok: true })
       pushEvent.run(to, 'visit', JSON.stringify({ from: me.name }), Date.now())
       if (countEvents.get(to).n > MAX_INBOX) trimEvents.run(to, to, MAX_INBOX)
+      return send(res, 200, { ok: true })
+    }
+
+    // ── Le comptoir ──────────────────────────────────────────────────────
+    // Déposer une offre. La marchandise a déjà quitté le camp côté client :
+    // ici, elle est simplement gardée jusqu'à preneur ou reprise.
+    if (req.method === 'POST' && url.pathname === '/api/offer') {
+      const body = JSON.parse((await readBody(req)) || '{}')
+      const id = String(body.id ?? '')
+      if (!owner(id, body.secret)) return send(res, 403, { error: 'secret invalide' })
+      const me = db.prepare('SELECT name, age FROM tribes WHERE id = ?').get(id)
+      if (!me) return send(res, 404, { error: 'tribu inconnue' })
+      const giveRes = String(body.giveRes ?? '')
+      const wantRes = String(body.wantRes ?? '')
+      if (!TRADABLE.has(giveRes) || !TRADABLE.has(wantRes) || giveRes === wantRes)
+        return send(res, 400, { error: 'marchandise invalide' })
+      const cap = qtyCap(me.age)
+      const giveQty = int(body.giveQty, 1, cap)
+      const wantQty = int(body.wantQty, 1, cap)
+      if (countOffers.get(id).n >= MAX_OFFERS)
+        return send(res, 409, { error: 'trois offres au comptoir, c’est le maximum' })
+      insertOffer.run(id, me.name, me.age, giveRes, giveQty, wantRes, wantQty, Date.now())
+      return send(res, 200, { ok: true })
+    }
+
+    // Le comptoir vu par une tribu : ses propres dépôts, et ceux des tribus
+    // d'une époque voisine. La bande d'âge est la seule vraie protection du
+    // jeu : sans elle, un surplus de fin de partie effacerait la courbe de
+    // progression d'un débutant.
+    if (req.method === 'GET' && url.pathname === '/api/offers') {
+      const id = String(url.searchParams.get('id') ?? '')
+      const me = db.prepare('SELECT age FROM tribes WHERE id = ?').get(id)
+      const age = me ? me.age : 0
+      const since = Date.now() - OFFER_DAYS * 86_400_000
+      return send(res, 200, {
+        mine: me ? myOffers.all(id) : [],
+        offers: me ? openOffers.all(id, age - 1, age + 1, since) : [],
+      })
+    }
+
+    // Accepter : l'offre disparaît, le déposant reçoit son dû par la boîte
+    // aux lettres, et le preneur emporte la marchandise gardée.
+    if (req.method === 'POST' && url.pathname === '/api/accept') {
+      const body = JSON.parse((await readBody(req)) || '{}')
+      const id = String(body.id ?? '')
+      if (!owner(id, body.secret)) return send(res, 403, { error: 'secret invalide' })
+      const me = db.prepare('SELECT name, age FROM tribes WHERE id = ?').get(id)
+      const offer = findOffer.get(int(body.offer, 1, 2 ** 31))
+      if (!me || !offer) return send(res, 200, { gone: true })
+      if (offer.owner === id) return send(res, 400, { error: 'offre à soi-même' })
+      if (Math.abs(offer.age - me.age) > 1) return send(res, 403, { error: 'époque trop éloignée' })
+      dropOffer.run(offer.id)
+      pushEvent.run(
+        offer.owner,
+        'trade',
+        JSON.stringify({ from: me.name, res: offer.want_res, qty: offer.want_qty }),
+        Date.now(),
+      )
+      if (countEvents.get(offer.owner).n > MAX_INBOX) trimEvents.run(offer.owner, offer.owner, MAX_INBOX)
+      return send(res, 200, {
+        ok: true,
+        giveRes: offer.give_res,
+        giveQty: offer.give_qty,
+        wantRes: offer.want_res,
+        wantQty: offer.want_qty,
+        from: offer.name,
+      })
+    }
+
+    // Reprendre son dépôt : la marchandise revient par la boîte aux lettres,
+    // jamais dans la réponse — le client peut très bien fermer l'onglet ici.
+    if (req.method === 'POST' && url.pathname === '/api/withdraw') {
+      const body = JSON.parse((await readBody(req)) || '{}')
+      const id = String(body.id ?? '')
+      if (!owner(id, body.secret)) return send(res, 403, { error: 'secret invalide' })
+      const offer = findOffer.get(int(body.offer, 1, 2 ** 31))
+      if (!offer || offer.owner !== id) return send(res, 200, { ok: true })
+      dropOffer.run(offer.id)
+      pushEvent.run(
+        id,
+        'refund',
+        JSON.stringify({ res: offer.give_res, qty: offer.give_qty }),
+        Date.now(),
+      )
       return send(res, 200, { ok: true })
     }
 

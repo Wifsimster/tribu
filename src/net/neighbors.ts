@@ -120,6 +120,67 @@ export async function announceVisit(id: string, secret: string, to: string): Pro
   })
 }
 
+export interface Offer {
+  id: number
+  owner: string
+  name: string
+  age: number
+  give_res: string
+  give_qty: number
+  want_res: string
+  want_qty: number
+  created: number
+}
+
+/** Déposer une offre au comptoir. La marchandise a déjà quitté le camp. */
+export async function postOffer(
+  id: string,
+  secret: string,
+  giveRes: string,
+  giveQty: number,
+  wantRes: string,
+  wantQty: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const out = (await call('/offer', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, secret, giveRes, giveQty, wantRes, wantQty }),
+  })) as { ok?: boolean; error?: string } | null
+  return { ok: !!out?.ok, error: out?.error }
+}
+
+/** Le comptoir : nos dépôts, et ceux des tribus d'une époque voisine. */
+export async function fetchOffers(
+  id: string,
+): Promise<{ mine: Offer[]; offers: Offer[] } | null> {
+  const out = (await call(`/offers?id=${encodeURIComponent(id)}`)) as {
+    mine?: Offer[]
+    offers?: Offer[]
+  } | null
+  if (!out) return null
+  return { mine: out.mine ?? [], offers: out.offers ?? [] }
+}
+
+export async function acceptOffer(
+  id: string,
+  secret: string,
+  offer: number,
+): Promise<{ ok: boolean; gone?: boolean; giveRes?: string; giveQty?: number; from?: string } | null> {
+  return (await call('/accept', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, secret, offer }),
+  })) as { ok: boolean } | null
+}
+
+export async function withdrawOffer(id: string, secret: string, offer: number): Promise<void> {
+  await call('/withdraw', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, secret, offer }),
+  })
+}
+
 /** Offrir une relique à une autre tribu. */
 export async function sendGift(
   id: string,
@@ -139,13 +200,15 @@ export async function sendGift(
 export async function drainInbox(
   id: string,
   secret: string,
-): Promise<{ kind: string; from?: string; relic?: string }[]> {
+): Promise<{ kind: string; from?: string; relic?: string; res?: string; qty?: number }[]> {
   const out = (await call('/inbox', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id, secret }),
   })) as { events?: { kind: string }[] } | null
-  return Array.isArray(out?.events) ? (out.events as { kind: string; from?: string }[]) : []
+  return Array.isArray(out?.events)
+    ? (out.events as { kind: string; from?: string; relic?: string; res?: string; qty?: number }[])
+    : []
 }
 
 /** Publication de dernière seconde, au moment où l'onglet part : `keepalive`

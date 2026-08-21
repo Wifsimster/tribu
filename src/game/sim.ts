@@ -591,6 +591,23 @@ export class Game {
     return true
   }
 
+  /** Le comptoir : la marchandise quitte le camp au dépôt (ou au paiement
+   *  d'une offre acceptée). Refuse net si les réserves n'y sont pas. */
+  tradeSpend(res: ResourceId, qty: number): boolean {
+    if (!this.unlocked.has(res) || !(qty > 0) || this.amount(res) < qty) return false
+    this.save.res[res] = this.amount(res) - qty
+    writeSave(this.save, Date.now())
+    return true
+  }
+
+  /** Marchandise qui entre : d'un échange accepté, ou d'un dépôt repris. */
+  tradeCredit(res: ResourceId, qty: number, text: string): void {
+    if (!(qty > 0)) return
+    this.save.res[res] = this.amount(res) + qty
+    this.record('trade', text)
+    writeSave(this.save, Date.now())
+  }
+
   /** Offrir une relique : elle QUITTE le musée. Un présent qui ne coûte rien
    *  n'est pas un présent — et la pièce redevient trouvable en expédition. */
   giveRelic(relicId: string, toName: string): RelicDef | null {
@@ -605,7 +622,9 @@ export class Game {
 
   /** Le courrier des autres tribus, relevé par main.ts. Le serveur n'écrit
    *  que des faits ; c'est ici qu'ils deviennent des lignes de Chronique. */
-  receiveMail(events: { kind: string; from?: string; relic?: string }[]): void {
+  receiveMail(
+    events: { kind: string; from?: string; relic?: string; res?: string; qty?: number }[],
+  ): void {
     for (const e of events) {
       const who = (e.from ?? 'Une tribu inconnue').slice(0, 24)
       if (e.kind === 'visit') {
@@ -613,6 +632,18 @@ export class Game {
         // venu » se casse dès que le nom est pluriel, et ils le sont presque tous.
         const text = `Une barque de ${who} a accosté sur notre rivage.`
         this.record('visit', text)
+        this.emit({ type: 'mail', text, relic: null })
+      } else if (e.kind === 'trade' || e.kind === 'refund') {
+        const res = e.res as ResourceId
+        const qty = Number(e.qty)
+        if (!RESOURCES[res] || !(qty > 0)) continue
+        this.save.res[res] = this.amount(res) + qty
+        const label = `${RESOURCES[res].icon}\u202F${Math.round(qty)}`
+        const text =
+          e.kind === 'trade'
+            ? `Le comptoir a trouvé preneur : ${who} paie ${label}.`
+            : `Dépôt repris au comptoir : ${label} rentre au camp.`
+        this.record('trade', text)
         this.emit({ type: 'mail', text, relic: null })
       } else if (e.kind === 'gift') {
         const def = RELICS.find((r) => r.id === e.relic)

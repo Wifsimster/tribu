@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.3.0',
+    title: 'Le comptoir des tribus',
+    items: [
+      "Un vrai troc entre joueurs : dépose une offre — tant de bois contre tant de pierre — et la marchandise attend preneur au comptoir. Une autre tribu l'accepte, chacun repart avec ce qui lui manquait.",
+      "Rien ne se crée : ce que tu déposes quitte le camp sur-le-champ, et te revient si tu retires ton dépôt. Trois offres ouvertes au maximum.",
+      "On n'échange qu'entre époques voisines. Un surplus de fin de partie n'a rien à faire dans le camp d'un débutant — sa courbe lui appartient.",
+    ],
+  },
+  {
     version: '3.2.0',
     title: 'Le présent',
     items: [

@@ -18,6 +18,7 @@ import { Game } from './game/sim'
 import { SAVE_KEY } from './game/state'
 import { decodeSave, encodeSave, transferFilename } from './game/transfer'
 import {
+  acceptOffer,
   announceVisit,
   cacheNeighbors,
   cachedNeighbors,
@@ -26,8 +27,12 @@ import {
   makeIdentity,
   leave,
   publish,
+  fetchOffers,
+  postOffer,
   publishBeacon,
   sendGift,
+  withdrawOffer,
+  type Offer,
   type Neighbor,
   type Snapshot,
 } from './net/neighbors'
@@ -656,6 +661,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('menu-feats').hidden = true
     menuEl('menu-transfer').hidden = true
     menuEl('menu-neighbors').hidden = true
+    menuEl('menu-market').hidden = true
     home.hidden = false
     continueBtn.hidden = !hasProgress
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
@@ -906,6 +912,166 @@ function menuEl<T extends HTMLElement>(id: string): T {
       game.save.tribe = null
       game.flush(Date.now())
       render()
+    })
+  }
+
+  // Le comptoir : des offres déposées par d'autres tribus, et les nôtres. La
+  // marchandise quitte le camp au dépôt et revient au retrait — rien ne se
+  // crée ici, tout se déplace.
+  {
+    const panel = menuEl('menu-market')
+    const list = menuEl('market-list')
+    const note = menuEl('market-note')
+    const form = menuEl('offer-form')
+    const giveRes = menuEl<HTMLSelectElement>('offer-give-res')
+    const wantRes = menuEl<HTMLSelectElement>('offer-want-res')
+    const giveQty = menuEl<HTMLInputElement>('offer-give-qty')
+    const wantQty = menuEl<HTMLInputElement>('offer-want-qty')
+    let mine: Offer[] = []
+    let others: Offer[] = []
+
+    const label = (res: string, qty: number): string =>
+      `${RESOURCES[res as ResourceId]?.icon ?? '?'}\u202F${fmt(qty)}`
+
+    const fillSelects = (): void => {
+      const goods = [...game.unlocked].filter((r) => r !== 'insight')
+      for (const sel of [giveRes, wantRes]) {
+        const before = sel.value
+        sel.textContent = ''
+        for (const r of goods) {
+          const opt = document.createElement('option')
+          opt.value = r
+          opt.textContent = RESOURCES[r].name
+          sel.appendChild(opt)
+        }
+        if ((goods as string[]).includes(before)) sel.value = before
+      }
+      if (wantRes.value === giveRes.value && goods.length > 1)
+        wantRes.value = goods.find((r) => r !== giveRes.value)!
+    }
+
+    const render = (): void => {
+      list.textContent = ''
+      const t = game.save.tribe
+      form.hidden = !t
+      if (!t) {
+        note.textContent =
+          "Le comptoir n'ouvre qu'aux tribus du voisinage — rejoins-le d'abord."
+        return
+      }
+      note.textContent =
+        "On n'échange qu'avec des tribus d'une époque voisine : un surplus de fin de partie n'a rien à faire chez un débutant. Trois dépôts au maximum."
+      if (mine.length === 0 && others.length === 0) {
+        const li = document.createElement('li')
+        li.textContent = 'Le comptoir est vide. Dépose la première offre.'
+        list.appendChild(li)
+      }
+      for (const o of mine) {
+        const li = document.createElement('li')
+        const txt = document.createElement('span')
+        txt.innerHTML = `<b>Ton dépôt.</b> ${label(o.give_res, o.give_qty)} contre ${label(o.want_res, o.want_qty)}`
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'btn'
+        btn.innerHTML = '<span class="label">Retirer</span>'
+        btn.addEventListener('click', () => {
+          void withdrawOffer(t.id, t.secret, o.id).then(() => {
+            hud.toast('Dépôt repris — la marchandise rentre au prochain réveil')
+            void refresh()
+          })
+        })
+        li.append(txt, btn)
+        list.appendChild(li)
+      }
+      for (const o of others) {
+        // On n'affiche que ce que la tribu sait manipuler : recevoir du fer
+        // avant de savoir ce qu'est le fer n'aurait aucun sens.
+        if (!game.unlocked.has(o.give_res as ResourceId) || !game.unlocked.has(o.want_res as ResourceId))
+          continue
+        const li = document.createElement('li')
+        const txt = document.createElement('span')
+        txt.innerHTML = `<b>${escapeHtml(o.name)}</b> donne ${label(o.give_res, o.give_qty)}<br>contre ${label(o.want_res, o.want_qty)}`
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'btn'
+        const affordable = game.amount(o.want_res as ResourceId) >= o.want_qty
+        btn.innerHTML = `<span class="label">${affordable ? 'Échanger' : 'Trop cher'}</span>`
+        btn.disabled = !affordable
+        btn.addEventListener('click', () => {
+          if (!game.tradeSpend(o.want_res as ResourceId, o.want_qty)) return
+          void acceptOffer(t.id, t.secret, o.id).then((r) => {
+            if (!r?.ok || !r.giveRes) {
+              // Offre déjà prise (ou serveur muet) : on rend son dû au joueur.
+              game.tradeCredit(
+                o.want_res as ResourceId,
+                o.want_qty,
+                'Un échange du comptoir a échoué — la marchandise revient au camp.',
+              )
+              hud.toast('Cette offre vient de partir — rien n’a été échangé')
+            } else {
+              game.tradeCredit(
+                r.giveRes as ResourceId,
+                r.giveQty ?? 0,
+                `Échange au comptoir avec ${r.from ?? 'une autre tribu'} : ${label(r.giveRes, r.giveQty ?? 0)} entrent au camp.`,
+              )
+              hud.toast(`Échange conclu · ${label(r.giveRes, r.giveQty ?? 0)}`)
+              ambience.coin()
+            }
+            void refresh()
+          })
+        })
+        li.append(txt, btn)
+        list.appendChild(li)
+      }
+    }
+
+    const refresh = async (): Promise<void> => {
+      const t = game.save.tribe
+      if (!t) return render()
+      const out = await fetchOffers(t.id)
+      if (out) {
+        mine = out.mine
+        others = out.offers
+      }
+      render()
+    }
+
+    menuEl('menu-market-open').addEventListener('click', () => {
+      fillSelects()
+      render()
+      home.hidden = true
+      panel.hidden = false
+      void refresh()
+    })
+    menuEl('menu-market-close').addEventListener('click', showHome)
+
+    menuEl('offer-post').addEventListener('click', () => {
+      const t = game.save.tribe
+      if (!t) return
+      const g = Math.floor(Number(giveQty.value))
+      const w = Math.floor(Number(wantQty.value))
+      if (!(g > 0) || !(w > 0)) return
+      if (giveRes.value === wantRes.value) {
+        hud.toast('Troquer une marchandise contre elle-même ne mène nulle part')
+        return
+      }
+      if (!game.tradeSpend(giveRes.value as ResourceId, g)) {
+        hud.toast('Les réserves ne suivent pas')
+        return
+      }
+      void postOffer(t.id, t.secret, giveRes.value, g, wantRes.value, w).then((r) => {
+        if (!r.ok) {
+          game.tradeCredit(
+            giveRes.value as ResourceId,
+            g,
+            'Dépôt refusé au comptoir — la marchandise reste au camp.',
+          )
+          hud.toast(r.error ?? 'Le comptoir n’a pas répondu')
+        } else {
+          hud.toast('Offre déposée au comptoir')
+        }
+        void refresh()
+      })
     })
   }
 

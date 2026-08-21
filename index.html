@@ -172,6 +172,9 @@
             <button class="btn ghost" id="menu-neighbors-open" type="button">
               <span class="label">Le voisinage</span>
             </button>
+            <button class="btn ghost" id="menu-market-open" type="button">
+              <span class="label">Le comptoir</span>
+            </button>
             <button class="btn ghost" id="menu-transfer-open" type="button">
               <span class="label">Transférer</span>
             </button>
@@ -239,6 +242,27 @@
             <span class="label">Quitter le voisinage</span>
           </button>
           <button class="btn ghost" id="menu-neighbors-close" type="button">
+            <span class="label">Retour</span>
+          </button>
+        </div>
+
+        <div class="menu-tuto" id="menu-market" hidden>
+          <p class="transfer-sep">Le comptoir des tribus</p>
+          <ul class="tuto-list market-list" id="market-list"></ul>
+          <p class="neighbor-me" id="market-note"></p>
+          <div class="offer-form" id="offer-form" hidden>
+            <label class="gift-label">Déposer une offre</label>
+            <span class="offer-side">Je donne</span>
+            <select class="gift-select" id="offer-give-res" aria-label="Marchandise donnée"></select>
+            <input class="gift-select" id="offer-give-qty" type="number" min="1" step="1" value="100" aria-label="Quantité donnée" />
+            <span class="offer-side">Je veux</span>
+            <select class="gift-select" id="offer-want-res" aria-label="Marchandise voulue"></select>
+            <input class="gift-select" id="offer-want-qty" type="number" min="1" step="1" value="100" aria-label="Quantité voulue" />
+            <button class="btn" id="offer-post" type="button">
+              <span class="label">Déposer au comptoir</span>
+            </button>
+          </div>
+          <button class="btn ghost" id="menu-market-close" type="button">
             <span class="label">Retour</span>
           </button>
         </div>

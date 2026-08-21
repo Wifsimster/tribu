@@ -995,6 +995,49 @@ body.night .age-bar {
   min-height: 40px;
 }
 
+/* Le comptoir : une offre par ligne, et un formulaire de dépôt en grille. */
+.market-list {
+  max-height: 34dvh;
+}
+
+.market-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.market-list .btn {
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.offer-form {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.offer-form[hidden] {
+  display: none;
+}
+
+.offer-side {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.offer-form .btn {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 /* Transfert de tribu : la sauvegarde s'emporte en fichier ou en code. */
 .transfer-list {
   max-height: 22dvh;
