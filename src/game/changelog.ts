@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.0.1',
+    title: 'Le menu tient dans l’écran',
+    items: [
+      "Le menu s'était allongé au fil des versions et débordait sous les barres du navigateur sur téléphone : le pied de la carte devenait inatteignable. Les entrées secondaires passent en deux colonnes, la carte respecte les zones sûres et défile si jamais elle grandit encore.",
+    ],
+  },
+  {
     version: '3.0.0',
     title: 'Le voisinage',
     items: [

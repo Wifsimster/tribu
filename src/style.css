@@ -785,7 +785,9 @@ body.night .age-bar {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 24px;
+  /* Les barres du navigateur mobile mangent le haut ET le bas : sans marge de
+     sécurité, le pied de la carte passe sous la barre d'onglets. */
+  padding: calc(18px + var(--safe-t)) 18px calc(18px + var(--safe-b));
   background: rgba(30, 24, 17, 0.45);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
@@ -802,6 +804,12 @@ body.night .age-bar {
 
 .menu-card {
   width: min(360px, 100%);
+  /* Filet de sécurité : quoi qu'on ajoute au menu, la carte reste dans
+     l'écran et défile plutôt que de se faire couper. */
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: var(--paper);
   border-radius: 22px;
   box-shadow: var(--shadow-l);
@@ -835,6 +843,28 @@ body.night .age-bar {
 }
 
 .menu-actions[hidden] {
+  display: none;
+}
+
+/* Le second rang du menu : deux colonnes, pour que tout tienne sans défiler
+   sur un téléphone dont le navigateur garde ses barres. */
+.menu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.menu-grid .btn.ghost {
+  min-height: 42px;
+  padding: 0 6px;
+  font-size: 12.5px;
+  line-height: 1.25;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.menu-grid .btn.ghost[hidden] {
   display: none;
 }
 

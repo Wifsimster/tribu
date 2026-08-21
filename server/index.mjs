@@ -44,6 +44,18 @@ db.exec(`
     seen    INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS tribes_seen ON tribes (seen DESC);
+
+  -- La boîte aux lettres : ce que les autres tribus t'ont fait parvenir
+  -- pendant que tu n'étais pas là. Vidée à la lecture — le serveur n'est
+  -- qu'un relais, il ne garde pas d'historique.
+  CREATE TABLE IF NOT EXISTS events (
+    seq     INTEGER PRIMARY KEY AUTOINCREMENT,
+    dest    TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS events_dest ON events (dest, seq);
 `)
 
 const upsert = db.prepare(`
@@ -63,7 +75,27 @@ const listNeighbors = db.prepare(`
 const countTribes = db.prepare('SELECT COUNT(*) AS n FROM tribes')
 const removeTribe = db.prepare('DELETE FROM tribes WHERE id = ?')
 
+const findTribe = db.prepare('SELECT id, name FROM tribes WHERE id = ?')
+const pushEvent = db.prepare(
+  'INSERT INTO events (dest, kind, payload, created) VALUES (?, ?, ?, ?)',
+)
+const readEvents = db.prepare('SELECT seq, kind, payload, created FROM events WHERE dest = ? ORDER BY seq LIMIT 50')
+const dropEvents = db.prepare('DELETE FROM events WHERE dest = ? AND seq <= ?')
+const countEvents = db.prepare('SELECT COUNT(*) AS n FROM events WHERE dest = ?')
+const trimEvents = db.prepare(
+  'DELETE FROM events WHERE dest = ? AND seq NOT IN (SELECT seq FROM events WHERE dest = ? ORDER BY seq DESC LIMIT ?)',
+)
+/** Une boîte aux lettres a un fond : au-delà, les plus vieux messages sautent.
+ *  Personne ne doit pouvoir remplir le disque d'un autre joueur. */
+const MAX_INBOX = 40
+
 const sha = (s) => createHash('sha256').update(s).digest('hex')
+
+/** Vérifie que l'appelant est bien la tribu qu'il prétend être. */
+function owner(id, secret) {
+  const known = findSecret.get(id)
+  return !!known && sameSecret(known.secret, sha(String(secret ?? '')))
+}
 
 /** Comparaison à temps constant : le secret d'une tribu ne se devine pas à la
  *  montre. Les deux côtés sont des hex de 64 caractères. */
@@ -180,6 +212,35 @@ const server = createServer(async (req, res) => {
         now,
       )
       return send(res, 200, { ok: true })
+    }
+
+    // Une barque étrangère a accosté chez quelqu'un : on le lui dira à son
+    // retour. Le message est écrit par le serveur, jamais par l'appelant —
+    // sinon n'importe qui écrirait n'importe quoi dans la Chronique d'autrui.
+    if (req.method === 'POST' && url.pathname === '/api/visit') {
+      const body = JSON.parse((await readBody(req)) || '{}')
+      const from = String(body.id ?? '')
+      const to = String(body.to ?? '')
+      if (!owner(from, body.secret)) return send(res, 403, { error: 'secret invalide' })
+      const host = findTribe.get(to)
+      const me = findTribe.get(from)
+      if (!host || !me) return send(res, 200, { ok: true })
+      pushEvent.run(to, 'visit', JSON.stringify({ from: me.name }), Date.now())
+      if (countEvents.get(to).n > MAX_INBOX) trimEvents.run(to, to, MAX_INBOX)
+      return send(res, 200, { ok: true })
+    }
+
+    // Relève du courrier : on lit ET on vide, dans la même requête. Un message
+    // lu ne doit pas revenir au prochain réveil.
+    if (req.method === 'POST' && url.pathname === '/api/inbox') {
+      const body = JSON.parse((await readBody(req)) || '{}')
+      const id = String(body.id ?? '')
+      if (!owner(id, body.secret)) return send(res, 403, { error: 'secret invalide' })
+      const rows = readEvents.all(id)
+      if (rows.length > 0) dropEvents.run(id, rows[rows.length - 1].seq)
+      return send(res, 200, {
+        events: rows.map((r) => ({ kind: r.kind, created: r.created, ...JSON.parse(r.payload) })),
+      })
     }
 
     // Quitter le voisinage EFFACE vraiment : personne ne doit rester exposé
