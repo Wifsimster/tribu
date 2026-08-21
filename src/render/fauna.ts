@@ -47,25 +47,55 @@ function weld(parts: BufferGeometry[]): BufferGeometry {
 
 function deerGeo(): BufferGeometry {
   const coat = new Color('#a97a4e')
+  // Le dos d'un chevreuil est nettement plus sombre que ses flancs, et son
+  // ventre presque crème : c'est ce dégradé qui l'empêche de lire comme un
+  // jouet en plastique d'une seule teinte.
+  const back = new Color('#8a6238')
+  const belly = new Color('#d8bd96')
   const dark = new Color('#6e4d2e')
+  const hoof = new Color('#3b2b1d')
   const bone = new Color('#e8dfc8')
+  const eye = new Color('#241a12')
   const p: BufferGeometry[] = []
+
   // Corps fuselé, un peu plus haut que large.
   p.push(part(new CapsuleGeometry(0.15, 0.46, 2, 8).rotateX(Math.PI / 2).scale(1, 1.14, 1), coat, 0, 0.64, -0.04))
-  p.push(part(new SphereGeometry(0.05, 5, 4), bone, 0, 0.72, -0.4))
-  // Cou dressé — c'est lui qui distingue le cerf du mouton à distance.
+  // Selle dorsale et ventre clair : deux calottes posées sur le corps.
+  p.push(part(new CapsuleGeometry(0.128, 0.4, 2, 7).rotateX(Math.PI / 2).scale(1, 0.66, 1), back, 0, 0.75, -0.03))
+  p.push(part(new CapsuleGeometry(0.118, 0.34, 2, 7).rotateX(Math.PI / 2).scale(1, 0.5, 1), belly, 0, 0.53, -0.02))
+  // Le MIROIR : la tache blanche de la croupe, signature du chevreuil de dos.
+  p.push(part(new SphereGeometry(0.115, 8, 6).scale(1, 1.1, 0.5), bone, 0, 0.68, -0.42))
+  p.push(part(new SphereGeometry(0.05, 5, 4), bone, 0, 0.78, -0.44))
+
+  // Cou dressé — c'est lui qui distingue le chevreuil du mouton à distance.
   p.push(part(new CylinderGeometry(0.05, 0.085, 0.42, 6).rotateX(0.38), coat, 0, 0.9, 0.28))
+  p.push(part(new CylinderGeometry(0.035, 0.05, 0.2, 6).rotateX(0.38), belly, 0, 0.86, 0.33))
   p.push(part(new CapsuleGeometry(0.06, 0.12, 1, 6).rotateX(Math.PI / 2 - 0.25), coat, 0, 1.09, 0.38))
+  // Chanfrein sombre, museau noir et bavette claire : le masque du chevreuil.
   p.push(part(new ConeGeometry(0.042, 0.12, 5).rotateX(Math.PI / 2), dark, 0, 1.07, 0.52))
+  p.push(part(new SphereGeometry(0.028, 6, 5), eye.clone(), 0, 1.07, 0.57))
+  p.push(part(new SphereGeometry(0.035, 6, 5).scale(1.2, 0.7, 1), bone, 0, 1.02, 0.5))
   for (const s of [-1, 1]) {
-    p.push(part(new ConeGeometry(0.032, 0.1, 4).rotateZ(s * 1.1), coat, s * 0.08, 1.16, 0.3))
-    // Bois simples : un merrain incliné + un andouiller, en quads.
+    // Œil sur le côté du chanfrein, comme chez tous les herbivores.
+    p.push(part(new SphereGeometry(0.019, 5, 4), eye, s * 0.05, 1.11, 0.44))
+    // Grandes oreilles en cuillère : chez le chevreuil elles font la moitié
+    // de la tête. Doublées d'un intérieur clair.
+    p.push(part(new ConeGeometry(0.045, 0.14, 5).rotateZ(s * 1.05).rotateX(-0.2), coat, s * 0.085, 1.17, 0.3))
+    p.push(part(new ConeGeometry(0.028, 0.1, 4).rotateZ(s * 1.05).rotateX(-0.2), belly, s * 0.095, 1.17, 0.315))
+    // Bois : merrain incliné, andouiller, et la pointe pâle du bout.
     p.push(part(new CylinderGeometry(0.014, 0.018, 0.24, 4).rotateZ(s * 0.55).rotateX(-0.35), bone, s * 0.06, 1.26, 0.32))
     p.push(part(new CylinderGeometry(0.01, 0.014, 0.14, 4).rotateZ(s * 1.25), bone, s * 0.12, 1.3, 0.36))
+    p.push(part(new SphereGeometry(0.016, 5, 4), bone, s * 0.16, 1.34, 0.36))
   }
+
+  // Pattes : un fuseau qui s'affine, et un sabot sombre au bout — une patte
+  // d'une seule teinte se lisait comme un bâton planté sous le corps.
   for (const sx of [-1, 1])
-    for (const sz of [-1, 1])
-      p.push(part(new CylinderGeometry(0.026, 0.034, 0.52, 5), dark, sx * 0.1, 0.26, sz * 0.26))
+    for (const sz of [-1, 1]) {
+      p.push(part(new CylinderGeometry(0.026, 0.034, 0.44, 5), coat, sx * 0.1, 0.32, sz * 0.26))
+      p.push(part(new CylinderGeometry(0.022, 0.026, 0.12, 5), dark, sx * 0.1, 0.11, sz * 0.26))
+      p.push(part(new CylinderGeometry(0.026, 0.022, 0.05, 5), hoof, sx * 0.1, 0.035, sz * 0.26))
+    }
   return weld(p)
 }
 

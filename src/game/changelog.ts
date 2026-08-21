@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.13.0',
+    title: 'Le chevreuil de plus près',
+    items: [
+      "Premier animal détaillé : le chevreuil gagne sa selle dorsale sombre, son ventre crème, le miroir blanc de sa croupe, un masque de museau, de grandes oreilles doublées de clair, des yeux et des sabots.",
+    ],
+  },
+  {
     version: '3.12.1',
     title: 'Le ponton touche la plage',
     items: [
