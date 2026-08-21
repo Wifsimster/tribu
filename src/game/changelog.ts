@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.18.0',
+    title: 'La hutte et le grenier',
+    items: [
+      "La hutte gagne son trou de fumée cerclé au sommet, ses haubans tendus jusqu'à des piquets plantés au sol, et son rabat de porte roulé sur le côté.",
+      "Le grenier gagne une porte à deux vantaux avec loquet, une lucarne d'aération au pignon — un grenier respire, sinon le grain chauffe — et, sous le plancher, des sacs de grain à l'abri et une gerbe appuyée contre un pilotis.",
+    ],
+  },
+  {
     version: '3.17.0',
     title: 'Le champ moissonne mieux',
     items: [

@@ -763,6 +763,20 @@ function hutParts(): BufferGeometry[] {
       ),
     )
   }
+  // Trou de fumée au sommet : une hutte de peaux en a forcément un, et c'est
+  // par lui que sort la fumée du foyer. Un anneau clair le cercle.
+  p.push(part(new CylinderGeometry(0.2, 0.26, 0.14, 8, 1, true), C.hidePale, 0, 1.72, 0))
+  p.push(part(new CylinderGeometry(0.1, 0.1, 0.06, 8), C.char, 0, 1.76, 0))
+  // Haubans et piquets : ce qui tient une tente de peaux par grand vent, et ce
+  // qui l'ancre visuellement au sol au lieu de la poser dessus.
+  for (const a of [0.6, 2.5, 4.4]) {
+    const px = Math.sin(a) * 1.5
+    const pz = Math.cos(a) * 1.5
+    p.push(part(new CylinderGeometry(0.018, 0.018, 1.5, 4).rotateZ(0.72).rotateY(-a), C.bone, px * 0.6, 0.78, pz * 0.6))
+    p.push(part(new CylinderGeometry(0.03, 0.045, 0.28, 4).rotateZ(0.2), C.woodDark, px, 0.12, pz))
+  }
+  // Le rabat de porte, roulé et attaché sur le côté.
+  p.push(part(new CylinderGeometry(0.09, 0.11, 0.7, 6).rotateZ(0.1), C.hideLight, 0.33, 0.42, 0.78))
   p.push(part(new BoxGeometry(0.5, 0.74, 0.34), C.char, 0, 0.37, 0.74))
   p.push(part(new CylinderGeometry(0.055, 0.07, 0.92, 6), C.bone, -0.31, 0.46, 0.83))
   p.push(part(new CylinderGeometry(0.055, 0.07, 0.92, 6), C.bone, 0.31, 0.46, 0.83))
@@ -887,8 +901,22 @@ function granaryParts(): BufferGeometry[] {
     if (rot) rail.rotateY(Math.PI / 2)
     p.push(part(rail, C.woodDark, ox, 1.62, oz))
   }
-  p.push(part(new BoxGeometry(0.42, 0.56, 0.08), C.woodDark, 0, 1.3, 0.7))
+  // La porte : deux vantaux de planches, un linteau clair, et le loquet.
+  p.push(part(new BoxGeometry(0.2, 0.56, 0.06), C.woodDark, -0.11, 1.3, 0.71))
+  p.push(part(new BoxGeometry(0.2, 0.56, 0.06), tint(C.woodDark, 3, 0.06), 0.11, 1.3, 0.71))
+  p.push(part(new BoxGeometry(0.42, 0.05, 0.07), C.wood, 0, 1.3, 0.73))
+  p.push(part(new SphereGeometry(0.04, 5, 4), C.bone, 0.05, 1.28, 0.75))
   p.push(part(new BoxGeometry(0.52, 0.08, 0.1), C.bone, 0, 1.62, 0.71))
+  // Une lucarne d'aération au pignon : un grenier respire, sinon le grain
+  // chauffe. C'est aussi la tache sombre qui casse le mur clair.
+  p.push(part(new BoxGeometry(0.26, 0.2, 0.06), C.char, 0, 1.78, 0.7))
+  p.push(part(new BoxGeometry(0.3, 0.05, 0.07), C.wood, 0, 1.9, 0.71))
+  // Sacs de grain empilés sous le plancher, à l'abri de la pluie.
+  for (const [gx, gz, r] of [[-0.38, 0.2, 0.16], [-0.2, 0.34, 0.13], [-0.44, 0.42, 0.12]] as const)
+    p.push(part(new SphereGeometry(r, 6, 5).scale(1, 0.8, 1), tint(C.wheat, gx * 40, 0.07), gx, r * 0.8, gz))
+  // Une gerbe appuyée contre un pilotis : le grenier vient d'être rempli.
+  for (let i = 0; i < 5; i++)
+    p.push(part(new CylinderGeometry(0.02, 0.025, 0.8, 4).rotateZ(0.28 + i * 0.04).rotateY(i), tint(C.wheat, i * 9, 0.08), 0.6 + i * 0.02, 0.4, -0.5 + i * 0.03))
   gableRoof(p, 1.66, 0.86, 0.66, 1.87, 6)
   // Échelle vers la porte.
   for (let i = 0; i < 4; i++) {
