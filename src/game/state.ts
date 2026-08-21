@@ -47,6 +47,12 @@ export interface SaveV1 {
   wonder: { age: number; paid: Partial<Record<ResourceId, number>> } | null
   /** Âges dont la Merveille est achevée sur CETTE île. */
   wonders: number[]
+  /** Le PLAN du village : où chaque bâtiment s'est posé, une fois pour toutes.
+   *  Persisté parce que les emplacements sont DÉRIVÉS de la taille de l'île —
+   *  qui grandit à chaque âge. Recalculés à chaque chargement, ils faisaient
+   *  sauter tout le village d'une session à l'autre. La hauteur, elle, n'est
+   *  pas gardée : le terrain change, elle est relue sous chaque bâtiment. */
+  layout: { id: string; x: number; z: number; rot: number }[]
   /** La Chronique : chaque ligne de l'histoire de CETTE tribu — monde (w),
    *  jour (d), genre (k) et texte (x). Survit aux Exodes. */
   chronicle: { w: number; d: number; k: string; x: string }[]
@@ -88,6 +94,7 @@ export function emptySave(now: number): SaveV1 {
     outpostIn: 240,
     wonder: null,
     wonders: [],
+    layout: [],
     legacy: 0,
     tribe: null,
   }

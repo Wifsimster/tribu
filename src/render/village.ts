@@ -1360,7 +1360,10 @@ export class Village {
       p.push(part(new ConeGeometry(0.3, 0.24, 9), iron, 0.58, 3.3, 0))
     }
     this.camp(p)
-    this.jetty(p)
+    // PAS le ponton ici : ce mesh vit dans le repère du campement, joué ×1,2
+    // depuis le foyer. Le ponton y était poussé au large et surélevé d'autant
+    // — d'où DEUX pontons à l'écran quand le vrai a rejoint le repère de
+    // l'île (buildShore). Un seul ponton, dans le repère du terrain.
     const geo = mergeGeometries(p) ?? new BufferGeometry()
     grain(geo)
     bakeFirelight(geo)
@@ -1650,6 +1653,10 @@ export class Village {
       }
       pts.push({ x: bx - uz * off, z: bz + ux * off })
     }
+    // La voie passe : la pinède cède. Sans cela la chaussée existait bel et
+    // bien mais disparaissait sous la canopée sur les deux tiers de son
+    // parcours — mesuré, pas supposé.
+    this.island.clearCorridor(pts, 2.3)
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!
       const b = pts[i + 1]!
@@ -1657,21 +1664,30 @@ export class Village {
       const mz = (a.z + b.z) / 2
       // La voie s'arrête au bord de la place du camp : la terre battue prend
       // le relais, on ne dalle pas le foyer.
-      if (Math.hypot(mx - HEARTH.x, mz - HEARTH.z) < 2.4) continue
+      if (Math.hypot(mx - HEARTH.x, mz - HEARTH.z) < 1.7) continue
       const seg = Math.hypot(b.x - a.x, b.z - a.z)
       const yaw = Math.atan2(b.x - a.x, b.z - a.z)
       const cy = Math.cos(yaw)
       const sy = Math.sin(yaw)
-      const y = this.island.heightAt(mx, mz) + 0.05
-      // Deux dalles de front, teintes alternées : un appareil, pas un ruban.
-      for (const side of [-1, 1]) {
+      // Le PLUS HAUT des trois points, et non la hauteur au milieu : le terrain
+      // monte par paliers d'hexagones, et une dalle calée sur le palier bas est
+      // avalée par le suivant — la voie ne ressortait que par bouts.
+      const y =
+        Math.max(
+          this.island.heightAt(a.x, a.z),
+          this.island.heightAt(mx, mz),
+          this.island.heightAt(b.x, b.z),
+        ) + 0.07
+      // Trois dalles de front (~1,6 u, la largeur d'une cellule) : à deux
+      // dalles la voie lisait comme un sentier de gravier entre les hexagones.
+      for (const side of [-1, 0, 1]) {
         p.push(
           part(
-            new BoxGeometry(0.54, 0.1, seg * 0.96).rotateY(yaw),
-            tint((i + (side > 0 ? 1 : 0)) % 2 === 0 ? C.stone : C.stoneDark, i * 5 + side, 0.07),
-            mx + cy * side * 0.29,
+            new BoxGeometry(0.52, 0.12, seg * 0.96).rotateY(yaw),
+            tint((i + side) % 2 === 0 ? C.stone : C.stoneDark, i * 5 + side, 0.07),
+            mx + cy * side * 0.54,
             y,
-            mz - sy * side * 0.29,
+            mz - sy * side * 0.54,
           ),
         )
       }
@@ -1680,11 +1696,11 @@ export class Village {
         for (const side of [-1, 1])
           p.push(
             part(
-              new BoxGeometry(0.16, 0.14, seg * 0.9).rotateY(yaw),
+              new BoxGeometry(0.2, 0.16, seg * 0.9).rotateY(yaw),
               tint(C.stoneLight, i * 9 + side, 0.06),
-              mx + cy * side * 0.64,
+              mx + cy * side * 0.94,
               y + 0.02,
-              mz - sy * side * 0.64,
+              mz - sy * side * 0.94,
             ),
           )
     }
@@ -1693,8 +1709,11 @@ export class Village {
   /** Le phare ne se pose pas au village : il lui faut une pointe face au large,
    *  à l'écart du ponton — deux ouvrages collés ne font qu'une tache. */
   private shoreSlot(): Vector3 {
-    const camX = Math.sin(0.785)
-    const camZ = Math.cos(0.785)
+    // Pas l'axe de la caméra : une tour de dix unités plantée pile en face
+    // masque le village entier. On vise la côte à main droite — vue de face,
+    // mais sur le côté, comme un vrai amer d'entrée de passe.
+    const camX = Math.sin(0.785 + 0.95)
+    const camZ = Math.cos(0.785 + 0.95)
     const head = this.jettyHead
     let best: Vector3 | null = null
     let bestK = -Infinity
@@ -2047,8 +2066,35 @@ export class Village {
    *  entier — ne bougent pas d'un centimètre. */
   private static readonly LEGACY = new Set(['hut', 'field', 'granary', 'aqueduct'])
 
+  /** Adopte le plan sauvegardé AVANT toute nouvelle pose : un bâtiment déjà
+   *  posé ne bouge plus jamais. Seule la hauteur est relue sous lui — l'île
+   *  grandit d'un âge à l'autre et un y figé l'enterrerait ou le ferait
+   *  léviter. C'est la réponse à « les bâtiments changent de place à chaque
+   *  rafraîchissement » : le plan était recalculé de zéro, et il dépend de la
+   *  taille de l'île. */
+  adoptLayout(saved: { id: string; x: number; z: number; rot: number }[]): void {
+    for (const s of saved) {
+      if (this.placed.has(s.id)) continue
+      const y = this.island.heightAt(s.x, s.z)
+      this.propPlacements.push({ id: s.id, x: s.x, y, z: s.z, rot: s.rot })
+      this.placed.add(s.id)
+      this.taken.push(new Vector3(s.x, y, s.z))
+      if (s.id === 'milestone') this.roadKnown = true
+      this.adopted = true
+    }
+    if (this.roadKnown) this.buildShore()
+  }
+
+  /** Le plan à écrire dans la sauvegarde. */
+  get layout(): { id: string; x: number; z: number; rot: number }[] {
+    return this.propPlacements.map((p) => ({ id: p.id, x: p.x, z: p.z, rot: p.rot }))
+  }
+
+  private adopted = false
+
   sync(buildings: Set<string>): void {
-    let dirty = false
+    let dirty = this.adopted
+    this.adopted = false
     for (const b of buildings) {
       if (this.placed.has(b)) continue
       // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
@@ -2089,8 +2135,8 @@ export class Village {
   private propsMesh: Mesh | null = null
   /** Le phare est joué à part : c'est un amer, pas un atelier. Il doit passer
    *  au-dessus de la pinède (sapins ≈ 9,6 u) pour être vu du large. */
-  private static readonly BEACON_K = 2.4
-  private static readonly BEACON_HALO = 8
+  private static readonly BEACON_K = 1.9
+  private static readonly BEACON_HALO = 6.5
   /** Le rivage : ponton et chaussée, un mesh à part dans le repère de l'île. */
   private shoreMesh: Mesh | null = null
   private jettyHead: { x: number; z: number } | null = null

@@ -117,6 +117,8 @@ function buildWorld(): void {
   // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
   // brasero, lampadaire dès que l'électricité est sue.
   village = new Village(island, game.save.age, game.knows('electricity'))
+  // Le plan sauvegardé d'abord : ce qui est bâti ne se redéplace pas.
+  village.adoptLayout(game.save.layout)
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
@@ -154,6 +156,8 @@ function buildWorld(): void {
     }
   }
   village.sync(game.buildings)
+  // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
+  game.save.layout = village.layout
   village.setRelics(game.save.relics.length)
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
@@ -167,7 +171,12 @@ function buildWorld(): void {
     const kind = island.kindFor(mesh)
     if (!kind) continue
     const spots: Vector3[] = []
-    for (let i = 0; i < mesh.count; i++) spots.push(island.instancePosition(mesh, i))
+    // Les arbres abattus par la voie romaine ne sont plus des nœuds de bois :
+    // le colon irait bûcheronner une souche invisible.
+    for (let i = 0; i < mesh.count; i++) {
+      if (island.isFelled(mesh, i)) continue
+      spots.push(island.instancePosition(mesh, i))
+    }
     nodeSpots.set(kind, spots)
   }
 }
@@ -234,7 +243,13 @@ game.on((e) => {
       // L'électricité transforme le cœur du village (lampadaire à la place du
       // feu) : on reconstruit le monde comme à un passage d'âge.
       if (e.tech.id === 'electricity') buildWorld()
-      else village.sync(game.buildings)
+      else {
+        village.sync(game.buildings)
+        // Le nouvel atelier prend sa place DÉFINITIVE : elle part dans la
+        // sauvegarde tout de suite, sinon elle serait retirée au sort au
+        // prochain chargement.
+        game.save.layout = village.layout
+      }
       hud.refreshTechList()
       settler.celebrate()
       break

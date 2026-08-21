@@ -498,6 +498,9 @@ export class Island {
 
   // ── Saisons ───────────────────────────────────────────────────────────────
   private leavesMesh: InstancedMesh | null = null
+  private trunksMesh: InstancedMesh | null = null
+  /** Arbres abattus (index d'instance) : ils ne sont plus des nœuds de récolte. */
+  private readonly felledTrees = new Set<number>()
   private leafBase: Float32Array | null = null
   private bushMesh: InstancedMesh | null = null
   private bushBase: Float32Array | null = null
@@ -1512,6 +1515,7 @@ export class Island {
     this.registerPickable(leaves, 'wood')
     // Les saisons repeignent le feuillage : garder la teinte de base.
     this.leavesMesh = leaves
+    this.trunksMesh = trunks
     this.leafBase = leaves.instanceColor ? new Float32Array(leaves.instanceColor.array) : null
   }
 
@@ -1570,6 +1574,53 @@ export class Island {
     this.bushMesh = mesh
     this.bushBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
     this.registerPickable(mesh, 'food')
+  }
+
+  /** Abattre les arbres d'un couloir — ce que fait une voie romaine. On ne
+   *  RECOMPACTE pas les instances : les couleurs de saison et le tirage
+   *  aléatoire des positions suivent l'ordre d'origine, et tout décaler
+   *  repeindrait la forêt entière. L'arbre abattu garde donc sa place, réduit
+   *  à un millième — invisible, mais sa position reste lisible pour tout ce
+   *  qui l'interroge. `felledTrees` l'exclut des nœuds de récolte : un tronc
+   *  qu'on ne voit pas ne doit pas rester un lieu où le colon va bûcheronner. */
+  clearCorridor(pts: { x: number; z: number }[], radius: number): void {
+    const leaves = this.leavesMesh
+    const trunks = this.trunksMesh
+    if (!leaves || !trunks || pts.length === 0) return
+    const m = new Matrix4()
+    const p = new Vector3()
+    const q = new Quaternion()
+    const s = new Vector3()
+    const r2 = radius * radius
+    let cut = 0
+    for (let i = 0; i < leaves.count; i++) {
+      if (this.felledTrees.has(i)) continue
+      leaves.getMatrixAt(i, m)
+      m.decompose(p, q, s)
+      let hit = false
+      for (const c of pts) {
+        if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < r2) {
+          hit = true
+          break
+        }
+      }
+      if (!hit) continue
+      this.felledTrees.add(i)
+      cut++
+      for (const mesh of [leaves, trunks]) {
+        mesh.getMatrixAt(i, m)
+        m.decompose(p, q, s)
+        mesh.setMatrixAt(i, m.compose(p, q, s.setScalar(1e-3)))
+      }
+    }
+    if (cut === 0) return
+    leaves.instanceMatrix.needsUpdate = true
+    trunks.instanceMatrix.needsUpdate = true
+  }
+
+  /** Un arbre abattu n'est plus un nœud de bois : main.ts l'écarte du relevé. */
+  isFelled(mesh: InstancedMesh, index: number): boolean {
+    return mesh === this.leavesMesh && this.felledTrees.has(index)
   }
 
   private registerPickable(mesh: InstancedMesh, kind: NodeKind): void {
