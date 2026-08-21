@@ -1395,7 +1395,20 @@ export class Island {
     this.addTrees(take(Math.round(34 * this.growth * this.growth), clustered(wooded, 5.2), () => true), rnd)
     // Pierres et buissons, eux, ont le droit de border la clairière : ce sont
     // eux qui l'encadrent une fois les sapins reculés.
-    this.addRocks(take(Math.round(24 * this.growth * this.growth), clustered(free, 9), (c) => c.height > 1.2), rnd)
+    // Même diagnostic que pour la pinède : les rochers encombraient la
+    // clairière que le village doit occuper. Ils reculent d'un demi-rayon de
+    // dégagement (moins que les sapins — ce sont eux qui BORDENT la
+    // clairière) et leur nombre baisse d'un tiers.
+    this.addRocks(
+      take(
+        Math.round(16 * this.growth * this.growth),
+        clustered(free, 9),
+        (c) =>
+          c.height > 1.2 &&
+          Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth) * 0.62,
+      ),
+      rnd,
+    )
     this.addBushes(take(Math.round(34 * this.growth * this.growth), clustered(free, 6), () => true), rnd)
   }
 
@@ -1500,7 +1513,10 @@ export class Island {
 
     const d = new Object3D()
     cells.forEach((c, i) => {
-      const s = 0.55 + rnd() * 0.7
+      // Amplitude resserrée (0,5–0,95 au lieu de 0,55–1,25) : les plus gros
+      // blocs atteignaient la taille d'une hutte et mangeaient le sol autour
+      // d'eux. Même tirage aléatoire, seule l'échelle change.
+      const s = 0.5 + rnd() * 0.45
       d.position.set(c.x + (rnd() - 0.5) * 0.6, c.height + 0.2 * s, c.z + (rnd() - 0.5) * 0.6)
       d.rotation.set(rnd() * 0.5, rnd() * Math.PI, rnd() * 0.5)
       d.scale.set(s, s * 0.75, s)

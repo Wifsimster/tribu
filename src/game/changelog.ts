@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.16.1',
+    title: 'Les rochers reculent aussi',
+    items: [
+      "Même traitement que la forêt pour les blocs de pierre : un tiers de moins, plus petits, et tenus à distance de la clairière du village. Les plus gros atteignaient la taille d'une hutte.",
+    ],
+  },
+  {
     version: '3.16.0',
     title: 'Le cheval, la mouette, et de l’air',
     items: [
