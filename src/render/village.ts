@@ -2169,11 +2169,9 @@ export class Village {
         // elle — plantée en prairie sèche, la roue n'expliquait rien.
         p.push(part(new BoxGeometry(1.0, 0.12, 0.66), C.stoneDark, 0, 0.06, 0))
         p.push(part(new BoxGeometry(0.86, 0.06, 0.52), C.water, 0, 0.13, 0))
-        p.push(part(new TorusGeometry(0.34, 0.05, 5, 10).rotateY(Math.PI / 2), C.woodDark, 0, 0.46, 0))
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2
-          p.push(part(new BoxGeometry(0.06, 0.18, 0.12), C.wood, 0, 0.46 + Math.cos(a) * 0.34, Math.sin(a) * 0.34))
-        }
+        // La roue ne vit plus ici : elle TOURNE, donc elle a son propre mesh
+        // (buildMillWheel). Ne restent que le bassin, les montants et la
+        // goulotte — tout ce qui est fixe.
         for (const sz of [-0.44, 0.44]) p.push(part(new CylinderGeometry(0.04, 0.05, 0.7, 5), C.wood, 0, 0.35, sz))
         p.push(part(new BoxGeometry(0.18, 0.06, 1.05).rotateX(0.22), C.woodDark, 0.26, 0.8, -0.1))
         p.push(part(new BoxGeometry(0.1, 0.035, 0.95).rotateX(0.22), C.water, 0.26, 0.85, -0.1))
@@ -2185,12 +2183,6 @@ export class Village {
         }
         p.push(part(new BoxGeometry(0.6, 0.02, 0.3), C.ridge, -0.1, 0.16, 0.02))
         p.push(part(new BoxGeometry(0.9, 0.05, 0.1), new Color('#5d7a48'), 0, 0.1, 0.3))
-        // Un moyeu et quatre rayons : le centre de la roue était vide.
-        p.push(part(new CylinderGeometry(0.06, 0.06, 0.2, 8).rotateY(Math.PI / 2), C.woodDark, 0, 0.46, 0))
-        for (let i = 0; i < 4; i++) {
-          const a = (i / 4) * Math.PI * 2 + 0.4
-          p.push(part(new BoxGeometry(0.05, 0.62, 0.04).rotateX(a), C.wood, 0, 0.46, 0))
-        }
         // Le meunier a laissé ses sacs sur la berge.
         for (const [gx, gz] of [[-0.5, -0.3], [-0.36, -0.4]] as const)
           p.push(part(new SphereGeometry(0.08, 6, 5).scale(1, 0.85, 1), C.hideLight, gx, 0.1, gz))
@@ -2625,6 +2617,8 @@ export class Village {
    *  des bâtiments : elles ont besoin de leur propre transformation. Deux
    *  petits meshes autonomes, créés seulement si le bâtiment est posé. */
   private windmillSails: Mesh | null = null
+  private millWheel: Mesh | null = null
+  private millPivot: Group | null = null
   private clockHands: { hour: Mesh; minute: Mesh } | null = null
   private windSpin = 0
 
@@ -2636,6 +2630,11 @@ export class Village {
       // Un moulin tourne lentement et jamais tout à fait régulièrement.
       this.windSpin += dt * (0.55 + Math.sin(this.windSpin * 0.21) * 0.13)
       this.windmillSails.rotation.z = this.windSpin
+    }
+    if (this.millWheel) {
+      // Une roue à aubes tourne lentement et régulièrement : c'est l'eau qui
+      // la mène, pas le vent.
+      this.millWheel.rotation.x += dt * 0.9
     }
     if (this.clockHands) {
       // Cadran de douze heures : la petite aiguille fait deux tours par
@@ -2651,7 +2650,13 @@ export class Village {
       this.group.remove(m)
       m.geometry.dispose()
     }
+    if (this.millPivot) {
+      this.group.remove(this.millPivot)
+      this.millWheel?.geometry.dispose()
+    }
     this.windmillSails = null
+    this.millWheel = null
+    this.millPivot = null
     this.clockHands = null
   }
 
@@ -2678,6 +2683,36 @@ export class Village {
     mesh.rotation.y = pl.rot
     this.windmillSails = mesh
     this.group.add(mesh)
+  }
+
+  /** La roue à aubes, hors de la fusion. Un pivot porte l'orientation du
+   *  bâtiment, la roue tourne dedans autour de son axe : ainsi l'ordre des
+   *  rotations d'Euler ne peut pas s'emmêler. */
+  private buildMillWheel(pl: { x: number; y: number; z: number; rot: number }): void {
+    const K = 2.5
+    const p: BufferGeometry[] = []
+    p.push(part(new TorusGeometry(0.34, 0.05, 5, 10).rotateY(Math.PI / 2), C.woodDark, 0, 0, 0))
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      p.push(part(new BoxGeometry(0.06, 0.18, 0.12), C.wood, 0, Math.cos(a) * 0.34, Math.sin(a) * 0.34))
+    }
+    p.push(part(new CylinderGeometry(0.06, 0.06, 0.2, 8).rotateY(Math.PI / 2), C.woodDark, 0, 0, 0))
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4
+      p.push(part(new BoxGeometry(0.05, 0.62, 0.04).rotateX(a), C.wood, 0, 0, 0))
+    }
+    const geo = mergeGeometries(p.map((g) => g.scale(K, K, K)))
+    if (!geo) return
+    grain(geo)
+    const wheel = new Mesh(geo, this.solid)
+    wheel.castShadow = true
+    const pivot = new Group()
+    pivot.position.set(pl.x, pl.y + 0.46 * K, pl.z)
+    pivot.rotation.y = pl.rot
+    pivot.add(wheel)
+    this.millWheel = wheel
+    this.millPivot = pivot
+    this.group.add(pivot)
   }
 
   /** Les deux aiguilles du campanile, montées sur le cadran. */
@@ -2729,6 +2764,7 @@ export class Village {
     for (const pl of this.propPlacements) {
       if (pl.id === 'windmill') this.buildWindmillSails(pl)
       if (pl.id === 'clock') this.buildClockHands(pl)
+      if (pl.id === 'watermill') this.buildMillWheel(pl)
     }
   }
 

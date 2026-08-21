@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.21.1',
+    title: 'La roue du moulin à eau tourne',
+    items: [
+      "La roue à aubes tourne à son tour — lentement et régulièrement, elle : c'est l'eau qui la mène, pas le vent.",
+    ],
+  },
+  {
     version: '3.21.0',
     title: 'Le moulin tourne, l’horloge donne l’heure',
     items: [
