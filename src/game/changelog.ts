@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.11.0',
+    title: 'La famille se ressemble',
+    items: [
+      "La cueilleuse et l'enfant sont redessinés dans la langue du colon : même tunique en cylindre tronqué, même col de fourrure crème, même peau, mêmes membres. Ils appartenaient visiblement à un autre jeu.",
+      "L'enfant n'est plus la cueilleuse rétrécie et teintée en bleu — peau comprise. Il a ses propres proportions d'enfant : tête au quart de la hauteur, tunique courte, membres ramassés, et deux couettes.",
+    ],
+  },
+  {
     version: '3.10.0',
     title: 'L’île sonne pour de vrai',
     items: [

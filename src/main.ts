@@ -73,9 +73,12 @@ const nodeSpots = new Map<string, Vector3[]>()
 
 function disposeWorld(): void {
   if (villagers) {
-    stage.scene.remove(villagers.mesh)
-    villagers.mesh.geometry.dispose()
-    ;(villagers.mesh.material as { dispose(): void }).dispose()
+    stage.scene.remove(villagers.group)
+    villagers.group.traverse((o) => {
+      const m = o as { geometry?: { dispose(): void }; material?: { dispose(): void } }
+      m.geometry?.dispose()
+      m.material?.dispose()
+    })
   }
   for (const g of [island?.group, village?.group, settler?.group, fauna?.group]) {
     if (!g) continue
@@ -124,7 +127,7 @@ function buildWorld(): void {
   // La tribu s'étoffe avec les âges : une cueilleuse au Néolithique, un
   // enfant à l'Antiquité. Le colon n'est plus seul.
   villagers.setPopulation(game.save.age >= 4 ? 2 : game.save.age >= 1 ? 1 : 0)
-  stage.scene.add(island.group, village.group, settler.group, fauna.group, villagers.mesh)
+  stage.scene.add(island.group, village.group, settler.group, fauna.group, villagers.group)
   stage.islandRadius = island.radius
   island.setSeason(game.season.id)
   stage.winter = game.season.id === 3
@@ -1389,6 +1392,7 @@ requestAnimationFrame((t) => {
   // Recréés à chaque buildWorld : le harnais passe par des getters.
   fauna: () => fauna,
   settler: () => settler,
+  villagers: () => villagers,
 }
 
 // Credit real elapsed time when the tab comes back, and never lose a session.
