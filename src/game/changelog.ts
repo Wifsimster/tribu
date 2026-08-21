@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.23.0',
+    title: 'Le ponton accoste, et un compteur d’images',
+    items: [
+      "Le ponton part enfin du rivage sur toutes les îles : il pouvait s'accrocher à la berge d'un plan d'eau intérieur et sembler flotter au large.",
+      "Un compteur d'images à la demande : ajoute ?fps=1 à l'adresse et le jeu affiche sa fluidité, ses pires images, son temps de calcul et sa charge de rendu. C'est le seul moyen de mesurer la vraie fluidité, sur ta machine et ton téléphone.",
+    ],
+  },
+  {
     version: '3.22.0',
     title: 'Le village bouge',
     items: [

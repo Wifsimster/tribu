@@ -109,12 +109,27 @@ function smoothstep01(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t)
 }
 
+/** Hauteur du soleil, de −1 à 1. C'est ELLE qui dit l'heure de la nuit : la
+ *  part de jour, elle, reste plate à zéro d'un bout à l'autre et ne permet pas
+ *  de distinguer le crépuscule du cœur de nuit. */
+export function sunHeightAt(totalPlaySeconds: number): number {
+  const u = (DAY_START + totalPlaySeconds / DAY_SECONDS) % 1
+  return Math.sin(u * Math.PI * 2)
+}
+
 /** Part de jour, même formule que le rendu : les deux doivent tomber d'accord
  *  sur l'heure qu'il est. */
 export function daylightAt(totalPlaySeconds: number): number {
-  const u = (DAY_START + totalPlaySeconds / DAY_SECONDS) % 1
-  return smoothstep01(-0.06, 0.2, Math.sin(u * Math.PI * 2))
+  return smoothstep01(-0.06, 0.2, sunHeightAt(totalPlaySeconds))
 }
+
+/** Sans lumière, on se couche au crépuscule — la même heure que le cadran du
+ *  HUD. Toute la lumière du monde ne repousse le coucher que jusqu'à
+ *  SLEEP_DEEP : le cœur de la nuit appartient au sommeil à toutes les époques,
+ *  et l'île doit être vue endormie. Le feu grignote l'aube, le lampadaire
+ *  grignote beaucoup plus — mais aucun savoir ne supprime la nuit. */
+const SLEEP_DUSK = -0.09
+const SLEEP_DEEP = -0.75
 
 /** Le marchand paie en histoires autant qu'en métal : chaque anecdote est un
  *  fait de commerce ancien réel. */
@@ -665,7 +680,7 @@ export class Game {
   }
 
   canExpedition(): boolean {
-    return !this.save.expedition && this.amount('food') >= this.expeditionCost()
+    return this.seaOpen && !this.save.expedition && this.amount('food') >= this.expeditionCost()
   }
 
   startExpedition(destId: DestinationDef['id'] = 'cote', embassy = false): boolean {
@@ -998,8 +1013,10 @@ export class Game {
   /** La navette du comptoir : un tribut périodique, tant que l'île écoute. */
   private tickOutpost(dt: number): void {
     if (!this.save.outpost) return
-    this.save.outpostIn -= dt
-    if (this.save.outpostIn > 0) return
+    this.save.outpostIn = Math.max(0, this.save.outpostIn - dt)
+    // La navette du comptoir est une coque comme une autre : elle attend le
+    // jour, ou le phare.
+    if (this.save.outpostIn > 0 || !this.seaOpen) return
     this.save.outpostIn = 220 + Math.random() * 120
     const loot: Partial<Record<ResourceId, number>> = {
       food: Math.round(18 * (1 + this.save.age)),
@@ -1015,8 +1032,10 @@ export class Game {
     if (this.save.age < CARAVAN_AGE) return
     const c = this.save.caravan
     if (!c.visiting) {
-      c.nextIn -= dt
-      if (c.nextIn <= 0) {
+      c.nextIn = Math.max(0, c.nextIn - dt)
+      // Le marchand ne cherche pas une passe qu'il ne voit pas : il patiente au
+      // large jusqu'à l'aube, ou jusqu'à ce qu'un phare la lui montre.
+      if (c.nextIn <= 0 && this.seaOpen) {
         c.visiting = true
         c.visitLeft = CARAVAN_VISIT
         c.haggled = false
@@ -1026,14 +1045,15 @@ export class Game {
       }
       return
     }
-    c.visitLeft -= dt
+    c.visitLeft = Math.max(0, c.visitLeft - dt)
     // L'échange se conclut au milieu de la visite : le joueur a le temps de
     // marchander d'un tap avant que le prix soit fixé.
     if (!c.traded && c.visitLeft <= CARAVAN_VISIT * 0.5) {
       c.traded = true
       this.doTrade((c.haggled ? 1.3 : 1) * (this.goldenTrade ? 2.2 : 1), false)
     }
-    if (c.visitLeft <= 0) {
+    // Et il ne repart pas non plus dans le noir : il dort à bord, amarré.
+    if (c.visitLeft <= 0 && this.seaOpen) {
       c.visiting = false
       c.nextIn = CARAVAN_PERIOD * (0.8 + Math.random() * 0.5)
       this.goldenTrade = false
@@ -1094,6 +1114,26 @@ export class Game {
     return this.wasNight
   }
 
+  /** L'heure où TOUT LE MONDE dort — colon et villageois. La lumière découverte
+   *  ne fait que mordre sur le crépuscule et l'aube : elle allonge la veillée,
+   *  elle n'abolit jamais la nuit. */
+  get sleepTime(): boolean {
+    const t = Math.min(1, Math.max(0, (this.nightFloor - NIGHT_BASE_FLOOR) / (1 - NIGHT_BASE_FLOOR)))
+    return sunHeightAt(this.save.totalPlaySeconds) < SLEEP_DUSK + (SLEEP_DEEP - SLEEP_DUSK) * t
+  }
+
+  /** Le phare tient la passe : sans lui, aucune coque n'entre ni ne sort dans
+   *  le noir. C'est la seule raison d'être d'une tour à feu. */
+  get canSailAtNight(): boolean {
+    return this.buildings.has('lighthouse')
+  }
+
+  /** La mer est-elle praticable ? Expéditions, barque marchande et navette du
+   *  comptoir passent toutes par là. */
+  get seaOpen(): boolean {
+    return !this.wasNight || this.canSailAtNight
+  }
+
   /** Un tap sur la barque avant la conclusion du troc améliore le prix. */
   haggle(): boolean {
     const c = this.save.caravan
@@ -1121,8 +1161,10 @@ export class Game {
 
     const exp = this.save.expedition
     if (exp) {
-      exp.remaining -= dt
-      if (exp.remaining <= 0) this.finishExpedition()
+      // Bornée à zéro : le voyage est fini, mais la barque peut attendre le
+      // jour au large — le HUD affiche alors l'attente, pas un compte négatif.
+      exp.remaining = Math.max(0, exp.remaining - dt)
+      if (exp.remaining <= 0 && this.seaOpen) this.finishExpedition()
     }
 
     this.tickCaravan(dt)

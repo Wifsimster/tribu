@@ -1278,8 +1278,31 @@ let last = performance.now()
 let lastWall = Date.now()
 let elapsed = 0
 
+/** Compteur d'images, sur demande : `?fps=1`.
+ *
+ *  Il existe parce que le harnais de capture ne PEUT PAS mesurer la fluidité —
+ *  Chromium sans écran rend en logiciel (SwiftShader / llvmpipe) et plafonne à
+ *  deux ou trois images par seconde quoi qu'on fasse. La seule mesure qui vaut
+ *  est celle prise sur un vrai appareil, donc elle doit être à portée de main.
+ *
+ *  Il montre la MÉDIANE et les 5 % de pires images : une moyenne cache
+ *  précisément les à-coups qu'on cherche. `js` est le temps passé dans notre
+ *  propre boucle, hors rendu — c'est celui-là qu'on maîtrise. */
+const fpsPanel = new URLSearchParams(location.search).get('fps') ? document.createElement('div') : null
+if (fpsPanel) {
+  fpsPanel.style.cssText =
+    'position:fixed;left:8px;bottom:8px;z-index:99;padding:6px 9px;border-radius:9px;' +
+    'background:rgba(20,26,32,.82);color:#eaf2f7;font:12px/1.45 ui-monospace,monospace;' +
+    'white-space:pre;pointer-events:none'
+  document.body.appendChild(fpsPanel)
+}
+const fpsDts: number[] = []
+let fpsJs = 0
+let fpsLast = 0
+
 function frame(now: number): void {
   requestAnimationFrame(frame)
+  const t0 = fpsPanel ? performance.now() : 0
   // A backgrounded tab can hand back a huge delta; the sim would jump, the
   // animation would teleport. Clamp here and let the save handle real absence.
   const dt = Math.min((now - last) / 1000, 0.1)
@@ -1294,8 +1317,10 @@ function frame(now: number): void {
   elapsed += dt
 
   if (!paused) game.tick(dt, Date.now())
-  // Nuit sans lampe à graisse : la tribu dort. Avec les lampes, elle veille.
-  settler.setNight(game.isNight && game.nightLight < 0.85)
+  // La nuit, TOUT LE MONDE dort. La lumière découverte ne fait qu'allonger la
+  // veillée sur le crépuscule et l'aube (game.sleepTime) : même électrifiée,
+  // l'île doit être vue endormie une partie de la nuit.
+  settler.setNight(game.sleepTime)
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   // L'outil suit la ressource travaillée et la matière suit les savoirs.
   const metal = game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
@@ -1332,7 +1357,7 @@ function frame(now: number): void {
   village.update(dt, elapsed)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
-  villagers.update(dt, elapsed, game.isNight)
+  villagers.update(dt, elapsed, game.sleepTime)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
   if (wreckTimer > 0) {
@@ -1380,7 +1405,22 @@ function frame(now: number): void {
   )
   stage.updateCamera()
   hud.update()
+  if (fpsPanel) fpsJs = performance.now() - t0
   stage.render()
+  if (fpsPanel) {
+    if (fpsLast) fpsDts.push(now - fpsLast)
+    fpsLast = now
+    if (fpsDts.length >= 60) {
+      const sorted = [...fpsDts].sort((a, b) => a - b)
+      const med = sorted[sorted.length >> 1]!
+      const worst = sorted[Math.floor(sorted.length * 0.95)]!
+      const info = stage.renderer.info.render
+      fpsPanel.textContent =
+        `${(1000 / med).toFixed(0)} fps  (5 % pires : ${(1000 / worst).toFixed(0)})\n` +
+        `js ${fpsJs.toFixed(1)} ms · ${info.calls} appels · ${(info.triangles / 1000).toFixed(0)} k tris`
+      fpsDts.length = 0
+    }
+  }
 }
 
 requestAnimationFrame((t) => {

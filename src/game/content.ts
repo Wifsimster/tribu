@@ -465,6 +465,19 @@ export const TECHS: TechDef[] = [
     ],
   },
   {
+    id: 'lighthouse',
+    name: 'Tour à feu',
+    age: 3,
+    cost: 2400,
+    materials: { stone: 140, wood: 70 },
+    requires: ['sail'],
+    fact: "Les Grecs tenaient des feux allumés au sommet des caps — les phryktories. Dans l'Agamemnon d'Eschyle, la nouvelle de la chute de Troie franchit la mer Égée en une seule nuit, de brasier en brasier.",
+    effects: [
+      { kind: 'building', building: 'lighthouse' },
+      { kind: 'insightRate', add: 1 },
+    ],
+  },
+  {
     id: 'aqueduct',
     name: 'Aqueduc',
     age: 3,

@@ -1598,6 +1598,19 @@ export class Village {
     for (const c of this.island.cells) {
       if (!c.beach || !c.rim) continue
       const r = Math.hypot(c.x, c.z) + 1e-6
+      const dx = c.x / r
+      const dz = c.z / r
+      // La MER, pas une flaque. `rim` signifie seulement « un voisin manque » :
+      // il est vrai aussi sur la berge d'un plan d'eau INTÉRIEUR. Mesuré à
+      // l'âge 9 : la cellule élue se trouvait à 15,8 du centre pour une île de
+      // rayon 26,3 — le ponton partait d'une lagune vers le large.
+      // On exige donc que la direction du large soit dégagée sur cinq unités.
+      if (
+        this.island.isLand(c.x + dx * 1.6, c.z + dz * 1.6) ||
+        this.island.isLand(c.x + dx * 3.2, c.z + dz * 3.2) ||
+        this.island.isLand(c.x + dx * 5, c.z + dz * 5)
+      )
+        continue
       // On veut à la fois « face à la caméra » et « bien au bord ».
       const k = (c.x * camX + c.z * camZ) / r + r * 0.03
       if (k > bestK) {
