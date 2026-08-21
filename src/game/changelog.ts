@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.12.0',
+    title: 'Le bruit du travail',
+    items: [
+      "Le colon s'entend travailler : la hache mord le tronc, le pic éclate la pierre, les mains froissent le buisson, l'épieu frappe — et la ligne plouffe quand il pêche.",
+      "Un son par COUP, calé sur son geste : rien pendant qu'il marche, rien pendant qu'il dort. Et la hauteur change à chaque impact, pour qu'une série de coups sonne comme un bras et non comme une machine.",
+      "Avant l'agriculture, c'est la chasse qu'on entend ; après, la cueillette.",
+    ],
+  },
+  {
     version: '3.11.0',
     title: 'La famille se ressemble',
     items: [

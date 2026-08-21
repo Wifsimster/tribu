@@ -79,7 +79,7 @@ export class Ambience {
   /** Chargé SEULEMENT à la première activation du son : le son est coupé par
    *  défaut, l'installation de la PWA ne doit pas payer ces kilo-octets. */
   private async loadSamples(ctx: AudioContext): Promise<void> {
-    const ids = ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon', 'toc', 'carillon', 'piece', 'plouf', 'cloche']
+    const ids = ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon', 'toc', 'carillon', 'piece', 'plouf', 'cloche', 'bois', 'pierre', 'cueillette', 'chasse']
     await Promise.all(
       ids.map(async (id) => {
         try {
@@ -92,6 +92,23 @@ export class Ambience {
       }),
     )
     for (const id of ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon']) this.startBed(id)
+  }
+
+  /** Le coup de travail du colon : hache dans le bois, pic sur la pierre,
+   *  cueillette, épieu. Appelé à CHAQUE impact de l'animation — jamais en
+   *  boucle. La hauteur varie d'un coup à l'autre : dix fois le même
+   *  échantillon à l'identique s'entend comme une machine, pas comme un bras.
+   *  Muet si le colon n'a rien à frapper (savoir non acquis, fichier absent). */
+  work(kind: 'bois' | 'pierre' | 'cueillette' | 'chasse'): void {
+    const buf = this.samples.get(kind)
+    if (!buf || !this.ctx || !this.master) return
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    src.playbackRate.value = 0.92 + Math.random() * 0.16
+    const g = this.ctx.createGain()
+    g.gain.value = 0.32 + Math.random() * 0.08
+    src.connect(g).connect(this.master)
+    src.start()
   }
 
   /** Joue un coup échantillonné. Renvoie faux si l'échantillon n'est pas là :

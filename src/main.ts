@@ -122,6 +122,16 @@ function buildWorld(): void {
   // du rivage de CETTE île-là.
   fauna = new Fauna(island, village.obstaclePoints)
   fauna.onFishJump = () => ambience.plop()
+  // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
+  // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
+  // tribu n'a pas l'agriculture.
+  settler.onStrike = () => {
+    if (fishing) return ambience.plop()
+    const res = game.save.focus
+    if (res === 'wood') return ambience.work('bois')
+    if (res === 'food') return ambience.work(game.knows('farming') ? 'cueillette' : 'chasse')
+    return ambience.work('pierre')
+  }
   fishing = false
   villagers = new Villagers(island, village.obstaclePoints)
   // La tribu s'étoffe avec les âges : une cueilleuse au Néolithique, un

@@ -101,6 +101,32 @@ const SOUNDS = [
     seconds: 8,
     text: 'Low steady electrical hum of a street lamp ballast, continuous drone, clear and present, no buzzing insects, no music',
   },
+  // ── Le travail du colon : un son PAR COUP, déclenché par l'animation ────
+  {
+    id: 'bois',
+    kind: 'shot',
+    seconds: 1,
+    text: 'One single axe chop into a tree trunk, dry wooden crack, close, short, outdoors, no echo, no music',
+  },
+  {
+    id: 'pierre',
+    kind: 'shot',
+    seconds: 1,
+    text: 'One single stone pick striking rock, sharp mineral crack with small debris, close, short, no echo, no music',
+  },
+  {
+    id: 'cueillette',
+    kind: 'shot',
+    seconds: 1,
+    text: 'One short rustle of hands pulling leaves and berries from a bush, dry foliage, close, brief, no music',
+  },
+  {
+    id: 'chasse',
+    kind: 'shot',
+    seconds: 1.2,
+    text: 'One spear thrust into hide and straw, dull thud with a short fibrous tear, close, brief, no music, no animal cry',
+  },
+
   // ── Sons d'interaction (coups uniques) ──────────────────────────────────
   {
     id: 'toc',

@@ -664,7 +664,12 @@ export class Settler {
 
   /** Éclats de silex à l'impact: la seule chose qui prouve que le colon frappe
    *  quelque chose plutôt que de mimer dans le vide. */
+  /** Branché par main.ts : chaque coup porté doit s'entendre. Le son est
+   *  ainsi lié au GESTE, pas à une boucle de fond qui tournerait sans fin. */
+  onStrike: (() => void) | null = null
+
   private strike(): void {
+    this.onStrike?.()
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * TAU + Math.random()
       this.chipPos[i * 3] = Math.sin(a) * 0.08
