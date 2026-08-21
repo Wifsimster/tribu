@@ -183,6 +183,26 @@ export class ExpeditionBoat {
     this.rider.position.y = ExpeditionBoat.RIDER_Y[t]!
   }
 
+  private moor: { x: number; z: number; yaw: number } | null = null
+
+  /** Amarrage : hors expédition, la barque reste au bout du ponton au lieu
+   *  de disparaître. C'est ce qui rend VISIBLE la progression de la flotte —
+   *  sans quoi découvrir la voile ne changeait rien tant qu'on ne partait pas. */
+  moorAt(spot: { x: number; z: number; yaw: number } | null): void {
+    this.moor = spot
+    if (this.state === 'hidden') this.dock()
+  }
+
+  private dock(): void {
+    if (!this.moor) {
+      this.group.visible = false
+      return
+    }
+    this.group.position.set(this.moor.x, 0, this.moor.z)
+    this.group.rotation.y = this.moor.yaw + Math.PI / 2
+    this.group.visible = true
+  }
+
   get active(): boolean {
     return this.state !== 'hidden'
   }
@@ -215,7 +235,14 @@ export class ExpeditionBoat {
   }
 
   update(dt: number, time: number): void {
-    if (this.state === 'hidden') return
+    if (this.state === 'hidden') {
+      // À quai : elle tangue doucement sur place.
+      if (this.moor && this.group.visible) {
+        this.group.position.y = Math.sin(time * 1.5) * 0.035
+        this.group.rotation.z = Math.sin(time * 1.1) * 0.03
+      }
+      return
+    }
     const dist = this.from.distanceTo(this.to)
     this.t += (SPEED * dt) / dist
     const k = Math.min(1, this.t)
@@ -232,7 +259,8 @@ export class ExpeditionBoat {
     if (k >= 1) {
       if (this.state === 'in') this.dockedFlag = true
       this.state = 'hidden'
-      this.group.visible = false
+      // Retour au mouillage plutôt que disparition.
+      this.dock()
     }
   }
 }

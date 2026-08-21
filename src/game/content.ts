@@ -409,8 +409,9 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 120, wood: 60 },
     requires: ['wheel', 'weaving'],
     fact: "Les premières voiles attestées sont peintes sur des vases égyptiens vers −3100 : un carré de lin tendu, qui ne sait remonter au vent qu'à peine.",
-    effects: [
-      { kind: 'building', building: 'sailframe' },{ kind: 'expeditionSpeed', mult: 1.6 }],
+    // PAS de bâtiment : découvrir la voile doit se voir sur la BARQUE, pas
+    // ajouter un atelier sur l'île. Le palier 2 de la flotte gréé sa voile.
+    effects: [{ kind: 'expeditionSpeed', mult: 1.6 }],
   },
 
   // ── Âge du fer ───────────────────────────────────────────────────────────

@@ -10,6 +10,27 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.26.0',
+    title: 'La nuit, le phare et la voie',
+    items: [
+      "La nuit, toute la tribu dort. Chaque progrès d'éclairage — le feu, la lampe à graisse, l'horloge, le gaz, l'électricité — allonge la veillée sur le crépuscule et l'aube, mais aucun savoir n'abolit le cœur de la nuit.",
+      "Sans phare, aucune barque n'accoste ni ne quitte l'île dans le noir : l'expédition attend l'aube au large, le marchand patiente, la navette du comptoir aussi.",
+      "Nouveau savoir à l'âge du fer, la « Tour à feu » : un brasier entretenu au sommet d'une tour plantée sur la pointe. Il garde la passe, et ouvre la navigation de nuit.",
+      "Les voies romaines tracent enfin une vraie chaussée dallée : elle part du ponton, contourne les sapins et monte, palier par palier, jusqu'au seuil de la maison.",
+      "Le ponton était bâti dans le repère agrandi du campement : il accostait trop loin et trop haut. Il est maintenant posé sur l'île, à sa vraie place.",
+      "La forge de fer devient un atelier à hauteur d'homme : bas foyer sous sa hotte, soufflet, enclume sur billot, bac à tremper, râtelier d'outils et tas de charbon.",
+    ],
+  },
+  {
+    version: '3.25.0',
+    title: 'La voile sur la barque, le bœuf au labour',
+    items: [
+      "Découvrir la voile n'ajoute plus un atelier sur l'île : elle se gréé sur ta barque, là où elle a du sens.",
+      "Et la barque reste désormais amarrée au bout du ponton entre deux voyages — radeau, pirogue, barque à voile, caravelle, vapeur : ta flotte se voit sans avoir à partir.",
+      "La charrue n'est plus un outil posé dans l'herbe : un bœuf attelé remonte le champ, fait demi-tour au bout du sillon et repart.",
+    ],
+  },
+  {
     version: '3.24.0',
     title: 'Trois mécanismes de plus',
     items: [

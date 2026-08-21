@@ -157,6 +157,9 @@ function buildWorld(): void {
   village.setRelics(game.save.relics.length)
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
+  // La barque mouille au bout du ponton : la flotte se voit sans partir.
+  boat.setTier(game.boatTier)
+  boat.moorAt(village.jettyEnd)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
   nodeSpots.clear()

@@ -1287,6 +1287,7 @@ export class Village {
     private readonly electric = false,
   ) {
     this.buildCampfire()
+    this.buildShore()
     // Les reflets miroir des loges ont vécu ici jusqu'au round 8 : une image
     // INVERSÉE des tipis sous la flottaison. Le jury les lisait — avec le
     // miroir du terrain — comme « posée sur du verre poli ». L'eau de ce round
@@ -1588,6 +1589,144 @@ export class Village {
    *  emplacement de bâtiment et la faune l'ignore, il est au-dessus de l'eau
    *  — mais c'est LE prop qui dit « on vit avec la mer ». Fondu dans la même
    *  géométrie que le reste du village : zéro draw call de plus. */
+  /** Le rivage aménagé : le ponton, et la chaussée qui y mène dès les voies
+   *  romaines. Il vit dans le repère de l'ÎLE et non dans celui du campement —
+   *  ce dernier est joué ×1,2 depuis le foyer, ce qui poussait le ponton au
+   *  large et le surélevait d'autant. Un seul mesh, sans passe d'ombre. */
+  private buildShore(): void {
+    if (this.shoreMesh) {
+      this.group.remove(this.shoreMesh)
+      this.shoreMesh.geometry.dispose()
+      this.shoreMesh = null
+    }
+    const p: BufferGeometry[] = []
+    this.jetty(p)
+    if (this.roadKnown) this.road(p)
+    const geo = mergeGeometries(p)
+    if (!geo) return
+    grain(geo, 0.09)
+    this.shoreMesh = new Mesh(geo, this.solid)
+    this.shoreMesh.receiveShadow = true
+    this.group.add(this.shoreMesh)
+  }
+
+  /** La chaussée romaine : du ponton jusqu'au seuil de la maison, en dalles
+   *  posées à même le relief — elle monte les paliers de l'île en escalier,
+   *  comme une vraie voie taillée dans la pente. Elle contourne les sapins
+   *  déjà plantés : une voie qui traverse un tronc ne lit pas comme une voie.
+   *  Fondue dans le mesh du rivage : aucun appel de rendu de plus. */
+  private road(p: BufferGeometry[]): void {
+    const head = this.jettyHead
+    if (!head) return
+    const tx = CAMP_HOME.x
+    const tz = CAMP_HOME.z
+    const total = Math.hypot(tx - head.x, tz - head.z)
+    if (total < 4) return
+    const ux = (tx - head.x) / total
+    const uz = (tz - head.z) / total
+    // Points de passage : la ligne droite, écartée latéralement pour éviter les
+    // sapins. Les deux bouts sont TENUS (la sinusoïde s'annule) — la voie doit
+    // toucher le ponton et le seuil, pas les frôler.
+    const steps = Math.max(8, Math.round(total / 0.66))
+    const pts: { x: number; z: number }[] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const bx = head.x + ux * total * t
+      const bz = head.z + uz * total * t
+      const free = Math.sin(Math.PI * t) * 1.15
+      let off = 0
+      if (free > 0.1) {
+        let bestD = -Infinity
+        for (let s = -4; s <= 4; s++) {
+          const o = (s / 4) * free
+          // On paie CHER l'écart : une voie romaine est droite, elle contourne
+          // un tronc, elle ne serpente pas dans la pinède.
+          const d = this.treeDist(bx - uz * o, bz + ux * o) - Math.abs(o) * 0.8
+          if (d > bestD) {
+            bestD = d
+            off = o
+          }
+        }
+      }
+      pts.push({ x: bx - uz * off, z: bz + ux * off })
+    }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!
+      const b = pts[i + 1]!
+      const mx = (a.x + b.x) / 2
+      const mz = (a.z + b.z) / 2
+      // La voie s'arrête au bord de la place du camp : la terre battue prend
+      // le relais, on ne dalle pas le foyer.
+      if (Math.hypot(mx - HEARTH.x, mz - HEARTH.z) < 2.4) continue
+      const seg = Math.hypot(b.x - a.x, b.z - a.z)
+      const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+      const cy = Math.cos(yaw)
+      const sy = Math.sin(yaw)
+      const y = this.island.heightAt(mx, mz) + 0.05
+      // Deux dalles de front, teintes alternées : un appareil, pas un ruban.
+      for (const side of [-1, 1]) {
+        p.push(
+          part(
+            new BoxGeometry(0.54, 0.1, seg * 0.96).rotateY(yaw),
+            tint((i + (side > 0 ? 1 : 0)) % 2 === 0 ? C.stone : C.stoneDark, i * 5 + side, 0.07),
+            mx + cy * side * 0.29,
+            y,
+            mz - sy * side * 0.29,
+          ),
+        )
+      }
+      // Bordure : les pierres de rive qui tiennent la chaussée, une sur deux.
+      if (i % 2 === 0)
+        for (const side of [-1, 1])
+          p.push(
+            part(
+              new BoxGeometry(0.16, 0.14, seg * 0.9).rotateY(yaw),
+              tint(C.stoneLight, i * 9 + side, 0.06),
+              mx + cy * side * 0.64,
+              y + 0.02,
+              mz - sy * side * 0.64,
+            ),
+          )
+    }
+  }
+
+  /** Le phare ne se pose pas au village : il lui faut une pointe face au large,
+   *  à l'écart du ponton — deux ouvrages collés ne font qu'une tache. */
+  private shoreSlot(): Vector3 {
+    const camX = Math.sin(0.785)
+    const camZ = Math.cos(0.785)
+    const head = this.jettyHead
+    let best: Vector3 | null = null
+    let bestK = -Infinity
+    for (const c of this.island.cells) {
+      if (!c.rim || c.trod) continue
+      const r = Math.hypot(c.x, c.z) + 1e-6
+      const dx = c.x / r
+      const dz = c.z / r
+      // La MER, pas une flaque — même sonde que le ponton.
+      if (
+        this.island.isLand(c.x + dx * 2.2, c.z + dz * 2.2) ||
+        this.island.isLand(c.x + dx * 5, c.z + dz * 5)
+      )
+        continue
+      if (head && Math.hypot(c.x - head.x, c.z - head.z) < 6.5) continue
+      if (this.treeDist(c.x, c.z) < 2.6) continue
+      const k = (c.x * camX + c.z * camZ) / r + r * 0.06
+      if (k > bestK) {
+        bestK = k
+        // Rentré d'une cellule et demie : posé sur la cellule de bord même,
+        // un socle de trois unités de rayon déborde dans le vide.
+        const ix = c.x - dx * 1.5
+        const iz = c.z - dz * 1.5
+        best = new Vector3(ix, this.island.heightAt(ix, iz), iz)
+      }
+    }
+    return best ?? this.nextSlot(3, 2.6, false)
+  }
+
+  /** Bout du ponton : c'est là que la barque vient s'amarrer au repos. */
+  jettyEnd: { x: number; z: number; yaw: number } | null = null
+
   private jetty(p: BufferGeometry[]): void {
     // La caméra par défaut regarde depuis l'azimut 0,785 : la plage qui lui
     // fait face est celle dont la direction s'en approche le plus.
@@ -1622,6 +1761,8 @@ export class Village {
     const dir = Math.atan2(best.x, best.z)
     const dx = Math.sin(dir)
     const dz = Math.cos(dir)
+    // Tête de ponton côté terre : c'est là que la chaussée romaine se raccorde.
+    this.jettyHead = { x: best.x - dx * 0.75, z: best.z - dz * 0.75 }
     // Deux hauteurs : le tablier repose sur la plage côté terre, puis descend
     // au niveau de l'eau. Sans cette rampe, le ponton flottait à dix-huit
     // centièmes SOUS la terrasse — et depuis le passage aux hexagones, il
@@ -1661,6 +1802,8 @@ export class Village {
         )
       }
     }
+    // Le bout du tablier, pour que la barque s'y amarre.
+    this.jettyEnd = { x: best.x + dx * 3.5, z: best.z + dz * 3.5, yaw: dir }
     // Une caisse oubliée au bout : le détail qui fait vivant.
     p.push(
       part(
@@ -1895,7 +2038,7 @@ export class Village {
    *  Les valeurs suivent les remises à l'échelle des rounds 1 et 2 (villa ×2,
    *  aqueduc ×1.7, moulins ×2.5/×5.5, campanile ×4.5, garage ×2, antenne). */
   private static readonly FOOTPRINT: Record<string, number> = {
-    hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2,
+    hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2, forge: 1.3, lighthouse: 2.6,
     railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
     clock: 0.8, windmill: 1.7, watermill: 1.2, garage: 1.0, phone: 0.6,
   }
@@ -1915,12 +2058,21 @@ export class Village {
       // renvoyait vrai sans rien vérifier et le bord de l'île redevenait
       // constructible.
       const fp = Math.max(0.6, Village.FOOTPRINT[b] ?? 0.5)
-      const s = Village.LEGACY.has(b)
-        ? this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
-        : this.nextSlot(Math.max(2.0, fp * 2.6), fp, Village.MONUMENTS.has(b))
+      const s =
+        b === 'lighthouse'
+          ? this.shoreSlot()
+          : Village.LEGACY.has(b)
+            ? this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
+            : this.nextSlot(Math.max(2.0, fp * 2.6), fp, Village.MONUMENTS.has(b))
       this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot: Math.atan2(-s.x, -s.z) })
       this.placed.add(b)
       dirty = true
+      // La borne milliaire n'est que la signature des voies romaines : ce que
+      // le savoir pose vraiment, c'est la chaussée qui traverse l'île.
+      if (b === 'milestone' && !this.roadKnown) {
+        this.roadKnown = true
+        this.buildShore()
+      }
     }
     // Une seule refonte du mesh par lot : au chargement d'une partie avancée,
     // reconstruire après chaque savoir rendait le coût quadratique.
@@ -1935,6 +2087,16 @@ export class Village {
 
   private readonly propPlacements: { id: string; x: number; y: number; z: number; rot: number }[] = []
   private propsMesh: Mesh | null = null
+  /** Le phare est joué à part : c'est un amer, pas un atelier. Il doit passer
+   *  au-dessus de la pinède (sapins ≈ 9,6 u) pour être vu du large. */
+  private static readonly BEACON_K = 2.4
+  private static readonly BEACON_HALO = 8
+  /** Le rivage : ponton et chaussée, un mesh à part dans le repère de l'île. */
+  private shoreMesh: Mesh | null = null
+  private jettyHead: { x: number; z: number } | null = null
+  private roadKnown = false
+  /** La lueur du phare, hors fusion : elle est additive et doit respirer. */
+  private beaconHalo: Sprite | null = null
 
   private propGeo(id: string): BufferGeometry[] | null {
     const p: BufferGeometry[] = []
@@ -2103,23 +2265,124 @@ export class Village {
         return p
       }
       case 'forge': {
-        // Forge : enclume, bac, charbon, lueur.
-        p.push(part(new BoxGeometry(0.14, 0.18, 0.14), C.woodDark, -0.2, 0.09, 0))
-        p.push(part(new BoxGeometry(0.3, 0.08, 0.12), iron, -0.2, 0.22, 0))
-        p.push(part(new BoxGeometry(0.34, 0.12, 0.26), PALETTE.rockDark, 0.22, 0.06, 0))
-        // Le lit de braises PULSE (buildEmbers) : il vit dans son propre mesh.
-        for (let i = 0; i < 4; i++) p.push(part(new DodecahedronGeometry(0.05, 0), C.char, 0.1 + (i % 2) * 0.2, 0.2, -0.05 + (i % 3) * 0.07))
+        // La forge n'est plus un objet posé dans l'herbe : c'est un ATELIER,
+        // à l'échelle du colon (1,5 u). L'ancienne version tenait dans 34 cm
+        // de large — une enclume de poupée, invisible dès qu'on dézoomait,
+        // alors que la maîtrise du fer est LE basculement de l'âge.
+        // Il est ouvert côté village (+z) : on doit voir travailler dedans.
+        const rock = PALETTE.rockDark
+        // Aire dallée et cendrée.
+        p.push(part(new BoxGeometry(2.35, 0.12, 1.8), tint(C.stoneDark, 3, 0.05), 0, 0.06, 0))
+        p.push(part(new BoxGeometry(1.85, 0.03, 1.25), C.ash, 0, 0.13, 0.12))
+        // Mur du fond et joues, en moellons à rangs décalés.
+        p.push(part(new BoxGeometry(2.3, 1.05, 0.24), tint(C.stone, 5, 0.06), 0, 0.62, -0.8))
+        for (let i = 0; i < 3; i++)
+          p.push(part(new BoxGeometry(2.34, 0.07, 0.28), tint(C.stoneLight, i * 7, 0.05), 0, 0.34 + i * 0.31, -0.8))
+        for (const sx of [-1.05, 1.05])
+          p.push(part(new BoxGeometry(0.24, 0.92, 1.65), tint(C.stone, 9, 0.06), sx, 0.58, -0.06))
+        // Façade ouverte : deux poteaux et leur sablière.
+        for (const sx of [-1.0, 1.0])
+          p.push(part(new CylinderGeometry(0.09, 0.115, 1.36, 6), C.woodDark, sx, 0.68, 0.76))
+        p.push(part(new BoxGeometry(2.28, 0.13, 0.17), C.wood, 0, 1.37, 0.76))
+        gableRoof(p, 2.6, 1.05, 0.62, 1.44, 4)
+        // Bas foyer : massif de pierre, gueule rougeoyante (les braises
+        // elles-mêmes PULSENT dans leur propre mesh, voir buildEmbers), hotte
+        // tronconique et conduit qui perce la toiture.
+        p.push(part(new BoxGeometry(1.05, 0.64, 0.66), tint(rock, 2, 0.06), -0.5, 0.44, -0.44))
+        p.push(part(new BoxGeometry(1.12, 0.11, 0.72), C.stoneLight, -0.5, 0.81, -0.44))
+        p.push(part(new BoxGeometry(0.62, 0.28, 0.12), C.char, -0.5, 0.5, -0.1))
+        p.push(part(new CylinderGeometry(0.32, 0.66, 0.52, 4).rotateY(Math.PI / 4), tint(C.stone, 7, 0.05), -0.5, 1.12, -0.44))
+        p.push(part(new BoxGeometry(0.44, 1.25, 0.44), tint(C.stone, 11, 0.05), -0.5, 1.9, -0.44))
+        p.push(part(new BoxGeometry(0.56, 0.11, 0.56), C.stoneLight, -0.5, 2.53, -0.44))
+        // Soufflet : outre de cuir, buse et levier. C'est lui qui explique la
+        // respiration des braises.
+        p.push(part(new BoxGeometry(0.36, 0.28, 0.36), C.hideDark, -1.18, 0.62, -0.44))
+        p.push(part(new ConeGeometry(0.19, 0.4, 4).rotateZ(-Math.PI / 2), C.hide, -0.9, 0.6, -0.44))
+        p.push(part(new CylinderGeometry(0.045, 0.055, 0.62, 5).rotateZ(0.22), C.wood, -1.2, 0.92, -0.44))
+        // Enclume sur billot, en pleine lumière côté village.
+        p.push(part(new CylinderGeometry(0.25, 0.31, 0.52, 8), C.woodDark, 0.6, 0.32, 0.22))
+        p.push(part(new BoxGeometry(0.2, 0.12, 0.17), iron, 0.6, 0.63, 0.22))
+        p.push(part(new BoxGeometry(0.46, 0.13, 0.24), iron, 0.6, 0.75, 0.22))
+        p.push(part(new ConeGeometry(0.1, 0.32, 6).rotateZ(Math.PI / 2), iron, 0.95, 0.77, 0.22))
+        // Bac à tremper : une forge sans eau ne trempe rien.
+        p.push(part(new CylinderGeometry(0.27, 0.23, 0.36, 8), C.wood, 1.05, 0.3, -0.32))
+        p.push(part(new CylinderGeometry(0.235, 0.235, 0.03, 8), C.water, 1.05, 0.47, -0.32))
+        p.push(part(new CylinderGeometry(0.275, 0.275, 0.04, 8), C.woodDark, 1.05, 0.44, -0.32))
+        // Râtelier d'outils au mur : marteaux et tenailles pendus.
+        for (let i = 0; i < 3; i++) {
+          const hx = 0.12 + i * 0.24
+          p.push(part(new CylinderGeometry(0.025, 0.025, 0.42, 4), C.wood, hx, 0.98, -0.66))
+          p.push(part(new BoxGeometry(0.15, 0.09, 0.09), iron, hx, 1.21, -0.66))
+        }
+        // Barres de fer en attente, et le tas de charbon de bois.
+        for (let i = 0; i < 4; i++)
+          p.push(part(new BoxGeometry(0.055, 0.95, 0.055).rotateX(0.3), iron, 1.02 - i * 0.08, 0.52, -0.6))
+        for (let i = 0; i < 7; i++)
+          p.push(
+            part(
+              new DodecahedronGeometry(0.1, 0).rotateY(i * 1.3),
+              tint(C.char, i * 4, 0.08),
+              -1.28 + (i % 3) * 0.15,
+              0.16,
+              0.42 + Math.floor(i / 3) * 0.17,
+            ),
+          )
         return p
       }
+      case 'lighthouse': {
+        // La tour à feu : elle est posée sur la POINTE, pas au village — et
+        // c'est le seul bâtiment dont la fonction est d'être vu du large. Sa
+        // silhouette doit donc tenir contre le ciel : socle large, fût effilé,
+        // galerie en encorbellement, brasier découvert au sommet.
+        const band = tint(C.stoneLight, 4, 0.05)
+        p.push(part(new CylinderGeometry(1.05, 1.3, 0.42, 8), tint(C.stoneDark, 3, 0.06), 0, 0.21, 0))
+        p.push(part(new CylinderGeometry(0.88, 1.05, 0.3, 8), tint(C.stone, 6, 0.05), 0, 0.57, 0))
+        // Fût en deux tronçons : c'est la bande claire qui fait lire un phare.
+        p.push(part(new CylinderGeometry(0.64, 0.84, 2.0, 8), tint(C.stone, 9, 0.05), 0, 1.72, 0))
+        p.push(part(new CylinderGeometry(0.6, 0.64, 0.22, 8), band, 0, 2.83, 0))
+        p.push(part(new CylinderGeometry(0.5, 0.6, 1.5, 8), tint(C.stone, 13, 0.05), 0, 3.69, 0))
+        // Escalier extérieur en encorbellement : quinze marches en spirale.
+        for (let i = 0; i < 15; i++) {
+          const a = i * 0.42
+          const rr = 0.78 - i * 0.012
+          p.push(
+            part(
+              new BoxGeometry(0.42, 0.07, 0.2).rotateY(-a),
+              tint(C.stoneDark, i * 3, 0.06),
+              Math.sin(a) * rr,
+              0.78 + i * 0.23,
+              Math.cos(a) * rr,
+            ),
+          )
+        }
+        // Galerie, garde-corps, et la vasque où brûle le feu.
+        p.push(part(new CylinderGeometry(0.8, 0.56, 0.2, 8), tint(C.stoneDark, 5, 0.05), 0, 4.53, 0))
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2
+          p.push(part(new CylinderGeometry(0.05, 0.05, 0.44, 4), C.char, Math.sin(a) * 0.68, 4.85, Math.cos(a) * 0.68))
+        }
+        p.push(part(new CylinderGeometry(0.74, 0.74, 0.05, 8), C.char, 0, 5.05, 0))
+        p.push(part(new CylinderGeometry(0.36, 0.26, 0.32, 8), iron, 0, 4.85, 0))
+        p.push(part(new CylinderGeometry(0.33, 0.33, 0.07, 8), C.emberCore, 0, 5.03, 0))
+        p.push(part(new ConeGeometry(0.26, 0.5, 7), C.emberFlame, 0, 5.28, 0))
+        // Un phare n'est pas un bâtiment de village : c'est un AMER. Il doit
+        // dépasser la pinède (sapins ≈ 9,6 u) pour être vu du large, donc du
+        // joueur. À l'échelle du village il faisait 3,5 colons — un pigeonnier.
+        // Ici : ~12,7 u, soit huit colons et demi.
+        return p.map((g) => g.scale(Village.BEACON_K, Village.BEACON_K, Village.BEACON_K))
+      }
       case 'plough': {
-        // Araire sur sa bande de terre RETOURNÉE, sillons marqués — posée dans
-        // l'herbe, elle lisait comme une branche cassée.
-        p.push(part(new BoxGeometry(1.3, 0.1, 0.8).rotateY(0.1), C.soil, 0, 0.05, 0))
-        for (let i = 0; i < 3; i++)
-          p.push(part(new BoxGeometry(1.16, 0.07, 0.11).rotateY(0.1), C.soilDark, 0, 0.11, -0.24 + i * 0.24))
-        p.push(part(new CylinderGeometry(0.045, 0.055, 0.9, 5).rotateZ(1.1), C.wood, 0, 0.3, 0))
-        p.push(part(new CylinderGeometry(0.035, 0.04, 0.5, 5).rotateZ(0.35), C.woodDark, 0.4, 0.5, 0))
-        p.push(part(new BoxGeometry(0.2, 0.09, 0.1).rotateZ(0.5), iron, -0.4, 0.11, 0))
+        // Le LABOUR, pas l'outil posé. La bande de terre s'allonge : c'est le
+        // champ que l'attelage traverse. L'araire et le bœuf, eux, se déplacent
+        // — ils vivent dans buildPloughTeam.
+        p.push(part(new BoxGeometry(3.2, 0.1, 1.1), C.soil, 0, 0.05, 0))
+        // Sillons déjà tracés d'un côté, terre encore lisse de l'autre : on
+        // voit ce que l'attelage a fait et ce qu'il lui reste à faire.
+        for (let i = 0; i < 4; i++)
+          p.push(part(new BoxGeometry(3.0, 0.07, 0.1), C.soilDark, 0, 0.11, -0.36 + i * 0.24))
+        // Bornes de bout de champ.
+        for (const bx of [-1.6, 1.6])
+          p.push(part(new CylinderGeometry(0.04, 0.05, 0.34, 5), C.woodDark, bx, 0.17, -0.5))
         return p
       }
       case 'stele': {
@@ -2637,6 +2900,8 @@ export class Village {
   private shuttlePivot: Group | null = null
   private forgeEmbers: Mesh | null = null
   private forgePivot: Group | null = null
+  private ploughTeam: Mesh | null = null
+  private ploughPivot: Group | null = null
   private moverTime = 0
   private millPivot: Group | null = null
   private clockHands: { hour: Mesh; minute: Mesh } | null = null
@@ -2674,6 +2939,20 @@ export class Village {
       const u = Math.sin(this.moverTime * 2.2)
       this.shuttle.position.x = Math.sign(u) * Math.pow(Math.abs(u), 0.55) * 0.24
     }
+    if (this.ploughTeam) {
+      // Un aller-retour lent, avec le demi-tour au bout du sillon : le champ
+      // fait 3,2 unités, l'attelage en parcourt 2,4 utiles.
+      const per = 26
+      const u = (this.moverTime % per) / per
+      const aller = u < 0.5
+      const k = aller ? u * 2 : (1 - u) * 2
+      this.ploughTeam.position.x = -1.2 + k * 2.4
+      // Le demi-tour se fait en quelques dixièmes, aux extrémités.
+      const turn = Math.min(1, Math.max(0, (Math.abs(k - 0.5) - 0.42) * 12))
+      this.ploughTeam.rotation.y = aller ? turn * Math.PI : Math.PI - turn * Math.PI
+      // Le pas du bœuf : un tangage court, pas une glissade.
+      this.ploughTeam.position.y = Math.abs(Math.sin(this.moverTime * 3.4)) * 0.02
+    }
     if (this.forgeEmbers) {
       // Le lit de braises respire : le soufflet le réveille par bouffées.
       const b = 0.75 + Math.sin(this.moverTime * 1.7) * 0.2 + Math.sin(this.moverTime * 5.3) * 0.05
@@ -2710,7 +2989,16 @@ export class Village {
       this.dish.geometry.dispose()
       this.dish = null
     }
-    for (const g of [this.enginePivot, this.shuttlePivot, this.forgePivot]) if (g) this.group.remove(g)
+    if (this.beaconHalo) {
+      this.group.remove(this.beaconHalo)
+      this.beaconHalo.material.map?.dispose()
+      this.beaconHalo.material.dispose()
+      this.beaconHalo = null
+    }
+    for (const g of [this.enginePivot, this.shuttlePivot, this.forgePivot, this.ploughPivot]) if (g) this.group.remove(g)
+    this.ploughTeam?.geometry.dispose()
+    this.ploughTeam = null
+    this.ploughPivot = null
     for (const m of [this.engineWheel, this.engineRod, this.shuttle, this.forgeEmbers]) m?.geometry.dispose()
     this.engineWheel = this.engineRod = this.shuttle = this.forgeEmbers = null
     this.enginePivot = this.shuttlePivot = this.forgePivot = null
@@ -2747,6 +3035,48 @@ export class Village {
     mesh.rotation.y = pl.rot
     this.windmillSails = mesh
     this.group.add(mesh)
+  }
+
+  /** Le bœuf et son araire : ils remontent le champ, font demi-tour au bout,
+   *  et recommencent. Un outil posé dans l'herbe ne raconte pas le labour ;
+   *  c'est le mouvement qui le fait. */
+  private buildPloughTeam(pl: { x: number; y: number; z: number; rot: number }): void {
+    const hide = new Color('#8a6a4c')
+    const hideDark = new Color('#5d452f')
+    const horn = new Color('#e8dfc8')
+    const p: BufferGeometry[] = []
+    // Le bœuf : masse basse, garrot marqué, tête lourde et cornes écartées.
+    p.push(part(new CylinderGeometry(0.17, 0.17, 0.54, 9).rotateZ(Math.PI / 2).scale(1, 1.05, 0.92), hide, 0.45, 0.34, 0))
+    p.push(part(new SphereGeometry(0.16, 8, 6).scale(1, 0.9, 0.95), hide, 0.28, 0.44, 0))
+    p.push(part(new SphereGeometry(0.175, 8, 6).scale(0.9, 1, 0.95), hide, 0.66, 0.34, 0))
+    p.push(part(new SphereGeometry(0.16, 8, 6).scale(0.9, 1, 0.95), hide, 0.22, 0.32, 0))
+    p.push(part(new CylinderGeometry(0.1, 0.085, 0.2, 7).rotateZ(Math.PI / 2), hideDark, 0.78, 0.36, 0))
+    p.push(part(new SphereGeometry(0.05, 5, 4), hideDark, 0.9, 0.33, 0))
+    for (const sz of [-1, 1]) {
+      p.push(part(new CylinderGeometry(0.018, 0.022, 0.16, 5).rotateZ(0.5).rotateX(sz * 0.5), horn, 0.8, 0.47, sz * 0.07))
+      for (const sx of [0.22, 0.62])
+        p.push(part(new CylinderGeometry(0.033, 0.04, 0.34, 5), hideDark, sx, 0.17, sz * 0.11))
+    }
+    p.push(part(new CylinderGeometry(0.018, 0.012, 0.26, 4), hideDark, 0.2, 0.24, 0))
+    // Le joug et les traits, puis l'araire derrière.
+    p.push(part(new BoxGeometry(0.07, 0.05, 0.3), C.wood, 0.68, 0.5, 0))
+    p.push(part(new CylinderGeometry(0.025, 0.025, 0.75, 4).rotateZ(Math.PI / 2), C.wood, 0.3, 0.44, 0.12))
+    p.push(part(new CylinderGeometry(0.025, 0.025, 0.75, 4).rotateZ(Math.PI / 2), C.wood, 0.3, 0.44, -0.12))
+    p.push(part(new CylinderGeometry(0.045, 0.055, 0.9, 5).rotateZ(1.1), C.wood, -0.16, 0.3, 0))
+    p.push(part(new CylinderGeometry(0.035, 0.04, 0.5, 5).rotateZ(0.35), C.woodDark, -0.5, 0.5, 0))
+    p.push(part(new BoxGeometry(0.2, 0.09, 0.1).rotateZ(0.5), new Color('#6b7078'), -0.5, 0.11, 0))
+    const geo = mergeGeometries(p)
+    if (!geo) return
+    grain(geo)
+    const pivot = new Group()
+    pivot.position.set(pl.x, pl.y, pl.z)
+    pivot.rotation.y = pl.rot
+    const mesh = new Mesh(geo, this.solid)
+    mesh.castShadow = true
+    pivot.add(mesh)
+    this.ploughTeam = mesh
+    this.ploughPivot = pivot
+    this.group.add(pivot)
   }
 
   /** Volant d'inertie de la machine à vapeur, et sa bielle. Le volant tourne,
@@ -2795,15 +3125,37 @@ export class Village {
     this.group.add(pivot)
   }
 
+  /** La lueur du phare. Un halo additif, comme celui du foyer : sans lui, la
+   *  tour n'est qu'un tuyau de pierre. Il respire lentement — un brasier
+   *  entretenu ne vacille pas comme une flamme de camp — et reste allumé de
+   *  jour : c'est la SIGNATURE de l'ouvrage, pas un éclairage. */
+  private buildBeacon(pl: { x: number; y: number; z: number; rot: number }): void {
+    const s = new Sprite(
+      new SpriteMaterial({
+        map: haloTexture(new Color('#ffd08a'), new Color('#c2560f'), 2),
+        blending: AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false,
+      }),
+    )
+    s.scale.set(Village.BEACON_HALO, Village.BEACON_HALO, 1)
+    s.position.set(pl.x, pl.y + 5.15 * Village.BEACON_K, pl.z)
+    this.group.add(s)
+    this.beaconHalo = s
+  }
+
   /** Le lit de braises de la forge : il respire au rythme du soufflet. */
   private buildEmbers(pl: { x: number; y: number; z: number; rot: number }): void {
-    const geo = mergeGeometries([part(new BoxGeometry(0.26, 0.05, 0.18), C.emberCore, 0, 0, 0)])
+    // Dans la gueule du bas foyer, à hauteur de forgeron — l'ancien lit était
+    // calé sur la forge miniature, il flottait maintenant dans le vide.
+    const geo = mergeGeometries([part(new BoxGeometry(0.52, 0.16, 0.12), C.emberCore, 0, 0, 0)])
     if (!geo) return
     const pivot = new Group()
-    pivot.position.set(pl.x, pl.y + 0.14, pl.z)
+    pivot.position.set(pl.x, pl.y + 0.5, pl.z)
     pivot.rotation.y = pl.rot
     const mesh = new Mesh(geo, this.solid)
-    mesh.position.set(0.22, 0, 0)
+    mesh.position.set(-0.5, 0, -0.06)
     pivot.add(mesh)
     this.forgeEmbers = mesh
     this.forgePivot = pivot
@@ -2939,6 +3291,8 @@ export class Village {
       if (pl.id === 'steamengine') this.buildEngine(pl)
       if (pl.id === 'loom') this.buildShuttle(pl)
       if (pl.id === 'forge') this.buildEmbers(pl)
+      if (pl.id === 'plough') this.buildPloughTeam(pl)
+      if (pl.id === 'lighthouse') this.buildBeacon(pl)
     }
   }
 
@@ -3064,6 +3418,13 @@ export class Village {
   }
 
   update(_dt: number, t: number): void {
+    if (this.beaconHalo) {
+      // Respiration lente : un brasier entretenu par un veilleur, pas un feu
+      // de camp. Avant le test d'électricité — le phare vit à tous les âges.
+      const b = 0.78 + Math.sin(t * 1.35) * 0.13 + Math.sin(t * 3.7) * 0.04
+      this.beaconHalo.material.opacity = b
+      this.beaconHalo.scale.setScalar(Village.BEACON_HALO * (0.94 + (b - 0.78) * 0.55))
+    }
     if (this.electric) {
       // Une ampoule ne vacille pas : halos stables, juste un souffle
       // imperceptible pour que la lampe reste vivante à l'œil.
