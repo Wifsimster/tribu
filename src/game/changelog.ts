@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.36.0',
+    title: 'Vérification de tous les savoirs',
+    items: [
+      "Audit complet des 57 découvertes, fait par fait et anecdote par anecdote. Trois CONTRADICTIONS internes corrigées : le premier vol des Wright mesurait 36 mètres d'un côté et 37 de l'autre, la machine de Watt économisait quatre fois le charbon ici et trois fois là, et la dérive du GPS sans relativité valait dix kilomètres par jour d'un côté, « plusieurs » de l'autre.",
+      "Dix-huit « Le saviez-vous ? » ne faisaient que répéter leur propre fait. Ils sont remplacés par de vraies secondes anecdotes : le premier nom propre de l'Histoire est celui d'un comptable ; Gutenberg n'a pas inventé les caractères mobiles, la Corée les fondait deux siècles plus tôt ; Vésale a commencé par voler des cadavres ; le GPS civil était volontairement dégradé jusqu'en mai 2000 ; et non, Internet n'a pas été conçu pour survivre à une guerre nucléaire.",
+      "Deux imprécisions redressées : le tranchant de quelques nanomètres est celui de l'obsidienne et non du silex, et les épieux de Schöningen sont désormais donnés « entre 200 000 et 300 000 ans », comme le veut leur re-datation récente.",
+    ],
+  },
+  {
     version: '3.35.0',
     title: 'Une onzième époque : l’ère des limites',
     items: [

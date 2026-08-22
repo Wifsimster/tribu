@@ -252,7 +252,7 @@ export const TECHS: TechDef[] = [
     requires: [],
     fact: "Les plus anciens outils de pierre taillée connus, à Lomekwi au Kenya, ont environ 3,3 millions d'années — soit bien avant l'apparition d'Homo sapiens.",
     funFact:
-      "Un éclat de silex ou d'obsidienne fraîchement détaché présente un tranchant de quelques nanomètres — plus fin qu'un rasoir d'acier. Des chirurgiens s'en sont servis au XXe siècle pour des incisions qui cicatrisent mieux.",
+      "Un éclat d'obsidienne — du verre volcanique — présente un tranchant de quelques nanomètres, plus fin qu'un rasoir d'acier. Des chirurgiens s'en sont servis au XXe siècle pour des incisions qui cicatrisent mieux.",
     effects: [
       { kind: 'gatherRate', resource: 'stone', mult: 1.6 }],
   },
@@ -291,7 +291,7 @@ export const TECHS: TechDef[] = [
     cost: 45,
     materials: { wood: 20, stone: 15 },
     requires: ['fire'],
-    fact: "Les épieux de Schöningen, en Allemagne, ont 300 000 ans. Taillés dans l'épicéa, ils sont équilibrés comme des javelots de compétition.",
+    fact: "Les épieux de Schöningen, en Allemagne, ont entre 200 000 et 300 000 ans selon les datations. Taillés dans l'épicéa, ils sont équilibrés comme des javelots de compétition.",
     funFact:
       "Le propulseur, apparu vers −18 000, ajoute un segment au bras : la pointe du javelot atteint une centaine de kilomètres à l'heure. C'est le premier levier connu au service d'un muscle humain.",
     effects: [
@@ -321,7 +321,7 @@ export const TECHS: TechDef[] = [
     requires: ['spear'],
     fact: "Un fragment de corde à trois brins retrouvé à l'Abri du Maras, en Ardèche, a environ 45 000 à 50 000 ans : il a été fabriqué par des Néandertaliens.",
     funFact:
-      "Un fil de trois fibres torsadées retrouvé à l'Abri du Maras, en Ardèche, a 50 000 ans : il est néandertalien. Torsader trois brins suppose déjà de compter, et de compter en paires.",
+      "Une corde change tout ce qui devient possible : l'arc, le filet, le piège, le radeau, la hache emmanchée. C'est l'outil qui fabrique les autres — et le plus rare en fouille, parce que la fibre pourrit et ne laisse presque jamais de trace.",
     effects: [
       { kind: 'unlockResource', resource: 'fiber' },
       { kind: 'carry', add: 6 },
@@ -338,7 +338,7 @@ export const TECHS: TechDef[] = [
     requires: ['cordage'],
     fact: "Le blé amidonnier et l'orge sont domestiqués dans le Croissant fertile vers −9500. Il a fallu près d'un millénaire pour que l'épi cesse de s'égrener tout seul.",
     funFact:
-      "Le blé domestiqué a perdu la capacité de disperser ses graines : son épi ne se brise plus tout seul. Il ne survivrait pas une saison sans nous — la domestication va dans les deux sens.",
+      "Les squelettes des premiers paysans sont plus petits, plus cariés et plus usés que ceux des chasseurs qui les précèdent. L'agriculture nourrit PLUS DE MONDE, pas mieux : elle échange la qualité du régime contre le nombre.",
     effects: [
       { kind: 'gatherRate', resource: 'food', mult: 2.2 },
       { kind: 'building', building: 'field' },
@@ -353,7 +353,7 @@ export const TECHS: TechDef[] = [
     requires: ['agriculture'],
     fact: "Les plus vieux pots du monde viennent de la grotte de Xianrendong, en Chine : 20 000 ans, soit près de 8 500 ans avant l'agriculture.",
     funFact:
-      "Les plus vieux tessons connus, dans la grotte de Xianrendong en Chine, ont 20 000 ans : bien AVANT l'agriculture. La poterie est née chez des chasseurs-cueilleurs, pas chez des paysans.",
+      "Un pot change le régime alimentaire : on peut enfin bouillir. Les résidus carbonisés au fond des plus vieux pots japonais montrent qu'on y cuisait du poisson — la poterie naît autour du feu des pêcheurs, pas des moissonneurs.",
     effects: [
       { kind: 'unlockResource', resource: 'clay' },
       { kind: 'carry', add: 10 },
@@ -394,7 +394,7 @@ export const TECHS: TechDef[] = [
     requires: ['agriculture', 'weaving'],
     fact: "À Dhra', en Jordanie, des greniers surélevés vieux de 11 300 ans stockaient l'orge sauvage : on a stocké les céréales avant de savoir les cultiver.",
     funFact:
-      "Les plus vieux greniers connus, à Dhra' en Jordanie vers −9500, sont ANTÉRIEURS aux céréales domestiquées. On a d'abord appris à stocker, ensuite à cultiver.",
+      "Un stock, ça se compte, ça se garde, ça se prête et ça se vole. Le grenier apparaît avant le champ : la propriété a probablement précédé la récolte.",
     effects: [
       { kind: 'building', building: 'granary' },
       { kind: 'carry', add: 20 },
@@ -458,7 +458,7 @@ export const TECHS: TechDef[] = [
     requires: ['bronze'],
     fact: "Le cunéiforme naît vers −3400 à Uruk pour compter des sacs d'orge et des têtes de bétail. La comptabilité précède la littérature de plusieurs siècles.",
     funFact:
-      "Les premières tablettes de Sumer ne racontent rien : ce sont des comptes de grain, de bière et de journées de travail. Il faudra des siècles avant qu'on y écrive une histoire.",
+      "Le plus ancien nom propre connu de l'humanité n'est ni celui d'un roi ni celui d'un dieu : c'est « Kushim », signé au bas d'une tablette de comptes d'orge à Uruk. Le premier nom de l'Histoire est celui d'un comptable.",
     effects: [
       { kind: 'insightRate', add: 0.6 }],
   },
@@ -471,7 +471,7 @@ export const TECHS: TechDef[] = [
     requires: ['wheel', 'weaving'],
     fact: "Les premières voiles attestées sont peintes sur des vases égyptiens vers −3100 : un carré de lin tendu, qui ne sait remonter au vent qu'à peine.",
     funFact:
-      "Une voile carrée ne remonte pas au vent : pendant des millénaires on n'a navigué qu'avec le vent dans le dos, ou en attendant qu'il tourne. La voile latine, qui permet de louvoyer, n'arrive qu'à la fin de l'Antiquité.",
+      "Une voile carrée ne remonte pas au vent : pendant des millénaires, on n'a navigué qu'avec le vent dans le dos, ou en attendant qu'il tourne. La voile latine, qui permet de louvoyer, n'arrive qu'à la fin de l'Antiquité.",
     // PAS de bâtiment : découvrir la voile doit se voir sur la BARQUE, pas
     // ajouter un atelier sur l'île. Le palier 2 de la flotte gréé sa voile.
     effects: [{ kind: 'expeditionSpeed', mult: 1.6 }],
@@ -516,7 +516,7 @@ export const TECHS: TechDef[] = [
     requires: ['ironworking'],
     fact: "L'alphabet proto-sinaïtique, vers −1800, réduit l'écriture à une trentaine de signes. Pour la première fois, écrire n'est plus un métier.",
     funFact:
-      "Presque tous les alphabets du monde — grec, latin, cyrillique, hébreu, arabe, brahmi — descendent du même ancêtre proto-sinaïtique. Notre « A » est une tête de bœuf retournée : aleph.",
+      "La plupart des alphabets du monde — grec, latin, cyrillique, hébreu, arabe — descendent du même ancêtre proto-sinaïtique. Notre « A » est une tête de bœuf retournée : aleph.",
     effects: [
       { kind: 'insightRate', add: 1.5 }],
   },
@@ -639,7 +639,7 @@ export const TECHS: TechDef[] = [
     requires: ['glass'],
     fact: "À partir du IIe siècle, le codex — des pages cousues — supplante peu à peu le rouleau : on peut enfin ouvrir un livre au milieu, chercher, comparer, annoter.",
     funFact:
-      "Le codex — des pages cousues au lieu d'un rouleau — permet trois choses neuves : écrire au dos, ouvrir directement à une page, et poser le livre pour avoir les mains libres.",
+      "Le codex a rendu possible le palimpseste : gratter un texte pour en écrire un autre. C'est ainsi qu'on a failli perdre Archimède — et qu'on l'a retrouvé sous des prières du XIIIe siècle, révélé au début des années 2000 par imagerie multispectrale et rayons X.",
     effects: [
       { kind: 'insightRate', add: 3 },
     ],
@@ -716,7 +716,7 @@ export const TECHS: TechDef[] = [
     requires: ['clock', 'codex'],
     fact: "Vers 1450 à Mayence, Gutenberg marie caractères mobiles, alliage plomb-étain et presse à vis : en cinquante ans, l'Europe imprime plus de livres qu'elle n'en avait copiés en mille ans.",
     funFact:
-      "En cinquante ans, l'Europe imprime plus de livres qu'elle n'en avait copiés à la main en mille ans.",
+      "Gutenberg n'a pas inventé les caractères mobiles : la Corée les fondait en métal dès le XIIIe siècle, deux cents ans avant lui. Ce qu'il invente, c'est le SYSTÈME complet — alliage, encre grasse, presse à vis — et le marché qui va avec.",
     effects: [
       { kind: 'building', building: 'press' },
       { kind: 'insightRate', add: 12 },
@@ -733,7 +733,7 @@ export const TECHS: TechDef[] = [
     requires: ['press'],
     fact: "La caravelle portugaise mêle voiles carrées et latines : elle remonte au vent et revient. C'est elle qui ouvre les caps de l'Afrique, puis l'Atlantique.",
     funFact:
-      "La caravelle doit sa révolution à la voile latine : elle REMONTE au vent, donc elle revient. Explorer cesse d'être un aller simple.",
+      "Pour rentrer d'Afrique, les Portugais ont dû apprendre à faire fausse route : s'éloigner de la côte vers le large pour retrouver des vents portants. Cette boucle contre-intuitive s'appelle la volta do mar — et c'est elle qui rend l'exploration réversible.",
     effects: [
       { kind: 'building', building: 'caravel' },
       { kind: 'expeditionSpeed', mult: 1.6 },
@@ -748,7 +748,7 @@ export const TECHS: TechDef[] = [
     requires: ['press'],
     fact: "Vers 1425, Brunelleschi fait regarder Florence à travers un trou percé dans un panneau peint : la perspective géométrique naît en place publique, démonstration à l'appui.",
     funFact:
-      "Brunelleschi a démontré la perspective par un tour de foire : un panneau percé d'un trou et un miroir, plantés devant le baptistère de Florence. Le spectateur ne distinguait plus le tableau du bâtiment.",
+      "Le point de fuite a une conséquence inattendue : il assigne au spectateur une place unique et immobile. Le tableau cesse d'être une surface à lire pour devenir une fenêtre — vue d'un seul œil.",
     effects: [
       { kind: 'insightRate', add: 15 },
     ],
@@ -793,7 +793,7 @@ export const TECHS: TechDef[] = [
     requires: ['perspective'],
     fact: "En 1543, Vésale dissèque et dessine lui-même : son De fabrica corrige Galien sur plus de deux cents points. Le corps devient un territoire cartographié.",
     funFact:
-      "Vésale, en 1543, corrige plus de deux cents erreurs de Galien, qui n'avait disséqué que des animaux. Le plus dur ne fut pas de voir : ce fut d'admettre qu'un maître de treize siècles pouvait se tromper.",
+      "Vésale a commencé par voler des cadavres : les suppliciés décrochés de nuit au gibet de Louvain. L'anatomie moderne débute par une infraction.",
     effects: [
       { kind: 'gatherRate', resource: 'food', mult: 1.4 },
       { kind: 'insightRate', add: 18 },
@@ -810,7 +810,7 @@ export const TECHS: TechDef[] = [
     requires: ['bank'],
     fact: "La machine de Watt (1769) ajoute un condenseur séparé à celle de Newcomen : quatre fois moins de charbon, et l'usine cesse de dépendre des rivières.",
     funFact:
-      "Watt n'a pas inventé la machine à vapeur : il lui a ajouté un condenseur séparé, qui divise par trois sa consommation de charbon. Et pour la vendre, il a inventé une unité de mesure — le cheval-vapeur.",
+      "Watt n'a pas inventé la machine à vapeur, il l'a rendue économe. Et pour la vendre, il a inventé une unité de mesure : le cheval-vapeur, calibré sur ce qu'un cheval de brasserie soulevait réellement.",
     effects: [
       { kind: 'building', building: 'steamengine' },
       { kind: 'gatherRate', resource: 'stone', mult: 2.0 },
@@ -921,7 +921,7 @@ export const TECHS: TechDef[] = [
     requires: ['electricity'],
     fact: "En 1901, Marconi fait traverser l'Atlantique à trois points Morse. Trente ans plus tard, une voix parle en direct dans des millions de foyers.",
     funFact:
-      "La radio a inventé le DIRECT : pour la première fois, des milliers de gens entendaient la même chose au même instant. Les régimes du XXe siècle l'ont compris avant les artistes.",
+      "La radio a aussi produit sa légende : en 1938, la fiction d'Orson Welles sur La Guerre des mondes a bien moins affolé le public que la presse écrite ne l'a raconté. Les journaux tenaient là de quoi discréditer un média rival.",
     effects: [
       { kind: 'building', building: 'radio' },
       { kind: 'insightRate', add: 40 },
@@ -934,9 +934,9 @@ export const TECHS: TechDef[] = [
     cost: 430000,
     materials: { iron: 700, fiber: 400 },
     requires: ['automobile'],
-    fact: "Le 17 décembre 1903, le Flyer des frères Wright tient l'air douze secondes et trente-six mètres — moins que l'envergure d'un 747.",
+    fact: "Le 17 décembre 1903, le Flyer des frères Wright tient l'air douze secondes et trente-sept mètres — moins que l'envergure d'un 747.",
     funFact:
-      "Le premier vol des frères Wright, en 1903, a duré douze secondes et parcouru trente-sept mètres — moins que l'envergure d'un long-courrier d'aujourd'hui.",
+      "Les Wright n'étaient pas ingénieurs mais fabricants de bicyclettes — et c'est de là que vient leur idée décisive. Leurs concurrents cherchaient un appareil stable ; eux ont cherché des COMMANDES, parce qu'un vélo non plus ne tient pas tout seul.",
     effects: [
       { kind: 'building', building: 'plane' },
       { kind: 'expeditionSpeed', mult: 2.0 },
@@ -984,7 +984,7 @@ export const TECHS: TechDef[] = [
     requires: ['flight'],
     fact: "Le GPS doit sa précision à Einstein : sans corriger la relativité, ses horloges dériveraient de dix kilomètres par jour.",
     funFact:
-      "Les satellites GPS embarquent des horloges atomiques corrigées de la relativité — vitesse ET gravité. Sans cette correction, la position dériverait de plusieurs kilomètres par jour.",
+      "Le signal GPS a longtemps été dégradé exprès pour les civils : une centaine de mètres d'erreur ajoutée par l'armée américaine. Elle a été coupée le 2 mai 2000, et la précision civile a été divisée par dix du jour au lendemain.",
     effects: [
       { kind: 'building', building: 'dish' },
       { kind: 'expeditionSpeed', mult: 1.8 },
@@ -999,7 +999,7 @@ export const TECHS: TechDef[] = [
     requires: ['computer'],
     fact: "En 1969, le premier message d'ARPANET plante après deux lettres : « LO ». Le réseau qui relie aujourd'hui la moitié de l'humanité a commencé par un crash.",
     funFact:
-      "Le premier message d'ARPANET, en 1969, devait être « LOGIN ». La machine a planté après deux lettres : le premier mot d'Internet est « LO ».",
+      "Le réseau n'a pas été conçu pour survivre à une guerre nucléaire — la légende est tenace. Il a été conçu pour PARTAGER des ordinateurs rares et hors de prix entre laboratoires ; la robustesse est venue en prime.",
     effects: [
       { kind: 'building', building: 'server' },
       { kind: 'insightRate', add: 80 },
