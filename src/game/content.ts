@@ -812,7 +812,6 @@ export const TECHS: TechDef[] = [
     funFact:
       "Watt n'a pas inventé la machine à vapeur, il l'a rendue économe. Et pour la vendre, il a inventé une unité de mesure : le cheval-vapeur, calibré sur ce qu'un cheval de brasserie soulevait réellement.",
     effects: [
-      { kind: 'building', building: 'steamengine' },
       { kind: 'gatherRate', resource: 'stone', mult: 2.0 },
       { kind: 'gatherRate', resource: 'wood', mult: 1.8 },
     ],
@@ -1164,6 +1163,12 @@ export interface DestinationDef {
   minTier: number
   /** Ce qu'il faut construire pour y aller, en toutes lettres. */
   needs: string
+  /** Par quoi l'on part. La mer a longtemps été le seul chemin ; le rail ouvre
+   *  l'arrière-pays, l'avion ouvre le monde. Le mode décide de ce qui est
+   *  exigé (palier de flotte, ou savoir) et de ce qu'on VOIT au départ. */
+  mode?: 'sea' | 'rail' | 'air'
+  /** Savoir requis pour les modes rail et air. */
+  tech?: string
 }
 
 export const DESTINATIONS: DestinationDef[] = [
@@ -1202,6 +1207,38 @@ export const DESTINATIONS: DestinationDef[] = [
     azimuth: 5.35,
     minTier: 2,
     needs: 'la barque à voile',
+    mode: 'sea',
+  },
+  // Le rail et l'avion changent la NATURE du voyage : on ne longe plus une
+  // côte, on traverse un continent. D'où des durées et des butins d'un autre
+  // ordre — et deux modes de départ qui ne passent plus par la barque.
+  {
+    id: 'arriere',
+    name: "L'arrière-pays",
+    blurb: 'Par le rail, vers les mines et les carrières du continent.',
+    durationK: 1.3,
+    lootK: 1.7,
+    risk: 0.08,
+    relicChance: 0.42,
+    azimuth: 2.6,
+    minTier: 0,
+    needs: 'le chemin de fer',
+    mode: 'rail',
+    tech: 'railway',
+  },
+  {
+    id: 'monde',
+    name: "L'autre bout du monde",
+    blurb: "Par les airs — deux jours de vol, et l'on rapporte l'inconnu.",
+    durationK: 2.2,
+    lootK: 2.9,
+    risk: 0.2,
+    relicChance: 0.72,
+    azimuth: 1.2,
+    minTier: 0,
+    needs: "l'aviation",
+    mode: 'air',
+    tech: 'flight',
   },
 ]
 

@@ -585,7 +585,11 @@ export class Game {
   }
 
   canReach(destId: string): boolean {
-    return this.boatTier >= destProfile(destId).minTier
+    const d = destProfile(destId)
+    // Le rail et l'avion ne se jugent pas au palier de la flotte : ils se
+    // jugent au savoir. On ne prend pas le train sur un radeau perfectionné.
+    if (d.tech) return this.knows(d.tech)
+    return this.boatTier >= d.minTier
   }
 
   /** Les voisins joignables, posés par main.ts à chaque synchro. Hors

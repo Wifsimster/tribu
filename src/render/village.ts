@@ -1799,8 +1799,8 @@ export class Village {
     // sur une rue latérale, elle filait vers l'arrière de l'île et ne se
     // voyait pas — un train qu'on ne voit pas passer ne sert à rien.
     const cross = 0.785 + Math.PI / 2
-    const west = this.traceLane(cross, 34)
-    const east = this.traceLane(cross + Math.PI, 34)
+    const west = this.traceLane(cross, 34, true)
+    const east = this.traceLane(cross + Math.PI, 34, true)
     const pts = [
       ...east.slice().reverse(),
       { x: HEARTH.x, z: HEARTH.z },
@@ -1854,7 +1854,58 @@ export class Village {
           ),
         )
     }
+    this.station(p)
     this.buildTrain()
+  }
+
+  /** LA GARE. Une voie sans gare n'est qu'un décor : le train doit s'arrêter
+   *  quelque part, et ce quelque part doit être le village. On la pose au
+   *  point de la voie le plus proche du foyer, du côté du bourg. */
+  private station(p: BufferGeometry[]): void {
+    const pts = this.railPath
+    if (pts.length < 4) return
+    let best = 1
+    let bestD = Infinity
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = Math.hypot(pts[i]!.x - HEARTH.x, pts[i]!.z - HEARTH.z)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    this.railStop = this.railCum[best] ?? 0
+    const a = pts[best - 1]!
+    const b = pts[best + 1]!
+    const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+    const cy = Math.cos(yaw)
+    const sy = Math.sin(yaw)
+    const c = pts[best]!
+    const y = this.island.heightAt(c.x, c.z)
+    // Le quai est du côté du foyer : on descend du train face au village.
+    const side = (HEARTH.x - c.x) * cy - (HEARTH.z - c.z) * sy > 0 ? 1 : -1
+    const at = (u: number, h: number, v: number): [number, number, number] => [
+      c.x + cy * u * side + sy * v,
+      y + h,
+      c.z - sy * u * side + cy * v,
+    ]
+    const put = (geo: BufferGeometry, col: Color, u: number, h: number, v: number): void => {
+      const [x, yy, z] = at(u, h, v)
+      p.push(part(geo.rotateY(yaw), col, x, yy, z))
+    }
+    // Quai surélevé et sa bordure claire.
+    put(new BoxGeometry(1.5, 0.26, 4.2), tint(C.stoneDark, 3, 0.05), 1.5, 0.13, 0)
+    put(new BoxGeometry(0.16, 0.3, 4.2), C.stoneLight, 0.82, 0.15, 0)
+    // L'abri : quatre poteaux, un toit à deux pentes, un banc.
+    for (const u of [1.05, 1.95])
+      for (const v of [-0.8, 0.8])
+        put(new CylinderGeometry(0.06, 0.06, 0.9, 6), C.woodDark, u, 0.7, v)
+    put(new BoxGeometry(1.5, 0.1, 2.2), tint(C.tileDark, 5, 0.05), 1.5, 1.2, 0)
+    put(new BoxGeometry(1.62, 0.08, 2.32), C.ridge, 1.5, 1.14, 0)
+    put(new BoxGeometry(0.9, 0.08, 1.3), C.wood, 1.85, 0.42, 0)
+    put(new BoxGeometry(0.12, 0.34, 1.3), C.woodDark, 2.05, 0.6, 0)
+    // Le panneau du quai, face aux voyageurs.
+    put(new CylinderGeometry(0.04, 0.04, 0.8, 5), C.stoneDark, 1.0, 0.66, 1.7)
+    put(new BoxGeometry(0.06, 0.3, 0.8), C.plaster, 1.0, 1.0, 1.7)
   }
 
   /** La locomotive et son wagon : un seul mesh, monté sur un pivot que la
@@ -1903,15 +1954,31 @@ export class Village {
     const total = this.railCum[this.railCum.length - 1]!
     if (total < 1) return
     this.railT += dt * 2.2
-    // Onde triangulaire avec pause aux extrémités : un train s'arrête en gare.
-    const period = total * 2 + 12
+    // Aller, arrêt au terminus, retour, arrêt : et un arrêt EN GARE dans
+    // chaque sens. C'est la gare qui fait d'une voie un service.
+    const STOP = 5
+    const s1 = Math.max(0, Math.min(total, this.railStop))
+    const legs: [number, number, boolean][] = [
+      [0, s1, true],
+      [s1, s1, true],
+      [s1, total, true],
+      [total, total, true],
+      [total, s1, false],
+      [s1, s1, false],
+      [s1, 0, false],
+      [0, 0, true],
+    ]
+    const dur = legs.map(([f, t2], k) => (k % 2 === 1 ? STOP : Math.abs(t2 - f) / 1))
+    const period = dur.reduce((m, v) => m + v, 0)
     let u = this.railT % period
-    let d: number
-    if (u < total) d = u
-    else if (u < total + 6) d = total
-    else if (u < total * 2 + 6) d = total - (u - total - 6)
-    else d = 0
-    const fwd = u < total || (u >= total + 6 && u < total * 2 + 6 ? false : u < total)
+    let leg = 0
+    while (leg < legs.length - 1 && u > dur[leg]!) {
+      u -= dur[leg]!
+      leg++
+    }
+    const [from, to, fwd] = legs[leg]!
+    const k = dur[leg]! > 0 ? Math.min(1, u / dur[leg]!) : 1
+    const d = from + (to - from) * k
     let i = 1
     while (i < this.railCum.length - 1 && this.railCum[i]! < d) i++
     const a = this.railPath[i - 1]!
@@ -2251,7 +2318,7 @@ export class Village {
    *  entre cinq caps, celui qui reste le plus de plain-pied et le plus loin
    *  des sapins. D'où un tracé organique posé sur un seul palier, et non une
    *  étoile géométrique qui escaladerait les terrasses. */
-  private traceLane(start: number, steps = 30): Vector3[] {
+  private traceLane(start: number, steps = 30, avoidBuilt = false): Vector3[] {
     const pts: Vector3[] = []
     let az = start
     let x = HEARTH.x + Math.sin(az) * LANE_R0
@@ -2267,10 +2334,19 @@ export class Village {
         if (!this.island.isLand(nx, nz)) continue
         // Rester de plain-pied prime sur tout le reste ; venir ensuite le
         // dégagement, puis la ligne droite.
-        const sc =
+        let sc =
           -Math.abs(this.island.heightAt(nx, nz) - y) * 8 +
           Math.min(this.treeDist(nx, nz), 3) * 0.2 -
           Math.abs(d) * 0.6
+        // La voie ferrée est tracée APRÈS le bourg : c'est à elle de se
+        // faufiler. Elle paie très cher tout pas qui frôle un bâtiment —
+        // sinon elle traversait les maisons, ce qu'on a vu en jeu.
+        if (avoidBuilt)
+          for (let t2 = 0; t2 < this.taken.length; t2++) {
+            const need = (this.takenFp[t2] ?? 0.5) + 1.5
+            const dd = Math.hypot(nx - this.taken[t2]!.x, nz - this.taken[t2]!.z)
+            if (dd < need) sc -= (need - dd) * 40
+          }
         if (sc > bestScore) {
           bestScore = sc
           bestAz = a
@@ -2347,6 +2423,10 @@ export class Village {
           )
             continue
           if (this.treeDist(px, pz) < 1.1 + footprint * 0.35) continue
+          // On ne bâtit pas SUR la voie ferrée : elle est posée avant les
+          // savoirs suivants, et rien ne l'écartait d'eux.
+          if (this.railPath.some((q) => Math.hypot(px - q.x, pz - q.z) < 1.6 + footprint))
+            continue
           if (!this.flatEnough(slot, footprint)) continue
           // La façade regarde la rue : elle est du côté opposé à la normale.
           this.slotRot = Math.atan2(-nx * side, -nz * side)
@@ -2506,6 +2586,8 @@ export class Village {
   private railCum: number[] = []
   private train: Group | null = null
   private railT = 0
+  /** Abscisse de la gare sur la voie : le train y marque l'arrêt. */
+  private railStop = 0
   /** La lueur du phare, hors fusion : elle est additive et doit respirer. */
   private beaconHalo: Sprite | null = null
 

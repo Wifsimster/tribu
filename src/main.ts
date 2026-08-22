@@ -52,7 +52,13 @@ import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
 import { Hud, escapeHtml, fmt } from './ui/hud'
-import { AGES, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, yuleState } from './game/content'
+import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, yuleState } from './game/content'
+
+/** Par quoi part le voyage EN COURS : la mer sort la barque, le rail et l'air
+ *  ne la sortent pas. Retenu au DÉPART : `finishExpedition` efface la
+ *  destination avant d'émettre la fin, on ne peut plus la lire à ce
+ *  moment-là. */
+let tripKind: 'sea' | 'rail' | 'air' = 'sea'
 
 /** Le seul endroit du jeu où le calendrier RÉEL entre : la semaine de Noël.
  *  Lu une fois au chargement — une partie ne dure pas d'un jour à l'autre. */
@@ -269,6 +275,7 @@ game.on((e) => {
       buildWorld()
       break
     case 'expeditionStart':
+      tripKind = DESTINATION_BY_ID.get(game.save.expedition?.dest ?? 'cote')?.mode ?? 'sea'
       fishing = false
       fauna.setFishing(null)
       settler.departExpedition(game.knows('cordage'))
@@ -293,7 +300,10 @@ game.on((e) => {
         .filter(([, n]) => (n as number) > 0)
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
         .join('  ')
-      boat.sailIn(settler.shorePoint)
+      // La barque ne revient que si l'on est parti par la mer ; du rail ou de
+      // l'avion, le colon rentre par ses propres moyens.
+      if (tripKind === 'sea') boat.sailIn(settler.shorePoint)
+      else settler.returnFromExpedition()
       notify('Le colon est rentré d’expédition — le butin est au camp')
       hud.toast(`De retour · ${parts}`)
       hud.toast(`Journal de bord · ${e.journal}`)
@@ -1432,7 +1442,7 @@ function frame(now: number): void {
   caravan.update(dt, elapsed, game.knows('sail'))
   boat.update(dt, elapsed)
   if (expPhase === 'walking' && settler.isAway) {
-    boat.launchOut(settler.shorePoint)
+    if (tripKind === 'sea') boat.launchOut(settler.shorePoint)
     expPhase = 'sailed'
   }
   if (boat.consumeDocked()) {

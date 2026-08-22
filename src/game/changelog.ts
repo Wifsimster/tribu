@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.39.0',
+    title: 'La gare, et deux nouveaux voyages',
+    items: [
+      "La voie ferrée ne traverse plus les maisons : elle est tracée APRÈS le bourg, donc c'est à elle de se faufiler — elle paie très cher tout pas qui frôle un bâtiment. Et les savoirs suivants ne bâtissent plus sur la voie.",
+      "Une GARE : quai bordé, abri à deux pentes, banc et panneau, posée au point de la voie le plus proche du village. Le train y marque l'arrêt dans les deux sens, en plus de ses terminus.",
+      "Deux destinations d'un autre ordre. Par le rail, « l'arrière-pays » et ses mines. Par les airs, « l'autre bout du monde » : deux fois plus long, trois fois plus riche, et la relique presque assurée. Ni l'un ni l'autre ne sort la barque.",
+      "La machine à vapeur ne pose plus d'atelier sur l'île : elle fait évoluer TA FLOTTE — c'est là qu'elle a un sens.",
+    ],
+  },
+  {
     version: '3.38.0',
     title: 'Le pavé romain',
     items: [
