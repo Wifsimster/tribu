@@ -873,6 +873,34 @@ export class Game {
     return { def, status: 'available', progress: 0 }
   }
 
+  /** L'état DÉTAILLÉ du chantier : ce qui est versé, ce qu'il reste, à quel
+   *  débit et pour combien de temps — matériau par matériau. « 62 % » ne dit
+   *  ni ce qui manque, ni combien de temps il faudra attendre. */
+  wonderDetail(): {
+    def: WonderDef
+    progress: number
+    lines: { id: ResourceId; paid: number; total: number; flow: number; eta: number }[]
+    eta: number
+  } | null {
+    const cur = this.save.wonder
+    if (!cur) return null
+    const def = WONDER_BY_AGE.get(cur.age)
+    if (!def) return null
+    const lines = (Object.entries(def.cost) as [ResourceId, number][]).map(([id, total]) => {
+      const paid = Math.min(total, cur.paid[id] ?? 0)
+      // Le débit réellement versé : 60 % de la production, et seulement ce qui
+      // dépasse le plancher de réserve (voir tickWonder).
+      const flow = paid >= total ? 0 : Math.max(0.4, this.rates[id] * 0.6)
+      return { id, paid, total, flow, eta: flow > 0 ? (total - paid) / flow : 0 }
+    })
+    return {
+      def,
+      progress: this.wonderProgress(def, cur.paid),
+      lines,
+      eta: Math.max(0, ...lines.map((l) => l.eta)),
+    }
+  }
+
   private wonderProgress(def: WonderDef, paid: Partial<Record<ResourceId, number>>): number {
     let need = 0
     let got = 0

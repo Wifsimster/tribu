@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.41.0',
+    title: 'L’avion décolle, le chantier se détaille',
+    items: [
+      "L'aviation ne pose plus un avion sur cales : elle pose un AÉRODROME — aire bétonnée, hangar de tôle, manche à air — et l'appareil roule, décolle vers le large quand tu pars par les airs, puis se pose et regagne son aire au retour.",
+      "La carte du chantier donne enfin le détail : pour chaque matériau, ce qui est versé, ce qui reste, et le temps qu'il faudra au débit actuel. Plus une estimation d'achèvement. Elle s'ouvre aussi d'un tap sur la fiche du chantier, sans avoir à chercher l'ouvrage dans la scène.",
+      "CORRECTIF : la carte du chantier affichait le « Le saviez-vous ? » du dernier savoir consulté. Ce cartouche appartient aux fiches de savoir ; il est masqué partout ailleurs.",
+      "Le choix de destination tenait sur tout l'écran. Chaque ligne porte maintenant le PICTOGRAMME de son moyen — voile, locomotive, avion, tribu voisine — et tient en deux lignes.",
+    ],
+  },
+  {
     version: '3.40.0',
     title: 'Trois règles de plus',
     items: [

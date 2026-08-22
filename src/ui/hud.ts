@@ -45,7 +45,31 @@ const GLYPHS: Record<ResourceId, string> = {
     '<path d="M18.6 15.4c.4 2 1.5 3.1 3.4 3.5-1.9.4-3 1.5-3.4 3.4-.4-1.9-1.4-3-3.4-3.4 2-.4 3-1.5 3.4-3.5z" fill="#eac272"/>',
 }
 
-function icon(id: ResourceId, size = 15): string {
+export /** Le moyen du voyage, en un pictogramme : à sept destinations, on choisit
+ *  d'abord « par quoi » et ensuite « où ». */
+const DEST_GLYPH: Record<string, string> = {
+  sea:
+    '<path d="M4 15h16l-2.4 5H6.4z" fill="#8fc3e0"/>' +
+    '<path d="M12 2.5 19 14h-7z" fill="#eef4f8"/><rect x="11.4" y="2.5" width="1.2" height="12" fill="#c8d6e0"/>',
+  rail:
+    '<rect x="5" y="7" width="10" height="8" rx="1.6" fill="#dfe6ec"/>' +
+    '<rect x="14" y="9" width="5" height="6" rx="1" fill="#8a939c"/>' +
+    '<rect x="7" y="3.5" width="2" height="4" fill="#8a939c"/>' +
+    '<rect x="3" y="16" width="18" height="1.6" fill="#b9863a"/>' +
+    '<circle cx="8" cy="19" r="1.6" fill="#5a6068"/><circle cx="16" cy="19" r="1.6" fill="#5a6068"/>',
+  air:
+    '<path d="M11 3.2c.6 0 1 .5 1 1.1v5.4l8 4.4v2l-8-2.3v4.1l2.6 1.9v1.6L11 20.4l-3.6.9v-1.6L10 17.8v-4.1l-8 2.3v-2l8-4.4V4.3c0-.6.4-1.1 1-1.1z" fill="#eef4f8"/>',
+  visit:
+    '<path d="M4 13 9 6l5 7z" fill="#7fc7c9"/><rect x="6.6" y="12.6" width="4.8" height="6" fill="#4f8f96"/>' +
+    '<path d="M12 16 16.5 9.5 21 16z" fill="#9fd7d8"/><rect x="14.2" y="15.6" width="4.6" height="4.4" fill="#5b9aa1"/>' +
+    '<circle cx="9" cy="3.6" r="1.4" fill="#ffd76a"/>',
+}
+
+function destIcon(kind: string): string {
+  return `<svg class="dest-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${DEST_GLYPH[kind] ?? DEST_GLYPH.sea}</svg>`
+}
+
+export function icon(id: ResourceId, size = 15): string {
   return `<svg class="glyph" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">${GLYPHS[id]}</svg>`
 }
 
@@ -91,6 +115,9 @@ function fmtDuration(seconds: number): string {
 }
 
 export class Hud {
+  /** Ouvre la carte détaillée du chantier — fournie par main.ts. */
+  onWonderTap: (() => void) | null = null
+
   private resNodes = new Map<ResourceId, { root: HTMLElement; val: HTMLElement; rate: HTMLElement }>()
   private lastValues = new Map<ResourceId, number>()
   private sheetOpen = false
@@ -219,7 +246,11 @@ export class Hud {
     if (ws.status === 'done') {
       card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Achevée — elle inspire la tribu (+4 % de récolte).</span>`
     } else if (ws.status === 'building') {
-      card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Chantier en cours — les surplus y sont versés.</span><div class="wonder-bar"><i style="width:${Math.round(ws.progress * 100)}%"></i></div><span class="wonder-note">${Math.round(ws.progress * 100)} %</span>`
+      card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Chantier en cours — touche pour le détail.</span><div class="wonder-bar"><i style="width:${Math.round(ws.progress * 100)}%"></i></div><span class="wonder-note">${Math.round(ws.progress * 100)} %</span>`
+      // Le détail du chantier s'ouvrait seulement en tapant l'ouvrage dans la
+      // scène : la feuille est l'endroit où on vient VOIR où on en est.
+      card.style.cursor = 'pointer'
+      card.addEventListener('click', () => this.onWonderTap?.())
     } else {
       const costs = Object.entries(ws.def.cost)
         .map(([id, n]) => `${icon(id as ResourceId, 12)} ${fmt(n as number)}`)
@@ -331,9 +362,11 @@ export class Hud {
       const row = document.createElement('button')
       row.type = 'button'
       row.className = reachable ? 'dest' : 'dest locked'
-      row.innerHTML = `<span class="dest-name">${d.name}</span><span class="dest-blurb">${
-        reachable ? d.blurb : `Nécessite ${d.needs} — le radeau n'ira pas si loin.`
-      }</span><span class="dest-meta">${reachable ? `~${dur} · ${risk}` : 'hors de portée'}</span>`
+      row.innerHTML =
+        destIcon(d.mode ?? 'sea') +
+        `<span class="dest-name">${d.name}</span><span class="dest-blurb">${
+          reachable ? d.blurb : `Nécessite ${d.needs}`
+        }</span><span class="dest-meta">${reachable ? `~${dur}<br>${risk}` : 'hors de portée'}</span>`
       row.addEventListener('click', () => {
         if (!reachable) {
           this.toast(`Il faut ${d.needs} pour atteindre ${d.name.toLowerCase()}`)
@@ -346,7 +379,7 @@ export class Hud {
     }
     // Les îles du voisinage : de vraies tribus, à visiter comme on visite une
     // côte — mais elles, elles le sauront.
-    for (const v of this.game.visitable.slice(0, 4)) {
+    for (const v of this.game.visitable.slice(0, 2)) {
       const reachable = this.game.canReach('visite')
       const sec = this.game.expeditionDuration('visite')
       const dur = sec < 100 ? `${Math.round(sec / 10) * 10} s` : `${Math.round(sec / 60)} min`
@@ -354,13 +387,12 @@ export class Hud {
       row.type = 'button'
       row.className = reachable ? 'dest visit' : 'dest visit locked'
       row.innerHTML =
+        destIcon('visit') +
         `<span class="dest-name">Chez ${escapeHtml(v.name)}</span>` +
         `<span class="dest-blurb">${
-          reachable
-            ? 'Une autre tribu, en chair et en feux — ils sauront que nous sommes venus.'
-            : "Nécessite la barque à voile — leur île est au-delà de la côte."
+          reachable ? 'Une autre tribu — ils sauront que nous sommes venus.' : 'Nécessite la barque à voile'
         }</span>` +
-        `<span class="dest-meta">${reachable ? `~${dur} · risque modéré` : 'hors de portée'}</span>`
+        `<span class="dest-meta">${reachable ? `~${dur}<br>risque modéré` : 'hors de portée'}</span>`
       row.addEventListener('click', () => {
         if (!reachable) {
           this.toast('Il faut la barque à voile pour aller chez eux')
@@ -377,7 +409,9 @@ export class Hud {
       const row = document.createElement('button')
       row.type = 'button'
       row.className = 'dest embassy'
-      row.innerHTML = `<span class="dest-name">L'ambassade</span><span class="dest-blurb">Répondre aux feux de l'îlot — fonder un comptoir (provisions doublées).</span><span class="dest-meta">une seule fois</span>`
+      row.innerHTML =
+        destIcon('visit') +
+        `<span class="dest-name">L'ambassade</span><span class="dest-blurb">Fonder un comptoir sur l'îlot (provisions doublées).</span><span class="dest-meta">une seule<br>fois</span>`
       row.addEventListener('click', () => {
         this.toggleDest(false)
         if (!this.game.startExpedition('ilot', true)) this.toast('Pas assez de nourriture pour une ambassade')
@@ -406,10 +440,18 @@ export class Hud {
   }
 
   /** Une histoire hors savoir : épave, événement — même écrin que les faits. */
-  showStory(kicker: string, title: string, text: string): void {
+  showStory(kicker: string, title: string, text: string, html?: string, asideLabel?: string): void {
     el('fact-kicker').textContent = kicker
     el('fact-title').textContent = title
     el('fact-text').textContent = text
+    // Le cartouche appartient aux fiches de SAVOIR : sans ce masquage, la
+    // carte du chantier affichait l'anecdote du dernier savoir consulté.
+    const aside = el('fact-aside')
+    aside.hidden = !html
+    if (html) {
+      el('fact-fun').innerHTML = html
+      el('fact-aside-kicker').textContent = asideLabel ?? 'Le saviez-vous ?'
+    }
     el('fact').classList.add('open')
     this.factOpen = true
     this.syncScrim()
@@ -425,7 +467,10 @@ export class Hud {
     // pas un cartouche vide.
     const aside = el('fact-aside')
     aside.hidden = !tech.funFact
-    if (tech.funFact) el('fact-fun').textContent = tech.funFact
+    if (tech.funFact) {
+      el('fact-fun').textContent = tech.funFact
+      el('fact-aside-kicker').textContent = 'Le saviez-vous ?'
+    }
     el('fact').classList.add('open')
     this.factOpen = true
     this.syncScrim()

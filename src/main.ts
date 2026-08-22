@@ -51,7 +51,7 @@ import { Fauna } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
-import { Hud, escapeHtml, fmt } from './ui/hud'
+import { Hud, escapeHtml, fmt, icon } from './ui/hud'
 import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, yuleState } from './game/content'
 
 /** Par quoi part le voyage EN COURS : la mer sort la barque, le rail et l'air
@@ -201,6 +201,41 @@ stage.applyAge(game.save.age)
 // Barque déjà à quai dans la sauvegarde : elle reprend sa place sans naviguer.
 if (game.save.caravan.visiting) caravan.arrive()
 
+/** La carte DÉTAILLÉE du chantier : ce qui est versé, ce qui reste, à quel
+ *  débit et pour combien de temps, matériau par matériau. « 62 % » ne disait
+ *  ni ce qui manque, ni combien de temps attendre. */
+function openWonderCard(): void {
+  const d = game.wonderDetail()
+  if (!d) return
+  const rows = d.lines
+    .map((l) => {
+      const pct = Math.round((l.paid / l.total) * 100)
+      const left = Math.max(0, l.total - l.paid)
+      const when =
+        l.paid >= l.total
+          ? 'complet'
+          : l.eta > 90
+            ? `${Math.round(l.eta / 60)} min`
+            : `${Math.max(5, Math.round(l.eta / 5) * 5)} s`
+      return (
+        `<div class="wc-row"><span class="wc-res">${icon(l.id, 13)}${escapeHtml(RESOURCES[l.id].name)}</span>` +
+        `<span class="wc-bar"><i style="width:${pct}%"></i></span>` +
+        `<span class="wc-num">${fmt(l.paid)} / ${fmt(l.total)}</span>` +
+        `<span class="wc-eta">${left > 0 ? `reste ${fmt(left)} · ${when}` : when}</span></div>`
+      )
+    })
+    .join('')
+  const eta = d.eta > 90 ? `${Math.round(d.eta / 60)} min` : `${Math.round(d.eta)} s`
+  hud.showStory(
+    'Le chantier',
+    d.def.name,
+    `L'œuvre est accomplie à ${Math.round(d.progress * 100)} %. Le chantier prélève 60 % de ta production sur chaque matériau — il t'en reste toujours 40 %.`,
+    `${rows}<div class="wc-total">Achèvement estimé dans ${eta} au débit actuel</div>`,
+    'Détail du chantier',
+  )
+}
+
+
 function spotFor(resource: ResourceId): Vector3 {
   const key = resource === 'food' ? 'food' : resource === 'wood' ? 'wood' : 'stone'
   const spots = nodeSpots.get(key)
@@ -212,6 +247,7 @@ function spotFor(resource: ResourceId): Vector3 {
 }
 
 const hud = new Hud(game)
+hud.onWonderTap = () => openWonderCard()
 
 // L'ambiance sonore : coupée par défaut, activée au menu, reprise au premier
 // geste si la préférence est déjà « on » (l'audio exige un geste utilisateur).
@@ -276,6 +312,8 @@ game.on((e) => {
       break
     case 'expeditionStart':
       tripKind = DESTINATION_BY_ID.get(game.save.expedition?.dest ?? 'cote')?.mode ?? 'sea'
+      // Par les airs : l'appareil roule et décolle pour de bon.
+      if (tripKind === 'air') village.planeDepart()
       fishing = false
       fauna.setFishing(null)
       settler.departExpedition(game.knows('cordage'))
@@ -303,7 +341,10 @@ game.on((e) => {
       // La barque ne revient que si l'on est parti par la mer ; du rail ou de
       // l'avion, le colon rentre par ses propres moyens.
       if (tripKind === 'sea') boat.sailIn(settler.shorePoint)
-      else settler.returnFromExpedition()
+      else {
+        if (tripKind === 'air') village.planeArrive()
+        settler.returnFromExpedition()
+      }
       notify('Le colon est rentré d’expédition — le butin est au camp')
       hud.toast(`De retour · ${parts}`)
       hud.toast(`Journal de bord · ${e.journal}`)
@@ -591,12 +632,7 @@ attachControls(stage, canvas, (x, y) => {
       if (shown) {
         ambience.chime()
         if (shown.status === 'done') hud.showStory('La Merveille', shown.def.name, shown.def.fact)
-        else
-          hud.showStory(
-            'Le chantier',
-            shown.def.name,
-            `L'œuvre est accomplie à ${Math.round(shown.progress * 100)} %. Les surplus de la tribu y sont versés, jour après jour.`,
-          )
+        else openWonderCard()
       }
       return
     }

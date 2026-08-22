@@ -2482,7 +2482,7 @@ export class Village {
    *  aqueduc ×1.7, moulins ×2.5/×5.5, campanile ×4.5, garage ×2, antenne). */
   private static readonly FOOTPRINT: Record<string, number> = {
     hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2, forge: 1.3, lighthouse: 2.6,
-    datacenter: 1.4, battery: 1.4, desal: 1.3, genlab: 1.3, capture: 1.2, quantum: 1.1,
+    datacenter: 1.4, battery: 1.4, desal: 1.3, genlab: 1.3, capture: 1.2, quantum: 1.1, plane: 1.5,
     railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
     clock: 0.9, windmill: 2.3, watermill: 1.4, garage: 1.0, phone: 0.6,
   }
@@ -3361,13 +3361,22 @@ export class Village {
         return p
       }
       case 'plane': {
-        // Petit avion à hélice sur cales.
-        p.push(part(new CylinderGeometry(0.07, 0.05, 0.6, 7).rotateZ(Math.PI / 2), C.tile, 0, 0.3, 0))
-        p.push(part(new BoxGeometry(0.16, 0.02, 0.85), C.plaster, 0.05, 0.34, 0))
-        p.push(part(new BoxGeometry(0.12, 0.02, 0.3), C.plaster, -0.28, 0.38, 0))
-        p.push(part(new BoxGeometry(0.02, 0.12, 0.1), C.tile, -0.3, 0.42, 0))
-        p.push(part(new BoxGeometry(0.02, 0.22, 0.04).rotateX(0.6), C.woodDark, 0.33, 0.3, 0))
-        for (const sz of [-0.1, 0.1]) p.push(part(new CylinderGeometry(0.035, 0.035, 0.03, 8).rotateX(Math.PI / 2), C.char, 0.05, 0.12, sz))
+        // Ce n'est plus l'avion : c'est l'AÉRODROME. L'appareil, lui, est un
+        // mobile — il décolle et se pose (buildPlane / tickPlane). Un avion
+        // posé sur cales pendant qu'on traverse le monde ne racontait rien.
+        const tar = new Color('#4a4f56')
+        p.push(part(new BoxGeometry(2.6, 0.12, 1.6), tar, 0, 0.06, 0))
+        p.push(part(new BoxGeometry(2.64, 0.03, 0.16), C.plaster, 0, 0.13, 0))
+        for (let i = 0; i < 4; i++)
+          p.push(part(new BoxGeometry(0.22, 0.035, 0.05), C.plaster, -0.9 + i * 0.6, 0.14, 0.62))
+        // Hangar en tôle, porte ouverte côté piste.
+        p.push(part(new BoxGeometry(1.0, 0.62, 1.0), tint(C.stoneLight, 4, 0.05), -1.7, 0.43, -0.1))
+        p.push(part(new CylinderGeometry(0.52, 0.52, 1.04, 8, 1, false, 0, Math.PI).rotateZ(Math.PI / 2), tint(C.stone, 7, 0.05), -1.7, 0.74, -0.1))
+        p.push(part(new BoxGeometry(0.06, 0.5, 0.7), C.char, -1.22, 0.37, -0.1))
+        // Manche à air : c'est elle qui dit « terrain d'aviation » de loin.
+        p.push(part(new CylinderGeometry(0.035, 0.035, 1.1, 5), C.stoneDark, 1.5, 0.67, 0.6))
+        p.push(part(new CylinderGeometry(0.1, 0.17, 0.5, 7).rotateZ(-Math.PI / 2), new Color('#d9552f'), 1.72, 1.12, 0.6))
+        p.push(part(new CylinderGeometry(0.17, 0.17, 0.16, 7).rotateZ(-Math.PI / 2), C.plaster, 1.55, 1.12, 0.6))
         return p
       }
       case 'clinic': {
@@ -3774,6 +3783,97 @@ export class Village {
     this.beaconHalo = s
   }
 
+  /** L'APPAREIL. Hors de la fusion, parce qu'il doit décoller et se poser :
+   *  il roule sur l'aire, prend l'air vers le large, et refait le chemin en
+   *  sens inverse au retour de l'expédition. */
+  private buildPlane(pl: { x: number; y: number; z: number; rot: number }): void {
+    const body = new Color('#dfe6ec')
+    const trim = new Color('#2f6fb5')
+    const p: BufferGeometry[] = []
+    p.push(part(new CylinderGeometry(0.17, 0.12, 1.5, 8).rotateZ(Math.PI / 2), body, 0, 0, 0))
+    p.push(part(new CylinderGeometry(0.17, 0.17, 0.24, 8).rotateZ(Math.PI / 2), trim, -0.1, 0, 0))
+    // Aile haute et ses mâts, empennage, dérive.
+    p.push(part(new BoxGeometry(0.42, 0.05, 2.2), body, 0.02, 0.2, 0))
+    p.push(part(new BoxGeometry(0.42, 0.02, 2.24), trim, 0.02, 0.17, 0))
+    for (const sz of [-0.34, 0.34])
+      p.push(part(new BoxGeometry(0.04, 0.2, 0.04), C.stoneDark, 0.02, 0.1, sz))
+    p.push(part(new BoxGeometry(0.3, 0.04, 0.8), body, -0.62, 0.06, 0))
+    p.push(part(new BoxGeometry(0.28, 0.36, 0.04), trim, -0.66, 0.22, 0))
+    // Verrière, hélice, train fixe.
+    p.push(part(new BoxGeometry(0.4, 0.16, 0.26), C.glass, 0.16, 0.14, 0))
+    p.push(part(new BoxGeometry(0.03, 0.62, 0.06), C.stoneDark, 0.78, 0.02, 0))
+    p.push(part(new CylinderGeometry(0.05, 0.05, 0.06, 8).rotateZ(Math.PI / 2), C.char, 0.74, 0.02, 0))
+    for (const sz of [-0.22, 0.22]) {
+      p.push(part(new CylinderGeometry(0.025, 0.025, 0.22, 5), C.stoneDark, 0.16, -0.15, sz))
+      p.push(part(new CylinderGeometry(0.08, 0.08, 0.05, 8).rotateX(Math.PI / 2), C.char, 0.16, -0.26, sz))
+    }
+    const geo = mergeGeometries(p)
+    if (!geo) return
+    grain(geo, 0.05)
+    const mesh = new Mesh(geo, this.solid)
+    mesh.castShadow = true
+    const pivot = new Group()
+    pivot.add(mesh)
+    // Cap de décollage : vers le large, dos à l'île.
+    this.planeAt = { x: pl.x, y: pl.y + 0.4, z: pl.z, rot: Math.atan2(pl.x, pl.z) }
+    this.plane = pivot
+    this.planeRest()
+    this.group.add(pivot)
+  }
+
+  private planeRest(): void {
+    const a = this.planeAt
+    if (!this.plane || !a) return
+    this.plane.position.set(a.x, a.y, a.z)
+    this.plane.rotation.set(0, a.rot, 0)
+    this.plane.visible = true
+  }
+
+  /** Le colon embarque : roulage, puis montée vers le large. */
+  planeDepart(): void {
+    if (!this.plane) return
+    this.flightDir = 1
+    this.flight = 0
+  }
+
+  /** Il revient : même trajectoire, à l'envers, jusqu'à l'arrêt sur l'aire. */
+  planeArrive(): void {
+    if (!this.plane) return
+    this.flightDir = -1
+    this.flight = 0
+  }
+
+  private plane: Group | null = null
+  private planeAt: { x: number; y: number; z: number; rot: number } | null = null
+  private flight = -1
+  private flightDir: 1 | -1 = 1
+
+  private tickPlane(dt: number): void {
+    const a = this.planeAt
+    if (!this.plane || !a || this.flight < 0) return
+    this.flight += dt / 5.5
+    if (this.flight >= 1) {
+      this.flight = -1
+      // Parti : l'appareil n'est plus là. Revenu : il est à sa place.
+      if (this.flightDir === 1) this.plane.visible = false
+      else this.planeRest()
+      return
+    }
+    const t = this.flightDir === 1 ? this.flight : 1 - this.flight
+    // Roulage sur le premier quart, puis montée : un avion prend son élan
+    // avant de quitter le sol.
+    const roll = Math.min(1, t / 0.25)
+    const climb = Math.max(0, (t - 0.25) / 0.75)
+    const d = roll * 3 + climb * climb * 52
+    this.plane.visible = true
+    this.plane.position.set(
+      a.x + Math.sin(a.rot) * d,
+      a.y + climb * climb * 26,
+      a.z + Math.cos(a.rot) * d,
+    )
+    this.plane.rotation.set(-climb * 0.22, a.rot, Math.sin(t * Math.PI) * 0.12 * this.flightDir)
+  }
+
   /** Le lit de braises de la forge : il respire au rythme du soufflet. */
   private buildEmbers(pl: { x: number; y: number; z: number; rot: number }): void {
     // Dans la gueule du bas foyer, à hauteur de forgeron — l'ancien lit était
@@ -3930,6 +4030,7 @@ export class Village {
       if (pl.id === 'forge') this.buildEmbers(pl)
       if (pl.id === 'plough') this.buildPloughTeam(pl)
       if (pl.id === 'lighthouse') this.buildBeacon(pl)
+      if (pl.id === 'plane') this.buildPlane(pl)
     }
   }
 
@@ -4056,6 +4157,7 @@ export class Village {
 
   update(dt: number, t: number): void {
     this.tickTrain(dt)
+    this.tickPlane(dt)
     if (this.beaconHalo) {
       // Respiration lente : un brasier entretenu par un veilleur, pas un feu
       // de camp. Avant le test d'électricité — le phare vit à tous les âges.
