@@ -53,6 +53,10 @@ export interface SaveV1 {
    *  sauter tout le village d'une session à l'autre. La hauteur, elle, n'est
    *  pas gardée : le terrain change, elle est relue sous chaque bâtiment. */
   layout: { id: string; x: number; z: number; rot: number }[]
+  /** Version du PLAN. Quand les règles d'urbanisme changent (v2 : les rues),
+   *  un plan tracé selon les anciennes ne peut pas être conservé — le village
+   *  serait un semis au milieu d'un réseau de rues. Il est retracé une fois. */
+  layoutV: number
   /** La Chronique : chaque ligne de l'histoire de CETTE tribu — monde (w),
    *  jour (d), genre (k) et texte (x). Survit aux Exodes. */
   chronicle: { w: number; d: number; k: string; x: string }[]
@@ -95,6 +99,7 @@ export function emptySave(now: number): SaveV1 {
     wonder: null,
     wonders: [],
     layout: [],
+    layoutV: 2,
     legacy: 0,
     tribe: null,
   }
@@ -116,7 +121,10 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
     const elapsed = Math.max(0, Math.min((now - parsed.t) / 1000, OFFLINE_CAP_SECONDS))
     const base = emptySave(now)
     return {
-      save: { ...base, ...parsed, res: { ...base.res, ...parsed.res } },
+      // `layoutV` doit venir de la sauvegarde LUE, pas du gabarit : une save
+      // d'avant les rues n'a pas la clé, et le spread lui aurait prêté la
+      // version du jour — son vieux plan aurait été adopté tel quel.
+      save: { ...base, ...parsed, layoutV: parsed.layoutV ?? 0, res: { ...base.res, ...parsed.res } },
       offlineSeconds: elapsed,
     }
   } catch {

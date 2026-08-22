@@ -118,7 +118,9 @@ function buildWorld(): void {
   // brasero, lampadaire dès que l'électricité est sue.
   village = new Village(island, game.save.age, game.knows('electricity'))
   // Le plan sauvegardé d'abord : ce qui est bâti ne se redéplace pas.
-  village.adoptLayout(game.save.layout)
+  // Plan d'une version antérieure : il est retracé selon les règles du jour.
+  village.adoptLayout(game.save.layoutV === 2 ? game.save.layout : [])
+  game.save.layoutV = 2
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.

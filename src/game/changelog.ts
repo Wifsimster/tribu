@@ -10,6 +10,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.29.0',
+    title: 'Un vrai plan de village',
+    items: [
+      "Le village a des RUES. Trois voies partent de la place du camp, épousent le terrain plat et contournent la pinède ; les bâtiments prennent des parcelles le long de ces rues, deux rangées de chaque côté, façade tournée vers la voie. Avant, chacun cherchait la meilleure cellule de toute l'île : un semis sans structure, à moitié caché dans les sapins.",
+      "Les voies romaines ne créent plus la route : elles PAVENT la rue principale, celle qui descend déjà au ponton depuis le premier jour.",
+      "La forêt cède la place au bourg : les rues et les parcelles sont dégagées, on voit et on atteint tout.",
+      "L'écart entre deux bâtiments suit leur TAILLE : un aqueduc ne rentre plus dans une hutte voisine.",
+      "Le phare s'installe sur une vraie pointe, loin du bourg qu'il masquait.",
+      "Ton plan de village existant est retracé une fois selon ces règles ; ensuite il ne bouge plus.",
+    ],
+  },
+  {
     version: '3.28.0',
     title: 'L’horizon remis d’aplomb',
     items: [
