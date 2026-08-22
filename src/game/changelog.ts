@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.38.0',
+    title: 'Le pavé romain',
+    items: [
+      "La chaussée romaine est refaite : assise de blocage visible sous le dallage, six pavés par tronçon aux dimensions et à l'orientation irrégulières, chaussée BOMBÉE comme les Romains la cambraient pour l'écoulement, bordures continues des deux côtés, et deux ornières d'usure dans l'axe des roues. Le damier régulier lisait comme un carrelage.",
+      "Les sentiers de terre ne sont plus deux planches parallèles — ce qui faisait une échelle posée dans l'herbe — mais une seule bande battue, avec ses deux ornières et quelques cailloux déchaussés.",
+      "Les gros bâtiments reculent de leur parcelle : le moulin débordait sur la chaussée et le train passait dans ses ailes.",
+    ],
+  },
+  {
     version: '3.37.0',
     title: 'Le train traverse l’île',
     items: [

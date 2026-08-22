@@ -1674,8 +1674,12 @@ export class Village {
    *  une vraie voie taillée dans la pente. Fondue dans le mesh du rivage :
    *  aucun appel de rendu de plus. */
   private track(p: BufferGeometry[], pts: { x: number; z: number }[], paved: boolean): void {
-    const halfW = paved ? 0.54 : 0.4
-    const lanes = paved ? [-1, 0, 1] : [-0.5, 0.5]
+    // Un hachage stable sur le rang du pavé : la voie est irrégulière, mais
+    // elle l'est TOUJOURS DE LA MÊME FAÇON d'un chargement à l'autre.
+    const jit = (n: number): number => {
+      const v = Math.sin(n * 91.7 + 13.1) * 43758.5453
+      return v - Math.floor(v)
+    }
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!
       const b = pts[i + 1]!
@@ -1696,32 +1700,92 @@ export class Village {
           this.island.heightAt(a.x, a.z),
           this.island.heightAt(mx, mz),
           this.island.heightAt(b.x, b.z),
-        ) + (paved ? 0.07 : 0.05)
-      for (const side of lanes) {
-        p.push(
-          part(
-            new BoxGeometry(paved ? 0.52 : 0.62, paved ? 0.12 : 0.09, seg * 0.98).rotateY(yaw),
-            paved
-              ? tint((i + side) % 2 === 0 ? C.stone : C.stoneDark, i * 5 + side, 0.07)
-              : tint(i % 3 === 0 ? C.soilDark : C.soil, i * 7 + side, 0.09),
-            mx + cy * side * halfW,
-            y,
-            mz - sy * side * halfW,
-          ),
-        )
+        ) + 0.04
+      /** Pose une pièce en coordonnées de la VOIE : u en travers, v le long. */
+      const lay = (
+        geo: BufferGeometry,
+        color: Color,
+        u: number,
+        h: number,
+        v: number,
+      ): void => {
+        p.push(part(geo.rotateY(yaw), color, mx + cy * u + sy * v, y + h, mz - sy * u + cy * v))
       }
-      // Bordure : les pierres de rive qui tiennent la chaussée, une sur deux.
-      if (paved && i % 2 === 0)
+
+      if (paved) {
+        // 1. L'ASSISE. Une voie romaine est un empilement : le statumen de
+        //    blocage dépasse sous le dallage, et c'est ce liseré sombre qui
+        //    donne son épaisseur à la chaussée.
+        lay(new BoxGeometry(1.86, 0.1, seg * 1.02), tint(C.soilDark, i * 5, 0.05), 0, 0.05, 0)
+        // 2. LE DALLAGE. Six pavés par segment, chacun tourné et dimensionné
+        //    au hasard STABLE : un damier régulier lisait comme un carrelage
+        //    de salle de bains. Et la chaussée est BOMBÉE — les Romains la
+        //    cambraient pour que l'eau file aux caniveaux.
+        for (let c = 0; c < 3; c++)
+          for (let r = 0; r < 2; r++) {
+            const k = i * 17 + c * 5 + r
+            const u = (c - 1) * 0.5 + (jit(k) - 0.5) * 0.06
+            const v = (r - 0.5) * seg * 0.5
+            const w = 0.42 + jit(k + 1) * 0.09
+            const l = seg * 0.44 + jit(k + 2) * 0.08
+            const crown = 0.128 - Math.abs(c - 1) * 0.022
+            const tone = jit(k + 3)
+            lay(
+              new BoxGeometry(w, 0.11, l).rotateY((jit(k + 4) - 0.5) * 0.13),
+              tint(tone > 0.62 ? C.stoneLight : tone > 0.3 ? C.stone : C.stoneDark, k, 0.055),
+              u,
+              crown,
+              v,
+            )
+          }
+        // 3. LES BORDURES (crepidines), continues et légèrement plus hautes :
+        //    ce sont elles qui tiennent le dallage et dessinent la voie de loin.
         for (const side of [-1, 1])
-          p.push(
-            part(
-              new BoxGeometry(0.2, 0.16, seg * 0.9).rotateY(yaw),
-              tint(C.stoneLight, i * 9 + side, 0.06),
-              mx + cy * side * 0.94,
-              y + 0.02,
-              mz - sy * side * 0.94,
-            ),
+          lay(
+            new BoxGeometry(0.22, 0.2, seg * 1.02),
+            tint(C.stoneLight, i * 9 + side, 0.05),
+            side * 0.92,
+            0.11,
+            0,
           )
+        // 4. L'USURE. Une ornière plus sombre de chaque côté de l'axe : deux
+        //    mille ans de roues au même écartement.
+        if (i % 2 === 0)
+          for (const side of [-1, 1])
+            lay(
+              new BoxGeometry(0.2, 0.02, seg * 0.9),
+              tint(C.stoneDark, i * 3 + side, 0.04),
+              side * 0.34,
+              0.185,
+              0,
+            )
+      } else {
+        // Sentier de terre battue : UNE bande, pas deux planches parallèles.
+        // Le double ruban lisait comme une échelle posée dans l'herbe.
+        lay(new BoxGeometry(1.28, 0.09, seg * 1.02), tint(C.soil, i * 7, 0.07), 0, 0.045, 0)
+        // Les deux ornières creusées par le passage, et une frange plus claire
+        // sur les bords, là où l'herbe reprend.
+        for (const side of [-1, 1])
+          lay(
+            new BoxGeometry(0.3, 0.03, seg),
+            tint(C.soilDark, i * 11 + side, 0.06),
+            side * 0.3,
+            0.09,
+            0,
+          )
+        // Quelques cailloux déchaussés : c'est ce qui distingue un chemin
+        // d'une bande de peinture marron.
+        if (i % 2 === 0) {
+          const k = i * 13
+          lay(
+            new DodecahedronGeometry(0.07 + jit(k) * 0.04, 0).scale(1, 0.5, 1),
+            tint(C.stone, k, 0.08),
+            (jit(k + 1) - 0.5) * 1.1,
+            0.1,
+            (jit(k + 2) - 0.5) * seg,
+          )
+        }
+      }
     }
   }
 
@@ -2258,7 +2322,12 @@ export class Village {
         // maison — et sans cette seconde rangée, les quinze derniers savoirs
         // ne trouvaient plus de parcelle (mesuré : 14 replis à l'ère
         // contemporaine) et s'entassaient au centre.
-        for (const [side, row] of PLOT_ROWS) {
+        for (const [side, baseRow] of PLOT_ROWS) {
+          // Un gros bâtiment est REPOUSSÉ : le recul de parcelle est fixe, mais
+          // le moulin (emprise 2,3) débordait sur la chaussée et le train
+          // passait dans ses ailes. La façade recule d'au moins son emprise
+          // plus une largeur de voie.
+          const row = Math.max(baseRow, footprint + 1.25)
           const px = a.x + nx * side * row
           const pz = a.z + nz * side * row
           if (!this.island.isLand(px, pz)) continue
@@ -2331,7 +2400,7 @@ export class Village {
     hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2, forge: 1.3, lighthouse: 2.6,
     datacenter: 1.4, battery: 1.4, desal: 1.3, genlab: 1.3, capture: 1.2, quantum: 1.1,
     railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
-    clock: 0.8, windmill: 1.7, watermill: 1.2, garage: 1.0, phone: 0.6,
+    clock: 0.9, windmill: 2.3, watermill: 1.4, garage: 1.0, phone: 0.6,
   }
   /** Les quatre bâtiments v1 gardent les règles d'espacement de l'époque où ils
    *  étaient des Object3D séparés : les slots choisis — donc le plan du village
