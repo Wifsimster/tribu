@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.34.0',
+    title: 'La Merveille ne boit plus tout',
+    items: [
+      "CORRECTIF : un chantier de Merveille avalait la TOTALITÉ de ta production. À l'ère industrielle, la tour de fer engloutissait chaque gramme de fer produit — impossible d'en accumuler un seul. Le chantier prend désormais 60 % de ta production courante : il t'en reste toujours 40 %, et il avance au rythme de ce que ton île sait vraiment produire.",
+      "Les rennes tiraient le traîneau à l'envers : ils suivaient en le regardant. L'attelage est remis en tête, museaux dans le sens de la marche.",
+      "La friche recule à mesure des époques : blocs de pierre et buissons se raréfient, la pinède un peu aussi. L'île devient un bourg au lieu d'une clairière encombrée — sans jamais descendre sous la moitié, il faut toujours des nœuds à récolter.",
+    ],
+  },
+  {
     version: '3.33.0',
     title: 'Le traîneau dans le ciel',
     items: [

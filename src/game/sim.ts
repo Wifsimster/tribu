@@ -906,7 +906,14 @@ export class Game {
       const floor = 50 + this.save.age * 30
       const avail = this.amount(id) - floor
       if (avail <= 0) continue
-      const take = Math.min(avail, Math.max(0.5, total * 0.0005) * dt * 60, total - paid)
+      // Le chantier prend une PART DE LA PRODUCTION, jamais la réserve. Avant,
+      // il emportait tout ce qui dépassait le plancher à chaque image : à
+      // l'ère industrielle, la tour de fer (60 000 de fer) avalait la totalité
+      // du fer produit et le joueur n'en voyait plus jamais un gramme — signalé
+      // en jeu, et c'était bien ça. Il en reste donc 40 % pour la tribu, et la
+      // Merveille avance au rythme de ce que l'île sait vraiment produire.
+      const flow = Math.max(0.4, this.rates[id] * 0.6)
+      const take = Math.min(avail, flow * dt, total - paid)
       if (take <= 0) continue
       this.save.res[id] = this.amount(id) - take
       cur.paid[id] = paid + take

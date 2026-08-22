@@ -580,36 +580,47 @@ export class Stage {
       const red = new Color('#c0392b')
       const cream = new Color('#f3ece0')
       const iron = new Color('#4a4038')
-      // Six rennes en file, deux par deux : de profil, la file lit comme un
-      // attelage même à quarante pixels de large.
+      // Le traîneau file vers les x POSITIFS : l'attelage doit donc occuper ce
+      // côté-là, museaux en avant, et le traîneau traîner derrière. Posé
+      // l'inverse, les rennes suivaient le traîneau en le regardant.
+      // Six rennes en file, deux par deux décalées : de profil, la file lit
+      // comme un attelage même à quarante pixels de large.
       for (let i = 0; i < 6; i++) {
-        const bx = -8.2 + i * 1.45
+        const bx = 1.3 + i * 1.45
         const dy = i % 2 === 0 ? 0.12 : -0.12
         p.push(skyPart(new BoxGeometry(1.0, 0.5, 0.42), fur, bx, dy, 0))
         p.push(skyPart(new BoxGeometry(0.42, 0.34, 0.34), fur, bx + 0.62, dy + 0.24, 0))
         p.push(skyPart(new BoxGeometry(0.34, 0.12, 0.12), furDark, bx + 0.86, dy + 0.18, 0))
-        for (const s of [-1, 1]) {
-          p.push(skyPart(new ConeGeometry(0.09, 0.42, 4).rotateZ(s * 0.5), bone, bx + 0.66 + s * 0.06, dy + 0.6, 0))
-          p.push(skyPart(new BoxGeometry(0.11, 0.46, 0.11), furDark, bx + s * 0.3, dy - 0.44, 0))
+        for (const sgn of [-1, 1]) {
+          p.push(
+            skyPart(
+              new ConeGeometry(0.09, 0.42, 4).rotateZ(sgn * 0.5),
+              bone,
+              bx + 0.66 + sgn * 0.06,
+              dy + 0.6,
+              0,
+            ),
+          )
+          p.push(skyPart(new BoxGeometry(0.11, 0.46, 0.11), furDark, bx + sgn * 0.3, dy - 0.44, 0))
         }
       }
-      // Les traits de l'attelage.
-      p.push(skyPart(new BoxGeometry(9.2, 0.07, 0.07), furDark, -3.6, -0.05, 0))
-      // Le traîneau : caisse, patin recourbé, dossier.
-      p.push(skyPart(new BoxGeometry(2.3, 0.8, 0.9), red, 1.9, 0.1, 0))
-      p.push(skyPart(new BoxGeometry(0.5, 0.9, 0.9), red, 0.85, 0.5, 0))
-      p.push(skyPart(new BoxGeometry(2.9, 0.12, 0.12), iron, 1.9, -0.42, 0))
-      p.push(skyPart(new ConeGeometry(0.32, 0.7, 4).rotateZ(-1.9), iron, 3.4, -0.3, 0))
-      // Le personnage : manteau, ceinture, barbe, bonnet à pompon.
-      p.push(skyPart(new BoxGeometry(0.62, 0.8, 0.6), red, 1.85, 0.85, 0))
-      p.push(skyPart(new BoxGeometry(0.66, 0.14, 0.64), cream, 1.85, 0.7, 0))
-      p.push(skyPart(new BoxGeometry(0.3, 0.34, 0.4), cream, 2.1, 1.05, 0))
-      p.push(skyPart(new ConeGeometry(0.32, 0.5, 6), red, 1.8, 1.5, 0))
-      p.push(skyPart(new BoxGeometry(0.2, 0.2, 0.2), cream, 1.8, 1.78, 0))
-      // La hotte, débordant de paquets.
-      p.push(skyPart(new BoxGeometry(0.9, 0.7, 0.7), furDark, 2.6, 0.7, 0))
-      p.push(skyPart(new BoxGeometry(0.3, 0.3, 0.3).rotateY(0.5), cream, 2.5, 1.1, 0))
-      p.push(skyPart(new BoxGeometry(0.26, 0.26, 0.26).rotateY(1.1), bone, 2.82, 1.14, 0))
+      // Les traits, du timon au premier renne.
+      p.push(skyPart(new BoxGeometry(9.4, 0.07, 0.07), furDark, 5.1, -0.05, 0))
+      // Le traîneau : patin recourbé À L'AVANT, caisse, dossier en arrière.
+      p.push(skyPart(new BoxGeometry(2.9, 0.12, 0.12), iron, -1.3, -0.42, 0))
+      p.push(skyPart(new ConeGeometry(0.32, 0.7, 4).rotateZ(1.9), iron, 0.32, -0.3, 0))
+      p.push(skyPart(new BoxGeometry(2.3, 0.8, 0.9), red, -1.3, 0.1, 0))
+      p.push(skyPart(new BoxGeometry(0.5, 0.9, 0.9), red, -2.35, 0.5, 0))
+      // Le personnage, tourné vers l'avant : manteau, ceinture, barbe, bonnet.
+      p.push(skyPart(new BoxGeometry(0.62, 0.8, 0.6), red, -1.25, 0.85, 0))
+      p.push(skyPart(new BoxGeometry(0.66, 0.14, 0.64), cream, -1.25, 0.7, 0))
+      p.push(skyPart(new BoxGeometry(0.3, 0.34, 0.4), cream, -1.0, 1.05, 0))
+      p.push(skyPart(new ConeGeometry(0.32, 0.5, 6), red, -1.32, 1.5, 0))
+      p.push(skyPart(new BoxGeometry(0.2, 0.2, 0.2), cream, -1.5, 1.72, 0))
+      // La hotte, derrière lui, débordant de paquets.
+      p.push(skyPart(new BoxGeometry(0.9, 0.7, 0.7), furDark, -2.1, 0.7, 0))
+      p.push(skyPart(new BoxGeometry(0.3, 0.3, 0.3).rotateY(0.5), cream, -2.0, 1.1, 0))
+      p.push(skyPart(new BoxGeometry(0.26, 0.26, 0.26).rotateY(1.1), bone, -2.32, 1.14, 0))
       const geo = mergeGeometries(p) ?? new BufferGeometry()
       const mesh = new Mesh(
         geo,

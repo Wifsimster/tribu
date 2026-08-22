@@ -118,7 +118,7 @@ let firstCatch = true
  *  chaque passage d'âge : le monde s'agrandit sous la bannière. */
 function buildWorld(): void {
   disposeWorld()
-  island = new Island(game.save.seed, growthForAge(game.save.age))
+  island = new Island(game.save.seed, growthForAge(game.save.age), game.save.age)
   // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
   // brasero, lampadaire dès que l'électricité est sue.
   village = new Village(island, game.save.age, game.knows('electricity'), yule !== 'none')

@@ -302,6 +302,8 @@ export class Island {
   constructor(
     private readonly seed = DEFAULT_SEED,
     private readonly growth = 1,
+    /** L'époque : la friche recule à mesure que le village s'étend. */
+    private readonly age = 0,
   ) {
     const rnd = mulberry32(seed)
     const half = GRID / 2
@@ -1457,7 +1459,15 @@ export class Island {
     // Densité baissée d'un tiers et bosquets plus lâches : la référence
     // laisse voir son sol et ses bâtiments entre les arbres. À 50 sapins
     // serrés, notre village disparaissait derrière sa propre forêt.
-    this.addTrees(take(Math.round(34 * this.growth * this.growth), clustered(wooded, 5.2), () => true), rnd)
+    // Le village prend la place de la friche : blocs de pierre et buissons se
+    // raréfient d'époque en époque, la pinède un peu moins (c'est elle qui
+    // borde l'île). Plancher à 45 % : il faut toujours des nœuds à taper.
+    const wild = Math.max(0.45, 1 - this.age * 0.062)
+    const wood = Math.max(0.6, 1 - this.age * 0.03)
+    this.addTrees(
+      take(Math.round(34 * wood * this.growth * this.growth), clustered(wooded, 5.2), () => true),
+      rnd,
+    )
     // Pierres et buissons, eux, ont le droit de border la clairière : ce sont
     // eux qui l'encadrent une fois les sapins reculés.
     // Même diagnostic que pour la pinède : les rochers encombraient la
@@ -1466,7 +1476,7 @@ export class Island {
     // clairière) et leur nombre baisse d'un tiers.
     this.addRocks(
       take(
-        Math.round(16 * this.growth * this.growth),
+        Math.round(16 * wild * this.growth * this.growth),
         clustered(free, 9),
         (c) =>
           c.height > 1.2 &&
@@ -1480,7 +1490,7 @@ export class Island {
     // clairière de plus près, une fois sapins et blocs écartés.
     this.addBushes(
       take(
-        Math.round(24 * this.growth * this.growth),
+        Math.round(24 * wild * this.growth * this.growth),
         clustered(free, 6),
         (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth) * 0.5,
       ),
