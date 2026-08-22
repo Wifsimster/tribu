@@ -52,7 +52,7 @@ import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
 import { Hud, escapeHtml, fmt, icon } from './ui/hud'
-import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, yuleState } from './game/content'
+import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, livingBuildings, yuleState } from './game/content'
 
 /** Par quoi part le voyage EN COURS : la mer sort la barque, le rail et l'air
  *  ne la sortent pas. Retenu au DÉPART : `finishExpedition` efface la
@@ -168,7 +168,7 @@ function buildWorld(): void {
       village.setWonder(game.save.wonders[game.save.wonders.length - 1]!, 4)
     }
   }
-  village.sync(game.buildings)
+  village.sync(livingBuildings(game.buildings, game.save.age))
   // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
   game.save.layout = village.layout
   village.setRelics(game.save.relics.length)
@@ -293,7 +293,7 @@ game.on((e) => {
       // feu) : on reconstruit le monde comme à un passage d'âge.
       if (e.tech.id === 'electricity') buildWorld()
       else {
-        village.sync(game.buildings)
+        village.sync(livingBuildings(game.buildings, game.save.age))
         // Le nouvel atelier prend sa place DÉFINITIVE : elle part dans la
         // sauvegarde tout de suite, sinon elle serait retirée au sort au
         // prochain chargement.

@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.45.0',
+    title: 'Les bâtiments ont un âge',
+    items: [
+      "Un ouvrage naît à son époque, puis il est remplacé par son successeur ou il disparaît. L'abri de branchages du Paléolithique tenait encore debout à l'ère contemporaine, au milieu des paraboles.",
+      "Neuf ouvrages ont désormais une fin : l'abri cède à l'habitat de pierre, le bas fourneau au convertisseur Bessemer, la forge de village à l'acier industriel, l'attelage de bœufs au moteur, le réverbère à gaz à l'électricité — le fait historique exact —, le télégraphe à la radio, la radio à l'antenne relais, le métier à bras à l'industrie textile, la tente de dispensaire à la médecine des laboratoires.",
+      "Ce qui n'est pas listé traverse les siècles, et c'est voulu : un aqueduc, un moulin, un phare ou une villa sont des monuments. La parcelle libérée par un ouvrage disparu est rendue au plan — un autre bâtiment pourra la reprendre.",
+    ],
+  },
+  {
     version: '3.44.0',
     title: 'Plus rien ne traverse l’île',
     items: [

@@ -1241,6 +1241,42 @@ export const DESTINATIONS: DestinationDef[] = [
   },
 ]
 
+/** LA VIE DES BÂTIMENTS. Un ouvrage naît à son époque ; ensuite il est
+ *  remplacé par son successeur, ou il disparaît. Sans cette table, l'abri de
+ *  branchages du Paléolithique tenait encore debout à l'ère contemporaine,
+ *  au milieu des paraboles.
+ *
+ *  La valeur est le DERNIER âge où l'ouvrage se voit encore. Ce qui n'est pas
+ *  listé traverse les siècles — et c'est voulu : un aqueduc, un moulin, un
+ *  phare ou une villa sont des monuments, ils restent. */
+export const BUILDING_UNTIL: Record<string, number> = {
+  // L'abri de branchages cède à l'habitat de pierre (béton romain, âge 4).
+  hut: 3,
+  // Le métier à bras finit avec l'industrie textile.
+  loom: 6,
+  // Le bas fourneau à bronze cède au convertisseur (Bessemer, âge 7).
+  furnace: 6,
+  // La forge de village cède à l'acier industriel.
+  forge: 7,
+  // L'attelage de bœufs cède au moteur (automobile, âge 8).
+  plough: 7,
+  // Le réverbère à gaz cède à l'électricité — le fait historique exact.
+  gaslamp: 7,
+  // Le télégraphe cède à la radio.
+  telegraph: 7,
+  // Le mât de radio cède à l'antenne relais (smartphone, âge 9).
+  radio: 8,
+  // La tente de dispensaire cède à la médecine des laboratoires (âge 10).
+  clinic: 9,
+}
+
+/** Les ouvrages encore debout à cet âge. */
+export function livingBuildings(all: Set<string>, age: number): Set<string> {
+  const out = new Set<string>()
+  for (const b of all) if ((BUILDING_UNTIL[b] ?? 99) >= age) out.add(b)
+  return out
+}
+
 export const DESTINATION_BY_ID = new Map<string, DestinationDef>(
   DESTINATIONS.map((d) => [d.id, d]),
 )

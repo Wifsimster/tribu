@@ -2557,6 +2557,21 @@ export class Village {
   sync(buildings: Set<string>): void {
     let dirty = this.adopted
     this.adopted = false
+    // Ce qui n'est plus de son temps s'efface : un ouvrage remplacé ou tombé
+    // en désuétude ne reste pas planté au milieu du bourg. La parcelle est
+    // rendue au plan, un autre bâtiment pourra la reprendre.
+    for (let i = this.propPlacements.length - 1; i >= 0; i--) {
+      const pl = this.propPlacements[i]!
+      if (buildings.has(pl.id)) continue
+      this.propPlacements.splice(i, 1)
+      this.placed.delete(pl.id)
+      const k = this.taken.findIndex((t) => t.x === pl.x && t.z === pl.z)
+      if (k >= 0) {
+        this.taken.splice(k, 1)
+        this.takenFp.splice(k, 1)
+      }
+      dirty = true
+    }
     for (const b of buildings) {
       if (this.placed.has(b)) continue
       // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
