@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.44.0',
+    title: 'Plus rien ne traverse l’île',
+    items: [
+      "Rues, chemins et voie ferrée balafraient l'île d'un rivage à l'autre, et se croisaient tous au même endroit. Ils sont maintenant à leur juste longueur : seule la rue du ponton va jusqu'à la mer, parce qu'elle y mène. Les deux autres desservent le bourg et s'arrêtent.",
+      "La voie ferrée ne traverse plus : c'est UNE ligne, un heurtoir à chaque bout, la gare au milieu. Le train fait sa navette entre les deux butoirs.",
+      "Et plus rien ne déborde dans la mer : chaque tracé s'arrête à distance du rivage, mesurée tout autour du point — une voie large de deux unités posée sur la dernière cellule finissait au-dessus de l'eau.",
+    ],
+  },
+  {
     version: '3.43.0',
     title: 'Le village s’illumine',
     items: [

@@ -1863,6 +1863,11 @@ export class Village {
           ),
         )
     }
+    for (const end of [pts[0]!, pts[pts.length - 1]!]) {
+      const y = this.island.heightAt(end.x, end.z) + 0.12
+      p.push(part(new BoxGeometry(1.2, 0.36, 0.34), tint(C.woodDark, 3, 0.06), end.x, y + 0.18, end.z))
+      p.push(part(new BoxGeometry(1.26, 0.12, 0.4), new Color('#a8302a'), end.x, y + 0.42, end.z))
+    }
     this.station(p)
     this.buildTrain()
   }
@@ -2325,14 +2330,30 @@ export class Village {
     // romaines, et c'est l'axe que la caméra regarde par défaut.
     const head = this.jettyHead
     const az0 = head ? Math.atan2(head.x - HEARTH.x, head.z - HEARTH.z) : 0.785
-    this.lanes = [az0, az0 + 2.2, az0 - 2.2].map((start) => ({ pts: this.traceLane(start) }))
+    // La rue du ponton court jusqu'au rivage — elle y mène. Les deux autres ne
+    // sont que des rues de bourg : elles desservent les parcelles et
+    // s'arrêtent. Rien n'a besoin de traverser l'île de bord en bord.
+    this.lanes = [
+      { pts: this.traceLane(az0, 20, false, 1.6) },
+      { pts: this.traceLane(az0 + 2.2, 8) },
+      { pts: this.traceLane(az0 - 2.2, 8) },
+    ]
   }
 
   /** Trace une voie depuis le bord de la place : à chaque pas elle choisit,
    *  entre cinq caps, celui qui reste le plus de plain-pied et le plus loin
    *  des sapins. D'où un tracé organique posé sur un seul palier, et non une
    *  étoile géométrique qui escaladerait les terrasses. */
-  private traceLane(start: number, steps = 30, avoidBuilt = false): Vector3[] {
+  private traceLane(start: number, steps = 30, avoidBuilt = false, margin = 2.2): Vector3[] {
+    /** Assez loin du bord ? On sonde autour du point : une voie large de deux
+     *  unités posée sur la dernière cellule débordait dans la mer. */
+    const inland = (x: number, z: number): boolean => {
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2
+        if (!this.island.isLand(x + Math.cos(a) * margin, z + Math.sin(a) * margin)) return false
+      }
+      return true
+    }
     const pts: Vector3[] = []
     let az = start
     let x = HEARTH.x + Math.sin(az) * LANE_R0
@@ -2368,7 +2389,7 @@ export class Village {
       }
       const nx = x + Math.sin(bestAz) * LANE_STEP
       const nz = z + Math.cos(bestAz) * LANE_STEP
-      if (!this.island.isLand(nx, nz)) break
+      if (!inland(nx, nz)) break
       az = bestAz
       x = nx
       z = nz
