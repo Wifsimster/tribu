@@ -1883,6 +1883,7 @@ export class Village {
       }
     }
     this.railStop = this.railCum[best] ?? 0
+    this.stationAt = { x: pts[best]!.x, z: pts[best]!.z }
     // La gare n'est pas un bâtiment du plan : sans réservation, un atelier
     // pouvait se poser sur son quai. Même traitement que le phare.
     this.taken.push(new Vector3(pts[best]!.x, 0, pts[best]!.z))
@@ -3793,6 +3794,81 @@ export class Village {
     this.beaconHalo = s
   }
 
+  /** L'ÉCLAIRAGE PUBLIC. Avec l'électricité, ce n'est pas seulement le foyer
+   *  qui devient lampadaire : c'est TOUT LE VILLAGE qui s'allume. Des
+   *  réverbères jalonnent les rues (fondus dans le mesh des ateliers, zéro
+   *  appel de plus) et chaque bâtiment reçoit sa flaque de lumière. Les
+   *  lueurs, elles, vivent dans un mesh additif dont l'opacité suit la nuit. */
+  private lampGlow: Mesh | null = null
+
+  private streetLights(all: BufferGeometry[]): void {
+    if (this.lampGlow) {
+      this.group.remove(this.lampGlow)
+      this.lampGlow.geometry.dispose()
+      this.lampGlow = null
+    }
+    this.buildLanes()
+    const iron = new Color('#3f454e')
+    const glow: BufferGeometry[] = []
+    const warm = new Color('#ffdba0')
+    const pool = new Color('#e8a94e')
+    const posts: { x: number; y: number; z: number }[] = []
+    for (const lane of this.lanes!) {
+      // Un réverbère tous les cinq pas, alternativement d'un côté et de
+      // l'autre : une rue éclairée n'a pas ses lampes en vis-à-vis.
+      for (let i = 3; i < lane.pts.length; i += 5) {
+        const a = lane.pts[i]!
+        const b = lane.pts[Math.min(i + 1, lane.pts.length - 1)]!
+        const dx = b.x - a.x
+        const dz = b.z - a.z
+        const len = Math.hypot(dx, dz) || 1
+        const side = (i / 5) % 2 === 0 ? 1 : -1
+        const x = a.x + (dz / len) * side * 1.35
+        const z = a.z - (dx / len) * side * 1.35
+        if (!this.island.isLand(x, z)) continue
+        posts.push({ x, y: this.island.heightAt(x, z), z })
+      }
+    }
+    for (const q of posts) {
+      all.push(part(new CylinderGeometry(0.11, 0.15, 0.16, 8), C.stoneDark, q.x, q.y + 0.08, q.z))
+      all.push(part(new CylinderGeometry(0.05, 0.075, 2.9, 7), iron, q.x, q.y + 1.5, q.z))
+      all.push(
+        part(new CylinderGeometry(0.035, 0.035, 0.6, 5).rotateZ(Math.PI / 2), iron, q.x + 0.28, q.y + 2.94, q.z),
+      )
+      all.push(part(new ConeGeometry(0.26, 0.2, 9), iron, q.x + 0.54, q.y + 2.9, q.z))
+      all.push(part(new SphereGeometry(0.11, 7, 5), C.emberFlame, q.x + 0.54, q.y + 2.76, q.z))
+      // La flaque au sol et le halo debout, incliné vers l'œil : c'est le halo
+      // qui fait qu'une lampe ÉCLAIRE au lieu de seulement briller.
+      glow.push(glowDisc(2.4, pool, 0.42, 16).translate(q.x + 0.5, q.y + 0.03, q.z))
+      glow.push(
+        glowDisc(0.8, warm, 0.8, 12)
+          .rotateX(Math.PI / 2 - 0.5)
+          .rotateY(CAMERA_YAW)
+          .translate(q.x + 0.54, q.y + 2.76, q.z),
+      )
+    }
+    // Chaque bâtiment veille aussi : une flaque discrète à son pied, comme
+    // autant de fenêtres allumées.
+    for (const pl of this.propPlacements)
+      glow.push(glowDisc(1.5, pool, 0.3, 12).translate(pl.x, pl.y + 0.04, pl.z))
+    const geo = mergeGeometries(glow)
+    if (!geo) return
+    const mesh = new Mesh(
+      geo,
+      new MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        fog: false,
+        opacity: 0,
+      }),
+    )
+    mesh.renderOrder = 2
+    this.lampGlow = mesh
+    this.group.add(mesh)
+  }
+
   /** L'AUTOMOBILE. Hors de la fusion, parce qu'elle ROULE : elle parcourt la
    *  route du village d'un bout à l'autre, marque un temps d'arrêt au ponton
    *  et au foyer, et repart. C'est la route qui lui donne son sens. */
@@ -3828,6 +3904,18 @@ export class Village {
     this.carHome = { x: pl.x, y: pl.y, z: pl.z }
     this.group.add(pivot)
   }
+
+  /** Où l'on embarque : le quai de la gare, et l'aire de l'aérodrome. Le
+   *  colon s'y rend à pied avant que le véhicule ne parte. */
+  get stationPoint(): { x: number; z: number } | null {
+    return this.stationAt
+  }
+
+  get airfieldPoint(): { x: number; z: number } | null {
+    return this.planeAt ? { x: this.planeAt.x, z: this.planeAt.z } : null
+  }
+
+  private stationAt: { x: number; z: number } | null = null
 
   private car: Group | null = null
   private carHome: { x: number; y: number; z: number } | null = null
@@ -4099,6 +4187,7 @@ export class Village {
       this.propPlacements.map((q) => ({ x: q.x, z: q.z })),
       2.7,
     )
+    if (this.electric) this.streetLights(all)
     const merged = mergeGeometries(all)
     if (!merged) return
     this.propsMesh = new Mesh(merged, this.solid)
@@ -4246,10 +4335,18 @@ export class Village {
     this.group.add(this.museumMesh)
   }
 
-  update(dt: number, t: number): void {
+  update(dt: number, t: number, daylight = 1): void {
     this.tickTrain(dt)
     this.tickPlane(dt)
     this.tickCar(dt)
+    // L'éclairage public s'allume au crépuscule et s'éteint à l'aube — c'est
+    // la part de jour qui commande, pas une minuterie.
+    if (this.lampGlow) {
+      const k = 1 - Math.min(1, Math.max(0, (daylight - 0.08) / 0.42))
+      const m = this.lampGlow.material as MeshBasicMaterial
+      m.opacity = k * (0.92 + Math.sin(t * 2.3) * 0.03)
+      this.lampGlow.visible = k > 0.02
+    }
     if (this.beaconHalo) {
       // Respiration lente : un brasier entretenu par un veilleur, pas un feu
       // de camp. Avant le test d'électricité — le phare vit à tous les âges.

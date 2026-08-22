@@ -130,6 +130,8 @@ export class Settler {
 
   private phase: Phase = 'walkOut'
   private trip: Trip = 'none'
+  /** Le point d'embarquement du voyage en cours : ponton, gare ou aérodrome. */
+  private readonly board = new Vector3()
   private wantSleep = false
   private sleeping = false
   private lieDown = 0
@@ -205,9 +207,13 @@ export class Settler {
 
   /** Départ en expédition : il charge la hotte, marche jusqu'à la plage la plus
    *  proche et quitte l'île. hasPack = techno « cordage » connue. */
-  departExpedition(hasPack: boolean): void {
+  departExpedition(hasPack: boolean, target?: { x: number; z: number }): void {
     this.pack.visible = hasPack
     this.wake()
+    // On ne part pas toujours du ponton : le train se prend à la GARE, l'avion
+    // à l'aérodrome. Le point d'embarquement est retenu pour le retour — on
+    // revient d'où l'on est parti.
+    this.board.set(target?.x ?? this.shore.x, this.shore.y, target?.z ?? this.shore.z)
     this.trip = 'leaving'
   }
 
@@ -252,7 +258,8 @@ export class Settler {
   returnFromExpedition(): void {
     if (this.trip === 'leaving' || this.trip === 'away') {
       this.group.visible = true
-      this.group.position.set(this.shore.x, this.shore.y, this.shore.z)
+      // On réapparaît là où l'on a embarqué.
+      this.group.position.set(this.board.x, this.board.y, this.board.z)
       this.trip = 'returning'
     }
   }
@@ -576,7 +583,7 @@ export class Settler {
    *  et le monde ne le voit plus une fois embarqué. */
   private updateTrip(dt: number, boost: number): void {
     if (this.trip === 'away') return
-    const goal = this.trip === 'leaving' ? this.shore : this.home
+    const goal = this.trip === 'leaving' ? this.board : this.home
     const dx = goal.x - this.group.position.x
     const dz = goal.z - this.group.position.z
     const dist = Math.hypot(dx, dz)

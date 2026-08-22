@@ -312,11 +312,18 @@ game.on((e) => {
       break
     case 'expeditionStart':
       tripKind = DESTINATION_BY_ID.get(game.save.expedition?.dest ?? 'cote')?.mode ?? 'sea'
-      // Par les airs : l'appareil roule et décolle pour de bon.
-      if (tripKind === 'air') village.planeDepart()
       fishing = false
       fauna.setFishing(null)
-      settler.departExpedition(game.knows('cordage'))
+      // Le colon se rend d'abord au point d'embarquement : ponton, gare ou
+      // aérodrome. Le véhicule ne part qu'une fois qu'il y est.
+      settler.departExpedition(
+        game.knows('cordage'),
+        tripKind === 'rail'
+          ? (village.stationPoint ?? undefined)
+          : tripKind === 'air'
+            ? (village.airfieldPoint ?? undefined)
+            : undefined,
+      )
       boat.setTier(game.boatTier)
       expPhase = 'walking'
       hud.toast(
@@ -527,6 +534,7 @@ const ECLIPSE_DUR = 38
 // pas.
 let sleighIn = 7
 let sleighTold = false
+let lastDaylight = 1
 let eclipseLeft = 0
 let wreck: Group | null = null
 let wreckFact = ''
@@ -1478,14 +1486,16 @@ function frame(now: number): void {
   caravan.update(dt, elapsed, game.knows('sail'))
   boat.update(dt, elapsed)
   if (expPhase === 'walking' && settler.isAway) {
+    // Il est arrivé à l'embarquement : le véhicule s'ébranle.
     if (tripKind === 'sea') boat.launchOut(settler.shorePoint)
+    else if (tripKind === 'air') village.planeDepart()
     expPhase = 'sailed'
   }
   if (boat.consumeDocked()) {
     settler.returnFromExpedition()
     expPhase = 'none'
   }
-  village.update(dt, elapsed)
+  village.update(dt, elapsed, lastDaylight)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
   // Les adultes veillent tant que la lumière le permet ; l'enfant est couché
@@ -1528,6 +1538,9 @@ function frame(now: number): void {
   const daylight = stage.setDaylight(
     forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
   )
+  // Retenue pour la frame SUIVANTE : le village s'anime avant que la lumière
+  // du jour ne soit calculée, et l'éclairage public a besoin de la connaître.
+  lastDaylight = daylight
   island.setDaylight(daylight)
   // L'enneigement progresse DANS la saison : l'appel est gardé côté île (il ne
   // repeint qu'aux 2 % de saison écoulée).

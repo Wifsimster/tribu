@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.43.0',
+    title: 'Le village s’illumine',
+    items: [
+      "Avec l'électricité, ce n'est plus seulement le foyer qui devient lampadaire : TOUT LE VILLAGE s'allume. Des réverbères jalonnent les rues, en quinconce comme dans une vraie rue éclairée, chacun avec sa flaque de lumière et son halo — et chaque bâtiment veille à son tour. L'éclairage s'allume au crépuscule et s'éteint à l'aube : c'est la lumière du jour qui commande, pas une minuterie.",
+      "On n'embarque plus toujours au ponton : pour l'arrière-pays, le colon marche jusqu'à la GARE ; pour l'autre bout du monde, jusqu'à l'AÉRODROME. Le véhicule ne s'ébranle qu'une fois qu'il y est — et l'on revient d'où l'on est parti.",
+    ],
+  },
+  {
     version: '3.42.0',
     title: 'L’automobile prend la route',
     items: [
