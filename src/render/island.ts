@@ -325,7 +325,13 @@ export class Island {
         const inland = edge - r
         const hill = fbm(dx * 0.23, dz * 0.23, seed)
         const shore = Math.min(inland / 2.4, 1)
-        const raw = 0.3 + shore * (0.3 + hill * 2.4)
+        // Relief COMPRIMÉ (retour Damien : « l'île devrait être moins
+        // vallonnée pour un meilleur rendu des bâtiments au sol »). L'écart
+        // allait de 0,3 à 3,0 — sept paliers, et un bâtiment sur deux se
+        // retrouvait coincé entre deux terrasses. Il tient maintenant en trois
+        // paliers autour de la hauteur de la place (1,76) : les contre-marches
+        // restent lisibles, le sol redevient constructible.
+        const raw = 0.3 + shore * (0.9 + hill * 1.1)
         const x = wx
         const z = wz
         let height = Math.max(STEP, Math.round(raw / STEP) * STEP)

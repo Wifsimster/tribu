@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.37.0',
+    title: 'Le train traverse l’île',
+    items: [
+      "Le chemin de fer pose enfin une VOIE : ballast, traverses et rails, d'un bord à l'autre de l'île, en travers de la vue. Et une locomotive la parcourt en aller-retour, avec son wagon et son temps d'arrêt à chaque terminus.",
+      "L'île est bien moins vallonnée : son relief tenait en sept paliers, il en tient trois. Les bâtiments se posent à plat au lieu de se caler entre deux terrasses — les contre-marches restent lisibles, le sol redevient constructible.",
+      "Un colon endormi qu'on envoie en expédition SE RÉVEILLE. Il partait jusqu'ici couché sur le flanc : le voyage court-circuitait le sommeil, mais personne ne remettait le colon debout.",
+      "Correctif : une chaussée romaine ou une voie ferrée disparaissait au rechargement suivant. Ces ouvrages n'occupent pas de parcelle, donc le plan sauvegardé ne les restaurait pas.",
+    ],
+  },
+  {
     version: '3.36.0',
     title: 'Vérification de tous les savoirs',
     items: [

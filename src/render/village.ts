@@ -1662,6 +1662,7 @@ export class Village {
       this.island.clearCorridor(pts, li === 0 ? 4.4 : 4.0)
       this.track(p, pts, this.roadKnown && li === 0)
     }
+    if (this.railKnown) this.railway(p)
     // Le PREMIER PLAN : la caméra par défaut regarde depuis l'azimut 0,785, et
     // la pinède de ce côté-là passait devant le bourg. On l'éclaircit de moitié
     // sur un secteur large — pas de coupe franche, la lisière reste.
@@ -1722,6 +1723,142 @@ export class Village {
             ),
           )
     }
+  }
+
+  /** La VOIE FERRÉE : ballast, traverses et deux rails, posés sur la plus
+   *  longue des rues latérales et prolongés d'un bout à l'autre de l'île. Le
+   *  rail ne double pas la chaussée — il prend son propre chemin, comme dans
+   *  toute ville qui a connu les deux. */
+  private railway(p: BufferGeometry[]): void {
+    // La voie ne suit AUCUNE rue : elle prend sa propre corde, perpendiculaire
+    // à l'axe de la caméra, donc traversant le cadre de gauche à droite. Posée
+    // sur une rue latérale, elle filait vers l'arrière de l'île et ne se
+    // voyait pas — un train qu'on ne voit pas passer ne sert à rien.
+    const cross = 0.785 + Math.PI / 2
+    const west = this.traceLane(cross, 34)
+    const east = this.traceLane(cross + Math.PI, 34)
+    const pts = [
+      ...east.slice().reverse(),
+      { x: HEARTH.x, z: HEARTH.z },
+      ...west,
+    ].map((v) => ({ x: v.x, z: v.z }))
+    if (pts.length < 6) return
+    this.island.clearCorridor(pts, 2.4)
+    this.railPath = pts
+    this.railCum = [0]
+    for (let i = 1; i < pts.length; i++)
+      this.railCum.push(
+        this.railCum[i - 1]! + Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.z - pts[i - 1]!.z),
+      )
+    const ballast = tint(C.stoneDark, 5, 0.05)
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!
+      const b = pts[i + 1]!
+      const mx = (a.x + b.x) / 2
+      const mz = (a.z + b.z) / 2
+      const seg = Math.hypot(b.x - a.x, b.z - a.z)
+      if (seg < 0.05) continue
+      const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+      const cy = Math.cos(yaw)
+      const sy = Math.sin(yaw)
+      const y =
+        Math.max(
+          this.island.heightAt(a.x, a.z),
+          this.island.heightAt(mx, mz),
+          this.island.heightAt(b.x, b.z),
+        ) + 0.05
+      p.push(part(new BoxGeometry(1.15, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
+      // Traverses : trois par segment, c'est ce qui fait lire « voie ».
+      for (const t of [-0.3, 0, 0.3])
+        p.push(
+          part(
+            new BoxGeometry(0.92, 0.07, 0.16).rotateY(yaw),
+            tint(C.woodDark, i * 7, 0.08),
+            mx + sy * seg * t,
+            y + 0.07,
+            mz + cy * seg * t,
+          ),
+        )
+      for (const side of [-1, 1])
+        p.push(
+          part(
+            new BoxGeometry(0.08, 0.07, seg).rotateY(yaw),
+            new Color('#8b8f96'),
+            mx + cy * side * 0.3,
+            y + 0.13,
+            mz - sy * side * 0.3,
+          ),
+        )
+    }
+    this.buildTrain()
+  }
+
+  /** La locomotive et son wagon : un seul mesh, monté sur un pivot que la
+   *  boucle d'animation déplace le long de la voie. */
+  private buildTrain(): void {
+    if (this.train) {
+      this.group.remove(this.train)
+      this.train = null
+    }
+    const iron = new Color('#3b4149')
+    const brass = new Color('#b9863a')
+    const p: BufferGeometry[] = []
+    // Chaudière, cabine, cheminée, tampon.
+    p.push(part(new CylinderGeometry(0.3, 0.3, 1.5, 10).rotateX(Math.PI / 2), new Color('#7d2f28'), 0, 0.44, 0.25))
+    p.push(part(new CylinderGeometry(0.33, 0.33, 0.1, 10).rotateX(Math.PI / 2), brass, 0, 0.44, 1.0))
+    p.push(part(new BoxGeometry(0.66, 0.7, 0.62), iron, 0, 0.58, -0.75))
+    p.push(part(new BoxGeometry(0.72, 0.09, 0.68), new Color('#2a2f36'), 0, 0.96, -0.75))
+    p.push(part(new CylinderGeometry(0.13, 0.17, 0.42, 8), iron, 0, 0.82, 0.78))
+    p.push(part(new BoxGeometry(0.8, 0.14, 1.9), iron, 0, 0.2, 0.1))
+    // Roues.
+    for (const s2 of [-1, 1])
+      for (const z2 of [0.62, 0.02, -0.7])
+        p.push(part(new CylinderGeometry(0.19, 0.19, 0.07, 10).rotateZ(Math.PI / 2), new Color('#5a6068'), s2 * 0.36, 0.19, z2))
+    // Le wagon derrière.
+    p.push(part(new BoxGeometry(0.74, 0.5, 1.1), tint(C.woodDark, 4, 0.06), 0, 0.46, -1.85))
+    p.push(part(new BoxGeometry(0.8, 0.1, 1.2), iron, 0, 0.18, -1.85))
+    for (const s2 of [-1, 1])
+      for (const z2 of [-1.45, -2.25])
+        p.push(part(new CylinderGeometry(0.15, 0.15, 0.06, 8).rotateZ(Math.PI / 2), new Color('#5a6068'), s2 * 0.34, 0.16, z2))
+    const geo = mergeGeometries(p)
+    if (!geo) return
+    grain(geo, 0.06)
+    const mesh = new Mesh(geo, this.solid)
+    mesh.castShadow = true
+    const pivot = new Group()
+    pivot.add(mesh)
+    this.train = pivot
+    this.group.add(pivot)
+  }
+
+  /** Le va-et-vient : la locomotive parcourt la voie, marque un temps d'arrêt
+   *  à chaque terminus et repart en sens inverse. */
+  private tickTrain(dt: number): void {
+    const pivot = this.train
+    if (!pivot || this.railCum.length < 2) return
+    const total = this.railCum[this.railCum.length - 1]!
+    if (total < 1) return
+    this.railT += dt * 2.2
+    // Onde triangulaire avec pause aux extrémités : un train s'arrête en gare.
+    const period = total * 2 + 12
+    let u = this.railT % period
+    let d: number
+    if (u < total) d = u
+    else if (u < total + 6) d = total
+    else if (u < total * 2 + 6) d = total - (u - total - 6)
+    else d = 0
+    const fwd = u < total || (u >= total + 6 && u < total * 2 + 6 ? false : u < total)
+    let i = 1
+    while (i < this.railCum.length - 1 && this.railCum[i]! < d) i++
+    const a = this.railPath[i - 1]!
+    const b = this.railPath[i]!
+    const segLen = Math.max(1e-3, this.railCum[i]! - this.railCum[i - 1]!)
+    const t = Math.min(1, Math.max(0, (d - this.railCum[i - 1]!) / segLen))
+    const x = a.x + (b.x - a.x) * t
+    const z = a.z + (b.z - a.z) * t
+    pivot.position.set(x, this.island.heightAt(x, z) + 0.06, z)
+    const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+    pivot.rotation.y = fwd ? yaw : yaw + Math.PI
   }
 
   /** Le phare ne se pose pas au village : il lui faut une pointe face au large,
@@ -2043,42 +2180,48 @@ export class Village {
     // romaines, et c'est l'axe que la caméra regarde par défaut.
     const head = this.jettyHead
     const az0 = head ? Math.atan2(head.x - HEARTH.x, head.z - HEARTH.z) : 0.785
-    this.lanes = [az0, az0 + 2.2, az0 - 2.2].map((start) => {
-      const pts: Vector3[] = []
-      let az = start
-      let x = HEARTH.x + Math.sin(az) * LANE_R0
-      let z = HEARTH.z + Math.cos(az) * LANE_R0
-      let y = this.island.heightAt(x, z)
-      for (let i = 0; i < 30; i++) {
-        let bestAz = az
-        let bestScore = -Infinity
-        for (const d of [-0.3, -0.12, 0, 0.12, 0.3]) {
-          const a = az + d
-          const nx = x + Math.sin(a) * LANE_STEP
-          const nz = z + Math.cos(a) * LANE_STEP
-          if (!this.island.isLand(nx, nz)) continue
-          // Rester de plain-pied prime sur tout le reste ; venir ensuite le
-          // dégagement, puis la ligne droite.
-          const s =
-            -Math.abs(this.island.heightAt(nx, nz) - y) * 8 +
-            Math.min(this.treeDist(nx, nz), 3) * 0.2 -
-            Math.abs(d) * 0.6
-          if (s > bestScore) {
-            bestScore = s
-            bestAz = a
-          }
+    this.lanes = [az0, az0 + 2.2, az0 - 2.2].map((start) => ({ pts: this.traceLane(start) }))
+  }
+
+  /** Trace une voie depuis le bord de la place : à chaque pas elle choisit,
+   *  entre cinq caps, celui qui reste le plus de plain-pied et le plus loin
+   *  des sapins. D'où un tracé organique posé sur un seul palier, et non une
+   *  étoile géométrique qui escaladerait les terrasses. */
+  private traceLane(start: number, steps = 30): Vector3[] {
+    const pts: Vector3[] = []
+    let az = start
+    let x = HEARTH.x + Math.sin(az) * LANE_R0
+    let z = HEARTH.z + Math.cos(az) * LANE_R0
+    let y = this.island.heightAt(x, z)
+    for (let i = 0; i < steps; i++) {
+      let bestAz = az
+      let bestScore = -Infinity
+      for (const d of [-0.3, -0.12, 0, 0.12, 0.3]) {
+        const a = az + d
+        const nx = x + Math.sin(a) * LANE_STEP
+        const nz = z + Math.cos(a) * LANE_STEP
+        if (!this.island.isLand(nx, nz)) continue
+        // Rester de plain-pied prime sur tout le reste ; venir ensuite le
+        // dégagement, puis la ligne droite.
+        const sc =
+          -Math.abs(this.island.heightAt(nx, nz) - y) * 8 +
+          Math.min(this.treeDist(nx, nz), 3) * 0.2 -
+          Math.abs(d) * 0.6
+        if (sc > bestScore) {
+          bestScore = sc
+          bestAz = a
         }
-        const nx = x + Math.sin(bestAz) * LANE_STEP
-        const nz = z + Math.cos(bestAz) * LANE_STEP
-        if (!this.island.isLand(nx, nz)) break
-        az = bestAz
-        x = nx
-        z = nz
-        y = this.island.heightAt(x, z)
-        pts.push(new Vector3(x, y, z))
       }
-      return { pts }
-    })
+      const nx = x + Math.sin(bestAz) * LANE_STEP
+      const nz = z + Math.cos(bestAz) * LANE_STEP
+      if (!this.island.isLand(nx, nz)) break
+      az = bestAz
+      x = nx
+      z = nz
+      y = this.island.heightAt(x, z)
+      pts.push(new Vector3(x, y, z))
+    }
+    return pts
   }
 
   /** Orientation de la dernière parcelle rendue : la façade regarde la rue.
@@ -2209,7 +2352,12 @@ export class Village {
       this.placed.add(s.id)
       this.taken.push(new Vector3(s.x, y, s.z))
       this.takenFp.push(Village.FOOTPRINT[s.id] ?? 0.5)
+      // Les ouvrages LINÉAIRES ne sont pas dans le plan (ils n'occupent pas de
+      // parcelle) : leur drapeau doit être restauré ici, sinon un village
+      // rechargé perdait sa chaussée ou sa voie ferrée — le bâtiment étant
+      // déjà « placé », la branche qui les pose ne s'exécutait plus.
       if (s.id === 'milestone') this.roadKnown = true
+      if (s.id === 'railway') this.railKnown = true
       this.adopted = true
     }
     this.buildShore()
@@ -2252,6 +2400,12 @@ export class Village {
         this.roadKnown = true
         this.buildShore()
       }
+      // Le dépôt ne fait pas le chemin de fer : ce que le savoir pose vraiment,
+      // c'est la VOIE qui traverse l'île, et le train qui la parcourt.
+      if (b === 'railway' && !this.railKnown) {
+        this.railKnown = true
+        this.buildShore()
+      }
     }
     // Une seule refonte du mesh par lot : au chargement d'une partie avancée,
     // reconstruire après chaque savoir rendait le coût quadratique.
@@ -2274,6 +2428,15 @@ export class Village {
   private shoreMesh: Mesh | null = null
   private jettyHead: { x: number; z: number } | null = null
   private roadKnown = false
+  /** Le chemin de fer : une VOIE qui traverse l'île, et une locomotive qui la
+   *  parcourt en aller-retour. Posée sur la rue la plus longue après la
+   *  chaussée principale — un rail ne double pas une route, il en prend une
+   *  autre. */
+  private railKnown = false
+  private railPath: { x: number; z: number }[] = []
+  private railCum: number[] = []
+  private train: Group | null = null
+  private railT = 0
   /** La lueur du phare, hors fusion : elle est additive et doit respirer. */
   private beaconHalo: Sprite | null = null
 
@@ -3729,7 +3892,8 @@ export class Village {
     this.group.add(this.museumMesh)
   }
 
-  update(_dt: number, t: number): void {
+  update(dt: number, t: number): void {
+    this.tickTrain(dt)
     if (this.beaconHalo) {
       // Respiration lente : un brasier entretenu par un veilleur, pas un feu
       // de camp. Avant le test d'électricité — le phare vit à tous les âges.

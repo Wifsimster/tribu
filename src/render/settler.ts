@@ -207,7 +207,28 @@ export class Settler {
    *  proche et quitte l'île. hasPack = techno « cordage » connue. */
   departExpedition(hasPack: boolean): void {
     this.pack.visible = hasPack
+    this.wake()
     this.trip = 'leaving'
+  }
+
+  /** Réveil net. `update` court-circuite le sommeil dès qu'un voyage commence,
+   *  mais personne ne remettait le squelette DEBOUT : un colon endormi envoyé
+   *  en expédition marchait jusqu'à la barque couché sur le flanc. On remet
+   *  donc la pose de repos à zéro au moment où on le tire du lit. */
+  wake(): void {
+    this.wantSleep = false
+    this.sleeping = false
+    this.lieDown = 0
+    this.rig.rotation.z = 0
+    this.rig.position.y = 0
+    this.rig.scale.setScalar(1.32)
+    this.legL.rotation.x = 0
+    this.legR.rotation.x = 0
+    this.armL.rotation.set(0, 0, 0.12)
+    this.armR.rotation.set(0, 0, -0.07)
+    this.body.rotation.set(0, 0, 0)
+    this.head.rotation.set(0, 0, 0)
+    this.phase = 'walkOut'
   }
 
   /** La nuit sans lampe, la tribu dort : le colon rentre se coucher près du feu.
