@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.30.0',
+    title: 'Le premier plan s’ouvre',
+    items: [
+      "La pinède du côté caméra est éclaircie de moitié : elle passait devant le bourg. Ce n'est pas une coupe franche — un arbre sur deux tombe, la lisière reste.",
+      "Le phare baisse d'un cran : il domine toujours la pinède, sans écraser le village qu'il surplombe.",
+    ],
+  },
+  {
     version: '3.29.0',
     title: 'Un vrai plan de village',
     items: [

@@ -1680,6 +1680,36 @@ export class Island {
     trunks.instanceMatrix.needsUpdate = true
   }
 
+  /** ÉCLAIRCIR un secteur : on abat une part des arbres d'un quartier au lieu
+   *  de le raser. C'est le côté caméra qui en a besoin — la pinède du premier
+   *  plan masquait le bourg — et une coupe franche y ferait une calvitie :
+   *  l'écrémage garde une lisière, il l'aère. La sélection est un hachage de
+   *  la position, donc stable d'un chargement à l'autre. */
+  thinWedge(azimuth: number, halfAngle: number, fraction: number, rMin: number): void {
+    const leaves = this.leavesMesh
+    if (!leaves) return
+    const ax = Math.sin(azimuth)
+    const az = Math.cos(azimuth)
+    const cosMax = Math.cos(halfAngle)
+    const m = new Matrix4()
+    const p = new Vector3()
+    const q = new Quaternion()
+    const sc = new Vector3()
+    const doomed: { x: number; z: number }[] = []
+    for (let i = 0; i < leaves.count; i++) {
+      if (this.felledTrees.has(i)) continue
+      leaves.getMatrixAt(i, m)
+      m.decompose(p, q, sc)
+      const r = Math.hypot(p.x, p.z)
+      if (r < rMin) continue
+      if ((p.x * ax + p.z * az) / (r + 1e-6) < cosMax) continue
+      const h = Math.sin(p.x * 12.9898 + p.z * 78.233) * 43758.5453
+      if (h - Math.floor(h) > fraction) continue
+      doomed.push({ x: p.x, z: p.z })
+    }
+    if (doomed.length > 0) this.clearCorridor(doomed, 0.4)
+  }
+
   /** Un arbre abattu n'est plus un nœud de bois : main.ts l'écarte du relevé. */
   isFelled(mesh: InstancedMesh, index: number): boolean {
     return mesh === this.leavesMesh && this.felledTrees.has(index)

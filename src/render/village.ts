@@ -1660,6 +1660,10 @@ export class Village {
       this.island.clearCorridor(pts, li === 0 ? 4.4 : 4.0)
       this.track(p, pts, this.roadKnown && li === 0)
     }
+    // Le PREMIER PLAN : la caméra par défaut regarde depuis l'azimut 0,785, et
+    // la pinède de ce côté-là passait devant le bourg. On l'éclaircit de moitié
+    // sur un secteur large — pas de coupe franche, la lisière reste.
+    this.island.thinWedge(0.785, 0.75, 0.55, 5)
   }
 
   /** Une voie posée à même le relief : dallée quand la tribu sait paver, en
@@ -2237,8 +2241,8 @@ export class Village {
   private propsMesh: Mesh | null = null
   /** Le phare est joué à part : c'est un amer, pas un atelier. Il doit passer
    *  au-dessus de la pinède (sapins ≈ 9,6 u) pour être vu du large. */
-  private static readonly BEACON_K = 1.9
-  private static readonly BEACON_HALO = 6.5
+  private static readonly BEACON_K = 1.55
+  private static readonly BEACON_HALO = 5.4
   /** Le rivage : ponton et chaussée, un mesh à part dans le repère de l'île. */
   private shoreMesh: Mesh | null = null
   private jettyHead: { x: number; z: number } | null = null
