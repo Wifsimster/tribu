@@ -212,7 +212,7 @@ export function growthForAge(age: number): number {
     1 +
     Math.min(age, 3) * 0.11 +
     Math.max(0, Math.min(age, 5) - 3) * 0.07 +
-    Math.max(0, Math.min(age, 9) - 5) * 0.03
+    Math.max(0, Math.min(age, 10) - 5) * 0.03
   )
 }
 

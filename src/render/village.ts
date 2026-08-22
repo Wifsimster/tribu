@@ -2186,6 +2186,7 @@ export class Village {
    *  aqueduc ×1.7, moulins ×2.5/×5.5, campanile ×4.5, garage ×2, antenne). */
   private static readonly FOOTPRINT: Record<string, number> = {
     hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2, forge: 1.3, lighthouse: 2.6,
+    datacenter: 1.4, battery: 1.4, desal: 1.3, genlab: 1.3, capture: 1.2, quantum: 1.1,
     railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
     clock: 0.8, windmill: 1.7, watermill: 1.2, garage: 1.0, phone: 0.6,
   }
@@ -2656,6 +2657,131 @@ export class Village {
         p.push(part(new CylinderGeometry(0.015, 0.015, 0.7, 4).rotateZ(1.2), C.stoneDark, 0.3, 0.22, 0.1))
         p.push(part(new SphereGeometry(0.11, 8, 6).scale(1, 1.25, 1), blown, 0.45, 0.13, -0.15))
         p.push(part(new SphereGeometry(0.085, 8, 6), blown, 0.62, 0.09, 0.08))
+        return p
+      }
+      case 'datacenter': {
+        // Centre de données : ce n'est pas un bureau, c'est une HALLE avec ses
+        // groupes froids sur le toit — le refroidissement est le vrai sujet.
+        p.push(part(new BoxGeometry(2.4, 0.16, 1.7), C.stoneDark, 0, 0.08, 0))
+        p.push(part(new BoxGeometry(2.2, 1.0, 1.5), C.stoneLight, 0, 0.66, 0))
+        p.push(part(new BoxGeometry(2.24, 0.1, 1.54), C.stone, 0, 1.2, 0))
+        // Bandeau de LED : la salle veille jour et nuit.
+        for (let i = 0; i < 5; i++)
+          p.push(part(new BoxGeometry(0.22, 0.1, 0.04), C.emberCore, -0.88 + i * 0.44, 0.86, 0.76))
+        // Quatre groupes froids et leurs gaines.
+        for (const gx of [-0.62, 0.62])
+          for (const gz of [-0.4, 0.4]) {
+            p.push(part(new BoxGeometry(0.5, 0.26, 0.5), iron, gx, 1.36, gz))
+            p.push(part(new CylinderGeometry(0.17, 0.17, 0.06, 10), C.stoneLight, gx, 1.52, gz))
+          }
+        p.push(part(new CylinderGeometry(0.1, 0.13, 0.9, 6), C.stoneDark, 1.24, 1.6, -0.62))
+        return p
+      }
+      case 'battery': {
+        // Stockage réseau : des conteneurs alignés, un transformateur, des
+        // câbles. C'est la forme réelle d'une batterie de réseau.
+        p.push(part(new BoxGeometry(2.5, 0.14, 1.5), C.stoneDark, 0, 0.07, 0))
+        for (let i = 0; i < 3; i++) {
+          const bz = -0.44 + i * 0.44
+          p.push(part(new BoxGeometry(2.0, 0.52, 0.34), tint(new Color('#3f6f8f'), i * 9, 0.06), 0, 0.4, bz))
+          p.push(part(new BoxGeometry(2.04, 0.06, 0.36), C.stoneLight, 0, 0.68, bz))
+          p.push(part(new BoxGeometry(0.16, 0.1, 0.05), C.emberCore, 0.86, 0.44, bz + 0.19))
+        }
+        p.push(part(new BoxGeometry(0.5, 0.7, 0.5), iron, -1.45, 0.49, 0))
+        for (const s2 of [-1, 1])
+          p.push(part(new CylinderGeometry(0.03, 0.03, 0.7, 4).rotateZ(1.2), C.char, -1.15, 0.8, s2 * 0.18))
+        return p
+      }
+      case 'desal': {
+        // Usine de dessalement : les longs tubes d'osmose inverse, la prise
+        // d'eau, et le bassin de rejet — la saumure fait partie de l'ouvrage.
+        p.push(part(new BoxGeometry(2.3, 0.16, 1.5), C.stoneLight, 0, 0.08, 0))
+        for (let i = 0; i < 4; i++)
+          p.push(
+            part(
+              new CylinderGeometry(0.19, 0.19, 2.0, 10).rotateZ(Math.PI / 2),
+              i % 2 === 0 ? C.stone : C.stoneDark,
+              0,
+              0.36 + Math.floor(i / 2) * 0.4,
+              -0.22 + (i % 2) * 0.44,
+            ),
+          )
+        p.push(part(new BoxGeometry(0.44, 0.9, 0.44), C.plaster, -1.3, 0.55, 0))
+        p.push(part(new CylinderGeometry(0.5, 0.55, 0.3, 10), C.stoneDark, 1.35, 0.15, 0))
+        p.push(part(new CylinderGeometry(0.44, 0.44, 0.05, 10), C.water, 1.35, 0.29, 0))
+        return p
+      }
+      case 'genlab': {
+        // Laboratoire : serres vitrées et paillasse — l'édition du génome se
+        // voit au champ, pas dans une éprouvette.
+        p.push(part(new BoxGeometry(2.2, 0.16, 1.6), C.stoneLight, 0, 0.08, 0))
+        p.push(part(new BoxGeometry(1.3, 0.8, 1.4), C.plaster, -0.42, 0.56, 0))
+        p.push(part(new BoxGeometry(1.34, 0.1, 1.44), C.stoneDark, -0.42, 1.0, 0))
+        for (const wz of [-0.4, 0.4]) p.push(part(new BoxGeometry(0.26, 0.3, 0.05), C.glass, -0.42, 0.66, wz + 0.7 - 0.7))
+        // La serre : arceaux et vitrage.
+        for (let i = 0; i < 4; i++)
+          p.push(
+            part(
+              new CylinderGeometry(0.035, 0.035, 1.2, 5).rotateZ(Math.PI / 2),
+              C.stoneLight,
+              0.75,
+              0.62,
+              -0.45 + i * 0.3,
+            ),
+          )
+        p.push(part(new BoxGeometry(0.9, 0.5, 1.2), new Color(0.72, 1.05, 1.12), 0.75, 0.36, 0))
+        for (let i = 0; i < 3; i++)
+          p.push(part(new BoxGeometry(0.1, 0.22, 0.1), C.wheat, 0.5 + i * 0.24, 0.24, -0.2 + (i % 2) * 0.3))
+        return p
+      }
+      case 'capture': {
+        // Captage direct dans l'air : des batteries de ventilateurs debout,
+        // et la conduite qui descend le CO₂ sous terre.
+        p.push(part(new BoxGeometry(2.2, 0.16, 1.4), C.stoneDark, 0, 0.08, 0))
+        for (let i = 0; i < 3; i++) {
+          const bx = -0.72 + i * 0.72
+          p.push(part(new BoxGeometry(0.62, 1.1, 0.6), tint(C.stone, i * 11, 0.06), bx, 0.7, 0))
+          p.push(part(new CylinderGeometry(0.23, 0.23, 0.08, 12).rotateX(Math.PI / 2), C.char, bx, 0.85, 0.32))
+          for (let b = 0; b < 4; b++)
+            p.push(
+              part(
+                new BoxGeometry(0.4, 0.07, 0.03).rotateZ((b * Math.PI) / 4),
+                C.stoneLight,
+                bx,
+                0.85,
+                0.35,
+              ),
+            )
+        }
+        p.push(part(new CylinderGeometry(0.14, 0.14, 1.1, 8), iron, 1.15, 0.55, -0.42))
+        p.push(part(new CylinderGeometry(0.2, 0.24, 0.2, 8), C.stoneDark, 1.15, 0.1, -0.42))
+        return p
+      }
+      case 'quantum': {
+        // Le lustre : un cryostat suspendu, ses étages de cuivre de plus en
+        // plus froids en descendant. C'est la silhouette même de la machine.
+        p.push(part(new CylinderGeometry(0.95, 1.05, 0.14, 12), C.stoneLight, 0, 0.07, 0))
+        p.push(part(new CylinderGeometry(0.86, 0.86, 0.1, 12), C.stoneDark, 0, 1.86, 0))
+        for (const s2 of [-1, 1])
+          for (const s3 of [-1, 1])
+            p.push(part(new CylinderGeometry(0.05, 0.05, 1.8, 6), iron, s2 * 0.62, 0.96, s3 * 0.62))
+        // Cinq plateaux de cuivre, du plus large au plus étroit.
+        for (let i = 0; i < 5; i++) {
+          const r = 0.74 - i * 0.12
+          p.push(part(new CylinderGeometry(r, r, 0.07, 12), copper, 0, 1.62 - i * 0.28, 0))
+          if (i < 4)
+            for (const a of [0.4, 2.5, 4.6])
+              p.push(
+                part(
+                  new CylinderGeometry(0.018, 0.018, 0.28, 4),
+                  C.char,
+                  Math.sin(a) * (r - 0.1),
+                  1.48 - i * 0.28,
+                  Math.cos(a) * (r - 0.1),
+                ),
+              )
+        }
+        p.push(part(new CylinderGeometry(0.13, 0.1, 0.2, 10), C.glass, 0, 0.42, 0))
         return p
       }
       case 'milestone': {

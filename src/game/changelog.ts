@@ -10,6 +10,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.35.0',
+    title: 'Une onzième époque : l’ère des limites',
+    items: [
+      "Le jeu ne s'arrête plus à nos jours. Une onzième époque s'ouvre — « Ère des limites », aujourd'hui à demain — avec six savoirs : l'intelligence artificielle, le stockage du réseau, le dessalement, l'édition du génome, le captage du carbone et l'ordinateur quantique.",
+      "Aucun n'est inventé : tous existent déjà, en prototype, en première usine ou en première autorisation. Ce qui reste hypothétique, c'est leur passage à l'échelle — et c'est le sujet même de l'époque. Les faits le disent sans farder : les usines de captage retirent quelques milliers de tonnes de CO₂ quand nous en émettons quarante milliards.",
+      "Six bâtiments nouveaux sur l'île : la halle de données et ses groupes froids, les conteneurs de batteries, les tubes d'osmose inverse, la serre du laboratoire, les ventilateurs de captage et le lustre du cryostat quantique.",
+      "Et sa Merveille : le réacteur à fusion — ITER, trente-cinq pays, un plasma à dix fois la température du cœur du Soleil.",
+      "Si tu avais déjà terminé la dixième époque, ton 5/5 ouvre la suite au prochain chargement.",
+    ],
+  },
+  {
     version: '3.34.0',
     title: 'La Merveille ne boit plus tout',
     items: [

@@ -246,7 +246,7 @@ game.on((e) => {
       ambience.chime()
       hud.showFact(e.tech)
       if (game.treeComplete)
-        hud.toast("Les 51 savoirs sont réunis — l'Exode attend dans le menu")
+        hud.toast(`Les ${TECHS.length} savoirs sont réunis — l'Exode attend dans le menu`)
       // L'électricité transforme le cœur du village (lampadaire à la place du
       // feu) : on reconstruit le monde comme à un passage d'âge.
       if (e.tech.id === 'electricity') buildWorld()
@@ -1291,7 +1291,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
       if (confirmStep === 1) {
         confirmStep = 2
         warn.textContent =
-          "Dernière confirmation : l'île actuelle et ses 51 savoirs restent derrière. Le musée et la constellation voyagent avec la tribu."
+          `Dernière confirmation : l'île actuelle et ses ${TECHS.length} savoirs restent derrière. Le musée et la constellation voyagent avec la tribu.`
         eraseLabel.textContent = 'Larguer les amarres'
         return
       }

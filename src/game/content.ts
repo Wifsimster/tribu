@@ -134,6 +134,21 @@ export const AGES: AgeDef[] = [
     fog: 0xdfe9ee,
     ground: 0xafc178,
   },
+  // La seule époque que l'Histoire n'a pas encore écrite. Elle n'est pas
+  // inventée pour autant : chacun de ses savoirs existe déjà, à l'état de
+  // prototype, de première usine ou de première autorisation. Ce qui reste
+  // hypothétique, c'est le passage à l'échelle — et c'est le sujet même de
+  // l'époque : plus « peut-on le faire ? », mais « à quelle échelle, à quel
+  // coût, et à temps ? ».
+  {
+    id: 10,
+    name: 'Ère des limites',
+    period: "aujourd'hui à demain",
+    techsToAdvance: 6,
+    sky: 0xc6dbe6,
+    fog: 0xdce8ea,
+    ground: 0xb4c47c,
+  },
 ]
 
 /** LE TEMPS DES CADEAUX. Sur l'horloge du joueur, pas sur celle du jeu : du
@@ -1023,8 +1038,109 @@ export const TECHS: TechDef[] = [
       { kind: 'insightRate', add: 100 },
     ],
   },
-]
 
+  // ── Ère des limites ──────────────────────────────────────────────────────
+  // Aucun de ces savoirs n'est inventé : tous existent en 2026, à l'état de
+  // prototype, de première usine ou de première autorisation. Ce qui reste
+  // hypothétique, c'est leur passage à l'échelle — et c'est le sujet même de
+  // l'époque : non plus « peut-on le faire ? », mais « à quelle échelle, et
+  // à quel coût ? ».
+  {
+    id: 'ai',
+    name: 'Intelligence artificielle',
+    age: 10,
+    cost: 2000000,
+    materials: { copper: 3000, iron: 1500, fiber: 1000 },
+    requires: ['smartphone'],
+    fact: "L'architecture Transformer, publiée en 2017 dans un article de huit pages intitulé « Attention Is All You Need », est le socle commun de presque tous les grands modèles de langage d'aujourd'hui.",
+    funFact:
+      "Le coût dominant d'un grand modèle n'est plus le calcul : c'est l'électricité et le refroidissement. C'est pourquoi les nouveaux centres de données se construisent désormais à côté des barrages, des parcs éoliens et des centrales — l'informatique redevient une industrie lourde.",
+    effects: [
+      { kind: 'building', building: 'datacenter' },
+      { kind: 'insightRate', add: 220 },
+      { kind: 'gatherRate', resource: 'insight', mult: 1 },
+    ],
+  },
+  {
+    id: 'storage',
+    name: 'Stockage du réseau',
+    age: 10,
+    cost: 2600000,
+    materials: { copper: 4000, iron: 2500 },
+    requires: ['ai'],
+    fact: "Le prix d'un kilowattheure de batterie au lithium a chuté d'environ 90 % entre 2010 et 2023. C'est cette courbe, plus qu'aucune décision politique, qui rend le solaire et l'éolien pilotables.",
+    funFact:
+      "Une batterie de réseau ne sert pas qu'à stocker : elle répond en millisecondes là où une turbine met des minutes. La première grande installation australienne a fait chuter de plus de moitié le coût des services qui tiennent la fréquence du réseau.",
+    effects: [
+      { kind: 'building', building: 'battery' },
+      { kind: 'gatherRate', resource: 'iron', mult: 2.2 },
+      { kind: 'gatherRate', resource: 'copper', mult: 2.2 },
+    ],
+  },
+  {
+    id: 'desal',
+    name: 'Dessalement',
+    age: 10,
+    cost: 3400000,
+    materials: { iron: 3000, stone: 6000 },
+    requires: ['storage'],
+    fact: "Israël tire environ 85 % de son eau domestique de la mer. L'osmose inverse est passée d'une dizaine de kilowattheures par mètre cube à près de trois : ce n'est pas la technique qui la limitait, c'est l'énergie.",
+    funFact:
+      "Le vrai problème du dessalement n'est pas de produire l'eau : c'est la saumure, deux fois plus salée que la mer, qu'il faut rendre à l'océan sans asphyxier les fonds. Une usine se juge sur son rejet autant que sur son débit.",
+    effects: [
+      { kind: 'building', building: 'desal' },
+      { kind: 'gatherRate', resource: 'food', mult: 2.4 },
+    ],
+  },
+  {
+    id: 'crispr',
+    name: 'Édition du génome',
+    age: 10,
+    cost: 4200000,
+    materials: { fiber: 3000, copper: 2000 },
+    requires: ['storage'],
+    fact: "CRISPR-Cas9, publié en 2012, vaut à Emmanuelle Charpentier et Jennifer Doudna le prix Nobel de chimie 2020. En 2023, la première thérapie qui l'emploie est autorisée : elle corrige la drépanocytose.",
+    funFact:
+      "CRISPR n'a pas été inventé, il a été TROUVÉ : c'est le système immunitaire des bactéries, qui conservent dans leur ADN des fragments des virus rencontrés. Nous avons emprunté une mémoire d'infection vieille de milliards d'années.",
+    effects: [
+      { kind: 'building', building: 'genlab' },
+      { kind: 'gatherRate', resource: 'food', mult: 2.2 },
+      { kind: 'insightRate', add: 300 },
+    ],
+  },
+  {
+    id: 'carbon',
+    name: 'Captage du carbone',
+    age: 10,
+    cost: 5600000,
+    materials: { iron: 6000, stone: 9000, copper: 3000 },
+    requires: ['desal'],
+    fact: "Les premières usines de captage direct dans l'air tournent en Islande, alimentées par la géothermie. Elles retirent quelques milliers de tonnes de CO₂ par an — quand l'humanité en émet près de quarante milliards.",
+    funFact:
+      "L'ordre de grandeur EST le sujet : compenser une seule année d'émissions demanderait des millions d'usines comme celles-là. Le captage ne remplace pas la baisse des émissions, il ne peut qu'en finir le dernier dixième.",
+    effects: [
+      { kind: 'building', building: 'capture' },
+      { kind: 'gatherRate', resource: 'stone', mult: 2.4 },
+      { kind: 'insightRate', add: 380 },
+    ],
+  },
+  {
+    id: 'quantum',
+    name: 'Ordinateur quantique',
+    age: 10,
+    cost: 7400000,
+    materials: { copper: 8000, iron: 5000, fiber: 4000 },
+    requires: ['crispr', 'carbon'],
+    fact: "Un qubit ne tient sa superposition que quelques centaines de microsecondes. L'essentiel de la recherche ne porte donc pas sur le calcul mais sur la CORRECTION d'erreurs : il faut aujourd'hui des milliers de qubits physiques pour un seul qubit logique fiable.",
+    funFact:
+      "La menace est déjà prise au sérieux : « récolter maintenant, déchiffrer plus tard ». Des messages chiffrés aujourd'hui sont archivés dans l'attente d'une machine capable de les ouvrir — d'où la migration en cours de tout l'Internet vers une cryptographie post-quantique.",
+    effects: [
+      { kind: 'building', building: 'quantum' },
+      { kind: 'insightRate', add: 600 },
+      { kind: 'carry', add: 400 },
+    ],
+  },
+]
 export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]))
 
 // ── Expéditions : destinations et reliques ───────────────────────────────────
@@ -1158,6 +1274,7 @@ export const WONDERS: WonderDef[] = [
   { age: 7, id: 'tour', name: 'La tour de fer', cost: { iron: 60000, stone: 25000, wood: 10000 }, fact: "La tour Eiffel (1889) assemble 18 038 pièces de fer puddlé par 2,5 millions de rivets, posés à quatre ouvriers par rivet. Montée en deux ans, deux mois et cinq jours." },
   { age: 8, id: 'gratteciel', name: 'Le gratte-ciel', cost: { iron: 120000, stone: 50000, copper: 25000 }, fact: "L'Empire State Building (1931) monta de 102 étages en 410 jours — jusqu'à quatre étages et demi par semaine, en pleine Grande Dépression." },
   { age: 9, id: 'fusee', name: 'La fusée', cost: { iron: 250000, copper: 100000, fiber: 60000 }, fact: 'Saturn V (1967) reste la machine la plus puissante jamais construite : 3 000 tonnes au décollage, dont 91 % de carburant — pour envoyer 45 tonnes vers la Lune.' },
+  { age: 10, id: 'fusion', name: 'Le réacteur à fusion', cost: { iron: 900000, copper: 400000, stone: 300000 }, fact: "ITER, en construction à Cadarache, est la plus grande collaboration scientifique jamais montée : trente-cinq pays, un aimant capable de soulever un porte-avions, un plasma à 150 millions de degrés — dix fois le cœur du Soleil. En décembre 2022, une expérience américaine a pour la première fois libéré plus d'énergie que le laser n'en avait déposé sur la cible : un gain sur la cible, pas encore sur la prise de courant." },
 ]
 
 export const WONDER_BY_AGE = new Map(WONDERS.map((w) => [w.age, w]))
@@ -1169,7 +1286,7 @@ export const FEATS: FeatDef[] = [
   { id: 'etincelle', name: "L'étincelle", desc: 'Faire une première découverte.' },
   { id: 'bronze', name: "L'âge des métaux", desc: "Atteindre l'âge du bronze." },
   { id: 'michemin', name: 'À mi-chemin', desc: 'Connaître 26 savoirs.' },
-  { id: 'sage', name: 'La tribu sage', desc: 'Réunir les 51 savoirs.' },
+  { id: 'sage', name: 'La tribu sage', desc: 'Réunir tous les savoirs.' },
   { id: 'relique', name: 'Première vitrine', desc: 'Rapporter une relique.' },
   { id: 'musee', name: 'Le musée plein', desc: 'Exposer les 14 reliques.' },
   { id: 'merveille', name: 'Bâtisseurs', desc: 'Achever une Merveille.' },
