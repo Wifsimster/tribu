@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.32.0',
+    title: 'Le saviez-vous ?',
+    items: [
+      "Chaque découverte porte maintenant DEUX faits : le fait historique, et un « Le saviez-vous ? » plus inattendu. Cinquante et une anecdotes de plus — du fil néandertalien de 50 000 ans au premier mot d'Internet, qui fut « LO » parce que la machine a planté après deux lettres.",
+      "Tous les savoirs ne posent plus un objet sur l'île. Quatorze babioles au sol — le tas de bois, le râtelier d'épieux, les jarres, la borne… — cèdent la place : le village ne garde que ce qui se lit vraiment de loin, et ces bâtiments-là pourront être détaillés davantage.",
+      "Ton village a un NOM, visible en haut du menu et modifiable d'un tap. Le nommer ne te publie pas dans le voisinage — mais si tu y es, les autres voient le même nom.",
+    ],
+  },
+  {
     version: '3.31.0',
     title: 'Les enfants au lit',
     items: [

@@ -131,6 +131,10 @@
       <h3 id="fact-title">Maîtrise du feu</h3>
       <div class="rule"></div>
       <p id="fact-text"></p>
+      <div class="fact-aside" id="fact-aside" hidden>
+        <span class="fact-aside-kicker">Le saviez-vous&nbsp;?</span>
+        <p id="fact-fun"></p>
+      </div>
       <button class="btn primary wide" id="fact-close" type="button">
         <span class="label">Continuer</span>
       </button>
@@ -158,6 +162,18 @@
       <div class="menu-card">
         <h1 class="menu-title" id="menu-title">Tribu</h1>
         <p class="menu-tag">Un colon. Un feu. 300 000 ans à traverser.</p>
+
+        <!-- Le nom du village : visible d'emblée, modifiable d'un tap. -->
+        <button class="village-name" id="village-name" type="button">
+          <span class="village-label" id="village-label">Nommer le village</span>
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+            <path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="village-edit" id="village-edit" hidden>
+          <input id="village-input" type="text" maxlength="24" placeholder="Nom du village" />
+          <button class="btn ghost" id="village-save" type="button"><span class="label">Nommer</span></button>
+        </div>
 
         <div class="menu-actions" id="menu-home">
           <button class="btn primary" id="menu-continue" type="button">

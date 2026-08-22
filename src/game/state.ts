@@ -57,6 +57,11 @@ export interface SaveV1 {
    *  un plan tracé selon les anciennes ne peut pas être conservé — le village
    *  serait un semis au milieu d'un réseau de rues. Il est retracé une fois. */
   layoutV: number
+  /** Le nom du village. Indépendant de l'identité de voisinage : nommer son
+   *  village ne doit pas publier la tribu sur le serveur (paraître est
+   *  opt-in, regarder ne l'est pas). Quand la tribu EST publiée, les deux
+   *  noms sont tenus égaux. */
+  village: string
   /** La Chronique : chaque ligne de l'histoire de CETTE tribu — monde (w),
    *  jour (d), genre (k) et texte (x). Survit aux Exodes. */
   chronicle: { w: number; d: number; k: string; x: string }[]
@@ -100,6 +105,7 @@ export function emptySave(now: number): SaveV1 {
     wonders: [],
     layout: [],
     layoutV: 2,
+    village: '',
     legacy: 0,
     tribe: null,
   }

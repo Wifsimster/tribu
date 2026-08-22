@@ -1183,6 +1183,66 @@ body.night .age-bar {
 }
 .daydial:active { transform: scale(0.94); }
 
+/* Le cartouche « Le saviez-vous ? » de la fiche de savoir : un encart en
+   retrait, assez distinct pour qu'on sache qu'on change de registre, assez
+   sobre pour ne pas voler la vedette au fait principal. */
+.fact-aside {
+  margin: 2px 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(185, 138, 46, 0.75);
+  border-radius: 0 10px 10px 0;
+  background: rgba(185, 138, 46, 0.09);
+}
+.fact-aside[hidden] { display: none; }
+
+/* Le nom du village, sous le titre du menu : c'est la première chose qu'on
+   lit en ouvrant, et elle se modifie d'un tap. */
+.village-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px auto 12px;
+  padding: 4px 10px;
+  border: 1px dashed rgba(90, 74, 54, 0.3);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.village-name:active { transform: scale(0.97); }
+.village-name.named { border-style: solid; border-color: rgba(185, 138, 46, 0.5); color: var(--ink); }
+.village-edit {
+  display: flex;
+  gap: 6px;
+  margin: -2px 0 12px;
+}
+.village-edit[hidden] { display: none; }
+.village-edit input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+.village-edit .btn { flex: 0 0 auto; min-height: 38px; padding: 0 14px; }
+.fact-aside-kicker {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #b98a2e;
+}
+.fact-aside p { margin: 0; font-size: 14px; line-height: 1.5; opacity: 0.92; }
+
 /* Cadran de l'année, sous celui du jour : même langage, même colonne. */
 .seasondial {
   position: fixed;

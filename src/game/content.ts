@@ -201,6 +201,9 @@ export interface TechDef {
   requires: string[]
   /** The payload the whole game exists to deliver. */
   fact: string
+  /** Le « Le saviez-vous ? » : une seconde anecdote, plus inattendue que le
+   *  fait principal. C'est elle qui fait qu'on relit une fiche déjà lue. */
+  funFact?: string
   effects: Effect[]
 }
 
@@ -214,8 +217,10 @@ export const TECHS: TechDef[] = [
     materials: { stone: 12 },
     requires: [],
     fact: "Les plus anciens outils de pierre taillée connus, à Lomekwi au Kenya, ont environ 3,3 millions d'années — soit bien avant l'apparition d'Homo sapiens.",
+    funFact:
+      "Un éclat de silex ou d'obsidienne fraîchement détaché présente un tranchant de quelques nanomètres — plus fin qu'un rasoir d'acier. Des chirurgiens s'en sont servis au XXe siècle pour des incisions qui cicatrisent mieux.",
     effects: [
-      { kind: 'building', building: 'knapping' },{ kind: 'gatherRate', resource: 'stone', mult: 1.6 }],
+      { kind: 'gatherRate', resource: 'stone', mult: 1.6 }],
   },
   {
     id: 'fire',
@@ -225,8 +230,9 @@ export const TECHS: TechDef[] = [
     materials: { wood: 15 },
     requires: ['flint'],
     fact: "À Gesher Benot Ya'aqov, en Israël, des foyers vieux de 780 000 ans montrent un feu entretenu volontairement, pas un incendie naturel.",
+    funFact:
+      "Cuire, c'est prédigérer : à quantité égale, un aliment cuit libère beaucoup plus d'énergie que cru. C'est le cœur de l'hypothèse du « singe cuisinier », qui lie la maîtrise du feu à la croissance de notre cerveau.",
     effects: [
-      { kind: 'building', building: 'woodpile' },
       { kind: 'gatherRate', resource: 'food', mult: 1.5 },
       { kind: 'insightRate', add: 0.05 },
       { kind: 'nightFloor', value: 0.55 },
@@ -240,6 +246,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 30, stone: 10 },
     requires: ['fire'],
     fact: "À Terra Amata, près de Nice, des trous de poteaux vieux de 400 000 ans dessinent des huttes ovales de 8 à 15 mètres de long.",
+    funFact:
+      "À Mezhyrich, en Ukraine, on bâtissait il y a 15 000 ans des huttes en OS de mammouth : l'une d'elles empile 95 mandibules disposées en chevrons, comme un appareillage de maçon.",
     effects: [{ kind: 'building', building: 'hut' }, { kind: 'carry', add: 4 }],
   },
   {
@@ -250,8 +258,9 @@ export const TECHS: TechDef[] = [
     materials: { wood: 20, stone: 15 },
     requires: ['fire'],
     fact: "Les épieux de Schöningen, en Allemagne, ont 300 000 ans. Taillés dans l'épicéa, ils sont équilibrés comme des javelots de compétition.",
+    funFact:
+      "Le propulseur, apparu vers −18 000, ajoute un segment au bras : la pointe du javelot atteint une centaine de kilomètres à l'heure. C'est le premier levier connu au service d'un muscle humain.",
     effects: [
-      { kind: 'building', building: 'spearrack' },
       { kind: 'gatherRate', resource: 'food', mult: 1.7 },
       { kind: 'expeditionSpeed', mult: 1.25 },
     ],
@@ -264,8 +273,10 @@ export const TECHS: TechDef[] = [
     materials: { stone: 12, food: 25 },
     requires: ['fire'],
     fact: "À Lascaux, plus d'une centaine de lampes de pierre brûlaient de la graisse animale avec des mèches de genévrier : les peintres travaillaient sous terre, en pleine nuit.",
+    funFact:
+      "Une lampe à graisse éclaire à peu près comme une bougie. Pour peindre une paroi entière, il en fallait des dizaines allumées ensemble — la lumière était un budget avant d'être un confort.",
     effects: [
-      { kind: 'building', building: 'lamps' },{ kind: 'nightFloor', value: 0.85 }],
+      { kind: 'nightFloor', value: 0.85 }],
   },
   {
     id: 'cordage',
@@ -275,8 +286,9 @@ export const TECHS: TechDef[] = [
     materials: { wood: 30 },
     requires: ['spear'],
     fact: "Un fragment de corde à trois brins retrouvé à l'Abri du Maras, en Ardèche, a environ 45 000 à 50 000 ans : il a été fabriqué par des Néandertaliens.",
+    funFact:
+      "Un fil de trois fibres torsadées retrouvé à l'Abri du Maras, en Ardèche, a 50 000 ans : il est néandertalien. Torsader trois brins suppose déjà de compter, et de compter en paires.",
     effects: [
-      { kind: 'building', building: 'ropes' },
       { kind: 'unlockResource', resource: 'fiber' },
       { kind: 'carry', add: 6 },
     ],
@@ -291,6 +303,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 40, fiber: 25 },
     requires: ['cordage'],
     fact: "Le blé amidonnier et l'orge sont domestiqués dans le Croissant fertile vers −9500. Il a fallu près d'un millénaire pour que l'épi cesse de s'égrener tout seul.",
+    funFact:
+      "Le blé domestiqué a perdu la capacité de disperser ses graines : son épi ne se brise plus tout seul. Il ne survivrait pas une saison sans nous — la domestication va dans les deux sens.",
     effects: [
       { kind: 'gatherRate', resource: 'food', mult: 2.2 },
       { kind: 'building', building: 'field' },
@@ -304,8 +318,9 @@ export const TECHS: TechDef[] = [
     materials: { wood: 50 },
     requires: ['agriculture'],
     fact: "Les plus vieux pots du monde viennent de la grotte de Xianrendong, en Chine : 20 000 ans, soit près de 8 500 ans avant l'agriculture.",
+    funFact:
+      "Les plus vieux tessons connus, dans la grotte de Xianrendong en Chine, ont 20 000 ans : bien AVANT l'agriculture. La poterie est née chez des chasseurs-cueilleurs, pas chez des paysans.",
     effects: [
-      { kind: 'building', building: 'jars' },
       { kind: 'unlockResource', resource: 'clay' },
       { kind: 'carry', add: 10 },
     ],
@@ -318,6 +333,8 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 60 },
     requires: ['pottery'],
     fact: "Des empreintes de textiles tissés sur argile, à Dolní Věstonice en Moravie, datent de 27 000 ans — le tissu précède de loin le métier à tisser retrouvé.",
+    funFact:
+      "Un métier à tisser est une machine à programme : Jacquard n'a fait que remplacer les mains par des cartes perforées. Ces mêmes cartes ont servi de mémoire aux premiers ordinateurs.",
     effects: [
       { kind: 'building', building: 'loom' },{ kind: 'insightRate', add: 0.15 }],
   },
@@ -329,8 +346,10 @@ export const TECHS: TechDef[] = [
     materials: { stone: 50, wood: 30 },
     requires: ['pottery'],
     fact: "La plus ancienne hache à tranchant poli connue vient d'Australie et a entre 44 000 et 49 000 ans. En Europe, la technique n'arrive qu'au Néolithique.",
+    funFact:
+      "Polir une lame prend des dizaines d'heures pour un tranchant à peine plus vif — mais bien plus solide : elle ne s'éclate plus dans le bois. Les archéologues qui refont l'expérience abattent un chêne en moins d'une heure.",
     effects: [
-      { kind: 'building', building: 'chopping' },{ kind: 'gatherRate', resource: 'wood', mult: 2.0 }],
+      { kind: 'gatherRate', resource: 'wood', mult: 2.0 }],
   },
   {
     id: 'granary',
@@ -340,6 +359,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 80, fiber: 40 },
     requires: ['agriculture', 'weaving'],
     fact: "À Dhra', en Jordanie, des greniers surélevés vieux de 11 300 ans stockaient l'orge sauvage : on a stocké les céréales avant de savoir les cultiver.",
+    funFact:
+      "Les plus vieux greniers connus, à Dhra' en Jordanie vers −9500, sont ANTÉRIEURS aux céréales domestiquées. On a d'abord appris à stocker, ensuite à cultiver.",
     effects: [
       { kind: 'building', building: 'granary' },
       { kind: 'carry', add: 20 },
@@ -355,8 +376,9 @@ export const TECHS: TechDef[] = [
     materials: { stone: 60, wood: 40 },
     requires: ['granary'],
     fact: "Ötzi, l'homme des glaces mort vers −3300, portait une hache en cuivre pur à 99,7 %. Son minerai vient de Toscane, à 500 km de là.",
+    funFact:
+      "Ötzi, mort dans les Alpes vers −3300, portait une hache de cuivre presque pur. Ses cheveux contiennent de l'arsenic : il avait respiré les fumées d'une fonte.",
     effects: [
-      { kind: 'building', building: 'orepile' },
       { kind: 'unlockResource', resource: 'copper' },
       { kind: 'gatherRate', resource: 'stone', mult: 1.5 },
     ],
@@ -369,6 +391,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 60 },
     requires: ['copper'],
     fact: "Le bronze demande du cuivre et de l'étain, qu'on ne trouve presque jamais au même endroit. L'âge du bronze est donc d'abord un âge du commerce longue distance.",
+    funFact:
+      "L'étain est rare et ne gît jamais près du cuivre : le bronze impose des routes commerciales longues. Quand ces routes se rompent, vers −1200, plusieurs civilisations s'effondrent presque en même temps.",
     effects: [
       { kind: 'building', building: 'furnace' },
       { kind: 'gatherRate', resource: 'wood', mult: 1.6 },
@@ -384,8 +408,9 @@ export const TECHS: TechDef[] = [
     materials: { wood: 100, copper: 30 },
     requires: ['bronze'],
     fact: "La roue apparaît d'abord comme tour de potier vers −4000 ; vers −3500 elle porte les premiers chariots. Les Mésoaméricains l'ont mise sur des jouets, faute d'animaux de trait.",
+    funFact:
+      "L'invention n'est pas le disque — c'est l'assemblage roue-ESSIEU, qui exige un ajustement au millimètre. Et la roue arrive tard : après la voile, après la poterie, après la ville.",
     effects: [
-      { kind: 'building', building: 'cart' },
       { kind: 'carry', add: 40 },
       { kind: 'expeditionSpeed', mult: 1.5 },
     ],
@@ -398,8 +423,10 @@ export const TECHS: TechDef[] = [
     materials: { clay: 60 },
     requires: ['bronze'],
     fact: "Le cunéiforme naît vers −3400 à Uruk pour compter des sacs d'orge et des têtes de bétail. La comptabilité précède la littérature de plusieurs siècles.",
+    funFact:
+      "Les premières tablettes de Sumer ne racontent rien : ce sont des comptes de grain, de bière et de journées de travail. Il faudra des siècles avant qu'on y écrive une histoire.",
     effects: [
-      { kind: 'building', building: 'tablets' },{ kind: 'insightRate', add: 0.6 }],
+      { kind: 'insightRate', add: 0.6 }],
   },
   {
     id: 'sail',
@@ -409,6 +436,8 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 120, wood: 60 },
     requires: ['wheel', 'weaving'],
     fact: "Les premières voiles attestées sont peintes sur des vases égyptiens vers −3100 : un carré de lin tendu, qui ne sait remonter au vent qu'à peine.",
+    funFact:
+      "Une voile carrée ne remonte pas au vent : pendant des millénaires on n'a navigué qu'avec le vent dans le dos, ou en attendant qu'il tourne. La voile latine, qui permet de louvoyer, n'arrive qu'à la fin de l'Antiquité.",
     // PAS de bâtiment : découvrir la voile doit se voir sur la BARQUE, pas
     // ajouter un atelier sur l'île. Le palier 2 de la flotte gréé sa voile.
     effects: [{ kind: 'expeditionSpeed', mult: 1.6 }],
@@ -423,6 +452,8 @@ export const TECHS: TechDef[] = [
     materials: { stone: 90, copper: 60 },
     requires: ['sail', 'writing'],
     fact: "Les plus anciens objets en fer sont des perles égyptiennes de −3200, martelées dans une météorite. Le mot hiéroglyphique signifie « fer du ciel ».",
+    funFact:
+      "Le fer n'est pas d'abord meilleur que le bronze : il est plus COMMUN. Son minerai est presque partout, alors que l'étain venait du bout du monde. C'est l'abondance, pas la qualité, qui démocratise l'outil de métal.",
     effects: [
       { kind: 'building', building: 'forge' },
       { kind: 'unlockResource', resource: 'iron' },
@@ -437,6 +468,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 50, wood: 60 },
     requires: ['ironworking'],
     fact: "Le soc en fer permet de retourner les sols lourds du nord de l'Europe, restés incultes tant qu'on n'avait que l'araire en bois.",
+    funFact:
+      "La charrue à versoir retourne la terre et réclame un attelage puissant : elle a fait basculer le nord de l'Europe vers de longs champs en lanières, dont le parcellaire se lit encore sur les photos aériennes.",
     effects: [
       { kind: 'building', building: 'plough' },{ kind: 'gatherRate', resource: 'food', mult: 2.4 }],
   },
@@ -448,8 +481,10 @@ export const TECHS: TechDef[] = [
     materials: { clay: 40 },
     requires: ['ironworking'],
     fact: "L'alphabet proto-sinaïtique, vers −1800, réduit l'écriture à une trentaine de signes. Pour la première fois, écrire n'est plus un métier.",
+    funFact:
+      "Presque tous les alphabets du monde — grec, latin, cyrillique, hébreu, arabe, brahmi — descendent du même ancêtre proto-sinaïtique. Notre « A » est une tête de bœuf retournée : aleph.",
     effects: [
-      { kind: 'building', building: 'stele' },{ kind: 'insightRate', add: 1.5 }],
+      { kind: 'insightRate', add: 1.5 }],
   },
   {
     id: 'coinage',
@@ -459,6 +494,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 40, iron: 30 },
     requires: ['alphabet'],
     fact: "Les premières pièces sont frappées en Lydie vers −630, en électrum, un alliage naturel d'or et d'argent trouvé dans la rivière Pactole.",
+    funFact:
+      "Frapper une pièce, c'est garantir son poids. Le bénéfice du prince est l'écart entre la valeur du métal et celle qu'il décrète : dès le premier jour, une monnaie est en partie une confiance.",
     effects: [
       { kind: 'building', building: 'market' },
       { kind: 'expeditionSpeed', mult: 1.8 },
@@ -473,6 +510,8 @@ export const TECHS: TechDef[] = [
     materials: { stone: 140, wood: 70 },
     requires: ['sail'],
     fact: "Les Grecs tenaient des feux allumés au sommet des caps — les phryktories. Dans l'Agamemnon d'Eschyle, la nouvelle de la chute de Troie franchit la mer Égée en une seule nuit, de brasier en brasier.",
+    funFact:
+      "La tour d'Hercule, à La Corogne, allumée par les Romains au Ier siècle, éclaire toujours l'Atlantique : c'est le plus vieux phare du monde encore en service.",
     effects: [
       { kind: 'building', building: 'lighthouse' },
       { kind: 'insightRate', add: 1 },
@@ -486,6 +525,8 @@ export const TECHS: TechDef[] = [
     materials: { stone: 150, iron: 60 },
     requires: ['coinage', 'plough'],
     fact: "L'Aqua Appia, à Rome en −312, descend de 10 mètres sur 16 kilomètres. Une pente de 0,06 % tenue à la main, sans niveau à bulle.",
+    funFact:
+      "L'eau des aqueducs romains coulait en permanence : on ne savait pas la fermer. Le trop-plein rinçait les égouts — le gaspillage faisait partie du système.",
     effects: [
       { kind: 'building', building: 'aqueduct' },
       { kind: 'insightRate', add: 2.5 },
@@ -501,6 +542,8 @@ export const TECHS: TechDef[] = [
     materials: { stone: 200, clay: 80 },
     requires: ['aqueduct'],
     fact: "Chaux, eau de mer et cendre volcanique de Pouzzoles : le béton romain durcit encore aujourd'hui — les jetées antiques se sont renforcées avec les siècles au lieu de s'éroder.",
+    funFact:
+      "Le dôme du Panthéon, coulé vers 126, reste le plus grand dôme de béton NON ARMÉ du monde. Les Romains allègent le mélange en montant : pierre lourde en bas, pierre ponce au sommet.",
     effects: [
       { kind: 'building', building: 'villa' },
       { kind: 'gatherRate', resource: 'stone', mult: 1.7 },
@@ -515,6 +558,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 180, iron: 50 },
     requires: ['concrete'],
     fact: "Décrit par Vitruve vers −25, le moulin à eau culmine au IIe siècle à Barbegal, près d'Arles : seize roues alignées, de quoi moudre pour dix mille personnes.",
+    funFact:
+      "Le Domesday Book recense 5 624 moulins à eau en Angleterre en 1086 — environ un pour trois cents habitants. L'Europe médiévale tourne à la force de l'eau.",
     effects: [
       { kind: 'building', building: 'watermill' },
       { kind: 'gatherRate', resource: 'food', mult: 2.0 },
@@ -528,6 +573,8 @@ export const TECHS: TechDef[] = [
     materials: { clay: 120, copper: 60 },
     requires: ['concrete'],
     fact: "Le soufflage du verre naît en Syrie au Ier siècle avant notre ère : une bulle d'air au bout d'une canne, et le verre cesse d'être un luxe de rois.",
+    funFact:
+      "Le verre romain était massivement recyclé : on a retrouvé dans des épaves des cargaisons entières de tessons destinés à la refonte.",
     effects: [
       { kind: 'building', building: 'glassworks' },
       { kind: 'insightRate', add: 4 },
@@ -541,6 +588,8 @@ export const TECHS: TechDef[] = [
     materials: { stone: 300, iron: 60 },
     requires: ['watermill'],
     fact: "Quatre-vingt mille kilomètres de voies dallées, une borne tous les mille pas — le mille — et certaines portent encore du trafic deux mille ans plus tard.",
+    funFact:
+      "Les voies romaines étaient si droites qu'elles servent encore de tracé : plusieurs routes départementales françaises suivent au mètre près une chaussée d'il y a deux mille ans.",
     effects: [
       { kind: 'building', building: 'milestone' },
       { kind: 'expeditionSpeed', mult: 1.5 },
@@ -555,8 +604,9 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 200, clay: 60 },
     requires: ['glass'],
     fact: "À partir du IIe siècle, le codex — des pages cousues — supplante peu à peu le rouleau : on peut enfin ouvrir un livre au milieu, chercher, comparer, annoter.",
+    funFact:
+      "Le codex — des pages cousues au lieu d'un rouleau — permet trois choses neuves : écrire au dos, ouvrir directement à une page, et poser le livre pour avoir les mains libres.",
     effects: [
-      { kind: 'building', building: 'lectern' },
       { kind: 'insightRate', add: 3 },
     ],
   },
@@ -584,6 +634,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 150, food: 400 },
     requires: ['horsecollar'],
     fact: "Blé d'hiver, avoine de printemps, jachère : la rotation triennale nourrit chevaux et paysans, et les famines reculent dans l'Europe du Nord.",
+    funFact:
+      "L'assolement triennal ajoute une sole de printemps : avoine, pois, fèves. Conséquence inattendue — plus d'avoine, donc plus de CHEVAUX, qui labourent deux fois plus vite que les bœufs.",
     effects: [
       { kind: 'building', building: 'threefield' },
       { kind: 'gatherRate', resource: 'food', mult: 1.7 },
@@ -597,6 +649,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 300, stone: 150 },
     requires: ['threefield'],
     fact: "Les premiers moulins à vent d'Europe apparaissent vers 1180 face à la Manche : des moulins-pivots dont le corps entier tourne pour chercher le vent.",
+    funFact:
+      "Les Pays-Bas ont asséché des lacs entiers au moulin. Le Beemster, drainé en 1612 par des dizaines de moulins en cascade, est aujourd'hui à trois mètres et demi SOUS le niveau de la mer.",
     effects: [
       { kind: 'building', building: 'windmill' },
       { kind: 'gatherRate', resource: 'food', mult: 1.5 },
@@ -611,6 +665,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 150, copper: 80 },
     requires: ['windmill'],
     fact: "Vers 1300, l'échappement découpe le temps en battements égaux : les beffrois sonnent des heures fixes, et la journée de travail change de maître.",
+    funFact:
+      "Avant l'horloge, l'heure était élastique : on divisait le jour en douze, donc une heure d'été durait plus qu'une heure d'hiver. L'échappement mécanique a imposé l'heure égale — et la ponctualité.",
     effects: [
       { kind: 'building', building: 'clock' },
       { kind: 'insightRate', add: 7 },
@@ -625,6 +681,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 120, fiber: 150 },
     requires: ['clock', 'codex'],
     fact: "Vers 1450 à Mayence, Gutenberg marie caractères mobiles, alliage plomb-étain et presse à vis : en cinquante ans, l'Europe imprime plus de livres qu'elle n'en avait copiés en mille ans.",
+    funFact:
+      "En cinquante ans, l'Europe imprime plus de livres qu'elle n'en avait copiés à la main en mille ans.",
     effects: [
       { kind: 'building', building: 'press' },
       { kind: 'insightRate', add: 12 },
@@ -640,6 +698,8 @@ export const TECHS: TechDef[] = [
     materials: { wood: 400, fiber: 250 },
     requires: ['press'],
     fact: "La caravelle portugaise mêle voiles carrées et latines : elle remonte au vent et revient. C'est elle qui ouvre les caps de l'Afrique, puis l'Atlantique.",
+    funFact:
+      "La caravelle doit sa révolution à la voile latine : elle REMONTE au vent, donc elle revient. Explorer cesse d'être un aller simple.",
     effects: [
       { kind: 'building', building: 'caravel' },
       { kind: 'expeditionSpeed', mult: 1.6 },
@@ -653,8 +713,9 @@ export const TECHS: TechDef[] = [
     materials: { wood: 200, clay: 150 },
     requires: ['press'],
     fact: "Vers 1425, Brunelleschi fait regarder Florence à travers un trou percé dans un panneau peint : la perspective géométrique naît en place publique, démonstration à l'appui.",
+    funFact:
+      "Brunelleschi a démontré la perspective par un tour de foire : un panneau percé d'un trou et un miroir, plantés devant le baptistère de Florence. Le spectateur ne distinguait plus le tableau du bâtiment.",
     effects: [
-      { kind: 'building', building: 'easel' },
       { kind: 'insightRate', add: 15 },
     ],
   },
@@ -666,6 +727,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 300, clay: 200 },
     requires: ['perspective'],
     fact: "Galilée pointe fin 1609 une lunette de foire vers le ciel ; en janvier 1610, quatre lunes tournent autour de Jupiter — tout ne tourne donc pas autour de la Terre.",
+    funFact:
+      "Galilée a vu les PHASES de Vénus — impossibles dans le système de Ptolémée. Une lunette de quelques centimètres a suffi à faire tomber le ciel des Anciens.",
     effects: [
       { kind: 'building', building: 'observatory' },
       { kind: 'insightRate', add: 20 },
@@ -679,6 +742,8 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 300, copper: 250 },
     requires: ['caravel'],
     fact: "Les banquiers florentins font voyager l'argent sans or : une lettre signée à Florence se paie à Bruges. Le crédit devient une infrastructure.",
+    funFact:
+      "La lettre de change contourne aussi l'interdit du prêt à intérêt : le gain se cache dans le taux de change entre deux villes. La finance moderne est née en partie d'un contournement moral.",
     effects: [
       { kind: 'building', building: 'bank' },
       { kind: 'carry', add: 150 },
@@ -693,8 +758,9 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 250, iron: 200 },
     requires: ['perspective'],
     fact: "En 1543, Vésale dissèque et dessine lui-même : son De fabrica corrige Galien sur plus de deux cents points. Le corps devient un territoire cartographié.",
+    funFact:
+      "Vésale, en 1543, corrige plus de deux cents erreurs de Galien, qui n'avait disséqué que des animaux. Le plus dur ne fut pas de voir : ce fut d'admettre qu'un maître de treize siècles pouvait se tromper.",
     effects: [
-      { kind: 'building', building: 'anatomy' },
       { kind: 'gatherRate', resource: 'food', mult: 1.4 },
       { kind: 'insightRate', add: 18 },
     ],
@@ -709,6 +775,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 400, copper: 250 },
     requires: ['bank'],
     fact: "La machine de Watt (1769) ajoute un condenseur séparé à celle de Newcomen : quatre fois moins de charbon, et l'usine cesse de dépendre des rivières.",
+    funFact:
+      "Watt n'a pas inventé la machine à vapeur : il lui a ajouté un condenseur séparé, qui divise par trois sa consommation de charbon. Et pour la vendre, il a inventé une unité de mesure — le cheval-vapeur.",
     effects: [
       { kind: 'building', building: 'steamengine' },
       { kind: 'gatherRate', resource: 'stone', mult: 2.0 },
@@ -723,6 +791,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 600, wood: 400 },
     requires: ['steamengine'],
     fact: "En 1830, la ligne Liverpool–Manchester inaugure l'horaire régulier ; dix ans plus tard, les compagnies imposent une heure unique et les villes règlent leurs horloges les unes sur les autres.",
+    funFact:
+      "L'écartement standard des rails, 1 435 mm, vient des tramways à chevaux anglais, eux-mêmes calés sur les ornières des chariots. La moitié des voies du monde a la largeur d'une charrette.",
     effects: [
       { kind: 'building', building: 'railway' },
       { kind: 'expeditionSpeed', mult: 1.7 },
@@ -737,6 +807,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 350, stone: 400 },
     requires: ['steamengine'],
     fact: "Londres allume ses premiers réverbères au gaz en 1807, sur Pall Mall : la nuit urbaine devient un espace public, et les théâtres jouent plus tard.",
+    funFact:
+      "Le réverbère au gaz a créé un métier : l'allumeur, qui passait deux fois par nuit. Il a surtout allongé la journée — le travail et le théâtre ont cessé de s'arrêter au coucher du soleil.",
     effects: [
       { kind: 'building', building: 'gaslamp' },
       { kind: 'nightFloor', value: 0.96 },
@@ -750,6 +822,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 800, stone: 300 },
     requires: ['railway'],
     fact: "Le convertisseur Bessemer (1856) souffle de l'air à travers la fonte en fusion : l'acier tombe à un dixième de son prix — les rails, les ponts et les charpentes suivent.",
+    funFact:
+      "Le convertisseur souffle de l'air dans la fonte en fusion et la transforme en acier en vingt minutes, contre plusieurs jours auparavant. Le prix de l'acier s'effondre : les rails, les ponts et les gratte-ciel deviennent possibles.",
     effects: [
       { kind: 'building', building: 'bessemer' },
       { kind: 'gatherRate', resource: 'iron', mult: 2.2 },
@@ -763,6 +837,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 600, wood: 300 },
     requires: ['railway'],
     fact: "1844 : Morse télégraphie de Washington à Baltimore. L'information voyage désormais plus vite que n'importe quel messager.",
+    funFact:
+      "Le premier câble transatlantique, en 1858, transmettait environ un mot toutes les deux minutes : le message de la reine Victoria au président Buchanan mit près de dix-sept heures. Le câble grilla trois semaines plus tard.",
     effects: [
       { kind: 'building', building: 'telegraph' },
       { kind: 'insightRate', add: 30 },
@@ -778,6 +854,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 900, iron: 500 },
     requires: ['telegraph', 'gaslight'],
     fact: "Pearl Street, 1882 : la centrale d'Edison allume quatre cents lampes dans Manhattan. En une génération, la nuit domestique disparaît.",
+    funFact:
+      "La « guerre des courants » opposa le continu d'Edison à l'alternatif de Tesla et Westinghouse. L'alternatif l'emporta parce qu'il voyage loin : c'est le transformateur, plus que la dynamo, qui a électrifié le monde.",
     effects: [
       { kind: 'building', building: 'electric' },
       { kind: 'nightFloor', value: 1 },
@@ -792,6 +870,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 900, copper: 400 },
     requires: ['bessemer'],
     fact: "La Ford T sort en 1908 ; la chaîne d'assemblage de 1913 fait tomber son temps de montage de douze heures à quatre-vingt-treize minutes.",
+    funFact:
+      "Le premier long voyage en automobile est l'œuvre de Bertha Benz, en 1888 : 106 kilomètres sans prévenir son mari, en achetant l'essence en pharmacie et en réparant un câble avec sa jarretelle.",
     effects: [
       { kind: 'building', building: 'garage' },
       { kind: 'expeditionSpeed', mult: 1.6 },
@@ -806,6 +886,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 800, wood: 300 },
     requires: ['electricity'],
     fact: "En 1901, Marconi fait traverser l'Atlantique à trois points Morse. Trente ans plus tard, une voix parle en direct dans des millions de foyers.",
+    funFact:
+      "La radio a inventé le DIRECT : pour la première fois, des milliers de gens entendaient la même chose au même instant. Les régimes du XXe siècle l'ont compris avant les artistes.",
     effects: [
       { kind: 'building', building: 'radio' },
       { kind: 'insightRate', add: 40 },
@@ -819,6 +901,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 700, fiber: 400 },
     requires: ['automobile'],
     fact: "Le 17 décembre 1903, le Flyer des frères Wright tient l'air douze secondes et trente-six mètres — moins que l'envergure d'un 747.",
+    funFact:
+      "Le premier vol des frères Wright, en 1903, a duré douze secondes et parcouru trente-sept mètres — moins que l'envergure d'un long-courrier d'aujourd'hui.",
     effects: [
       { kind: 'building', building: 'plane' },
       { kind: 'expeditionSpeed', mult: 2.0 },
@@ -832,6 +916,8 @@ export const TECHS: TechDef[] = [
     materials: { clay: 500, food: 2000 },
     requires: ['electricity'],
     fact: "Une moisissure contamine une boîte de Petri en 1928 ; en 1944, la pénicilline sort par tonnes des cuves. Les blessures cessent d'être des condamnations.",
+    funFact:
+      "Fleming voit la moisissure en 1928, mais le premier patient n'est soigné qu'en 1941. La pénicilline était si rare qu'on la récupérait dans ses urines pour la lui réinjecter ; le stock s'épuisa avant sa guérison.",
     effects: [
       { kind: 'building', building: 'clinic' },
       { kind: 'gatherRate', resource: 'food', mult: 1.5 },
@@ -848,6 +934,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 1200, iron: 600 },
     requires: ['radio'],
     fact: "En 1977, l'Apple II arrive assemblé, clavier compris : l'ordinateur quitte les centres de calcul pour la table de la cuisine.",
+    funFact:
+      "Le mot « ordinateur » a été proposé en 1955 par un professeur de lettres consulté par IBM France, qui trouvait « calculateur » trop pauvre. Il l'a pris au vocabulaire théologique : celui qui met en ordre.",
     effects: [
       { kind: 'building', building: 'computer' },
       { kind: 'insightRate', add: 60 },
@@ -861,6 +949,8 @@ export const TECHS: TechDef[] = [
     materials: { iron: 1000, copper: 800 },
     requires: ['flight'],
     fact: "Le GPS doit sa précision à Einstein : sans corriger la relativité, ses horloges dériveraient de dix kilomètres par jour.",
+    funFact:
+      "Les satellites GPS embarquent des horloges atomiques corrigées de la relativité — vitesse ET gravité. Sans cette correction, la position dériverait de plusieurs kilomètres par jour.",
     effects: [
       { kind: 'building', building: 'dish' },
       { kind: 'expeditionSpeed', mult: 1.8 },
@@ -874,6 +964,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 1500, iron: 800 },
     requires: ['computer'],
     fact: "En 1969, le premier message d'ARPANET plante après deux lettres : « LO ». Le réseau qui relie aujourd'hui la moitié de l'humanité a commencé par un crash.",
+    funFact:
+      "Le premier message d'ARPANET, en 1969, devait être « LOGIN ». La machine a planté après deux lettres : le premier mot d'Internet est « LO ».",
     effects: [
       { kind: 'building', building: 'server' },
       { kind: 'insightRate', add: 80 },
@@ -887,6 +979,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 1800, stone: 800 },
     requires: ['internet'],
     fact: "Les cellules de Bell (1954) convertissaient 6 % de la lumière ; les panneaux courants dépassent 20 %, et le solaire est devenu l'électricité la moins chère de l'histoire.",
+    funFact:
+      "L'effet photovoltaïque est observé en 1839, mais la première cellule utile date de 1954. Son premier vrai marché fut l'espace — là où l'on ne peut pas livrer de carburant.",
     effects: [
       { kind: 'building', building: 'solar' },
       { kind: 'gatherRate', resource: 'food', mult: 1.4 },
@@ -903,6 +997,8 @@ export const TECHS: TechDef[] = [
     materials: { copper: 2000, iron: 1000 },
     requires: ['internet', 'satellite'],
     fact: "En 2007, le téléphone avale l'appareil photo, le GPS, le baladeur et l'ordinateur : l'humanité met l'essentiel de son savoir dans sa poche.",
+    funFact:
+      "Le téléphone dans ta poche dépasse, à lui seul, la puissance de calcul de l'ensemble des ordinateurs dont disposait la NASA pour poser des hommes sur la Lune.",
     effects: [
       { kind: 'building', building: 'phone' },
       { kind: 'insightRate', add: 100 },

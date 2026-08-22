@@ -25,6 +25,7 @@ import {
   drainInbox,
   fetchNeighbors,
   makeIdentity,
+  suggestName,
   leave,
   publish,
   fetchOffers,
@@ -685,8 +686,58 @@ function menuEl<T extends HTMLElement>(id: string): T {
 
   const tuto = menuEl('menu-tuto')
 
+  // ── Le nom du village ────────────────────────────────────────────────────
+  // Il vit dans `save.village`, PAS dans l'identité de voisinage : nommer son
+  // village ne doit pas publier la tribu sur le serveur. Quand la tribu est
+  // publiée, les deux noms sont tenus égaux.
+  const villageBtn = menuEl('village-name')
+  const villageEdit = menuEl('village-edit')
+  const villageInput = menuEl<HTMLInputElement>('village-input')
+
+  const renderVillageName = (): void => {
+    const name = game.save.village || game.save.tribe?.name || ''
+    menuEl('village-label').textContent = name || 'Nommer le village'
+    villageBtn.classList.toggle('named', !!name)
+  }
+
+  const saveVillageName = (): void => {
+    const name = villageInput.value.trim().slice(0, 24)
+    villageEdit.hidden = true
+    villageBtn.hidden = false
+    if (!name) return
+    game.save.village = name
+    // Publié dans le voisinage : les autres voient le même nom.
+    const t = game.save.tribe
+    if (t) {
+      t.name = name
+      void syncNeighborhood()
+    }
+    game.flush(Date.now())
+    renderVillageName()
+    hud.toast(`Le village s'appelle désormais ${name}`)
+  }
+
+  villageBtn.addEventListener('click', () => {
+    villageInput.value = game.save.village || game.save.tribe?.name || suggestName(game.save.seed)
+    villageBtn.hidden = true
+    villageEdit.hidden = false
+    villageInput.focus()
+    villageInput.select()
+  })
+  menuEl('village-save').addEventListener('click', saveVillageName)
+  villageInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveVillageName()
+    if (e.key === 'Escape') {
+      villageEdit.hidden = true
+      villageBtn.hidden = false
+    }
+  })
+
   const showHome = () => {
     confirmStep = 0
+    villageEdit.hidden = true
+    villageBtn.hidden = false
+    renderVillageName()
     confirm.hidden = true
     tuto.hidden = true
     menuEl('menu-news').hidden = true
@@ -909,6 +960,9 @@ function menuEl<T extends HTMLElement>(id: string): T {
 
     joinBtn.addEventListener('click', () => {
       game.save.tribe = makeIdentity(game.save.seed)
+      // Le village a déjà un nom : la tribu le porte, plutôt qu'un nom tiré au sort.
+      if (game.save.village) game.save.tribe.name = game.save.village
+      else game.save.village = game.save.tribe.name
       game.flush(Date.now())
       render()
       void syncNeighborhood()
@@ -920,6 +974,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
       const name = nameInput.value.trim().slice(0, 24)
       if (!name) return
       t.name = name
+      game.save.village = name
       game.flush(Date.now())
       render()
       void syncNeighborhood()

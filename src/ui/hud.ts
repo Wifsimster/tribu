@@ -420,6 +420,12 @@ export class Hud {
     el('fact-kicker').textContent = `Découverte · ${this.game.age.name}`
     el('fact-title').textContent = tech.name
     el('fact-text').textContent = tech.fact
+    // Le « Le saviez-vous ? » : une seconde anecdote, plus inattendue que le
+    // fait principal. Absente sur les fiches qui n'en ont pas — on ne montre
+    // pas un cartouche vide.
+    const aside = el('fact-aside')
+    aside.hidden = !tech.funFact
+    if (tech.funFact) el('fact-fun').textContent = tech.funFact
     el('fact').classList.add('open')
     this.factOpen = true
     this.syncScrim()
