@@ -1659,6 +1659,15 @@ export class Village {
       // bien mais disparaissait sous la canopée sur les deux tiers de son
       // parcours — mesuré, pas supposé. Le dégagement porte jusqu'aux
       // parcelles : c'est lui qui rend le village VISIBLE et accessible.
+      if (li === 0) {
+        // La route du village : c'est elle que l'automobile parcourt.
+        this.roadPath = pts.slice()
+        this.roadCum = [0]
+        for (let k = 1; k < pts.length; k++)
+          this.roadCum.push(
+            this.roadCum[k - 1]! + Math.hypot(pts[k]!.x - pts[k - 1]!.x, pts[k]!.z - pts[k - 1]!.z),
+          )
+      }
       this.island.clearCorridor(pts, li === 0 ? 4.4 : 4.0)
       this.track(p, pts, this.roadKnown && li === 0)
     }
@@ -2482,9 +2491,9 @@ export class Village {
    *  aqueduc ×1.7, moulins ×2.5/×5.5, campanile ×4.5, garage ×2, antenne). */
   private static readonly FOOTPRINT: Record<string, number> = {
     hut: 1.1, field: 1.7, granary: 1.0, aqueduct: 2.2, forge: 1.3, lighthouse: 2.6,
-    datacenter: 1.4, battery: 1.4, desal: 1.3, genlab: 1.3, capture: 1.2, quantum: 1.1, plane: 1.5,
+    datacenter: 1.4, battery: 1.4, desal: 1.3, genlab: 1.3, capture: 1.2, quantum: 1.1, plane: 1.5, garage: 1.3,
     railway: 1.2, villa: 1.6, threefield: 0.8, milestone: 0.8,
-    clock: 0.9, windmill: 2.3, watermill: 1.4, garage: 1.0, phone: 0.6,
+    clock: 0.9, windmill: 2.3, watermill: 1.4, phone: 0.6,
   }
   /** Les quatre bâtiments v1 gardent les règles d'espacement de l'époque où ils
    *  étaient des Object3D séparés : les slots choisis — donc le plan du village
@@ -2593,6 +2602,8 @@ export class Village {
    *  chaussée principale — un rail ne double pas une route, il en prend une
    *  autre. */
   private railKnown = false
+  private roadPath: { x: number; z: number }[] = []
+  private roadCum: number[] = []
   private railPath: { x: number; z: number }[] = []
   private railCum: number[] = []
   private train: Group | null = null
@@ -3329,26 +3340,25 @@ export class Village {
         return p
       }
       case 'garage': {
-        // Auto de 1.15 u : elle était plus petite que la charrette à bras de
-        // l'âge du bronze.
-        p.push(part(new BoxGeometry(1.15, 0.22, 0.52), C.tile, 0, 0.26, 0))
-        p.push(part(new BoxGeometry(0.55, 0.22, 0.46), C.tileDark, -0.1, 0.47, 0))
-        p.push(part(new BoxGeometry(0.44, 0.14, 0.48), new Color(0.75, 0.95, 1.1), -0.1, 0.44, 0))
-        for (const sx of [-0.38, 0.38]) for (const sz of [-0.28, 0.28]) p.push(part(new CylinderGeometry(0.11, 0.11, 0.07, 8).rotateX(Math.PI / 2), C.char, sx, 0.13, sz))
-        for (const sz of [-0.17, 0.17]) p.push(part(new SphereGeometry(0.04, 5, 4), new Color(1.7, 1.55, 1.0), 0.58, 0.28, sz))
-        // Feux arrière, calandre, pare-chocs et jantes claires : une auto sans
-        // rien devant ni derrière est une savonnette.
-        for (const sz of [-0.17, 0.17]) p.push(part(new BoxGeometry(0.04, 0.06, 0.1), new Color('#a8302a'), -0.58, 0.3, sz))
-        p.push(part(new BoxGeometry(0.04, 0.1, 0.4), C.stoneDark, 0.58, 0.22, 0))
-        p.push(part(new BoxGeometry(0.04, 0.08, 0.42), C.stoneDark, -0.58, 0.2, 0))
-        for (const sx of [-0.38, 0.38]) for (const sz of [-0.29, 0.29])
-          p.push(part(new CylinderGeometry(0.05, 0.05, 0.03, 8).rotateX(Math.PI / 2), C.ridge, sx, 0.13, sz))
-        // Vitres latérales et un rétroviseur : le volume de l'habitacle se lit.
-        for (const sz of [-0.24, 0.24]) p.push(part(new BoxGeometry(0.4, 0.1, 0.02), new Color(0.75, 0.95, 1.1), -0.1, 0.46, sz))
-        p.push(part(new BoxGeometry(0.05, 0.04, 0.04), C.tileDark, 0.14, 0.46, 0.26))
-        // ×2 : une auto fait ~4.2 m — à 1.15 u elle était plus COURTE que le
-        // cheval (1.25 u) posé deux cases plus loin.
-        for (const g of p) g.scale(2, 2, 2)
+        // Ce n'est plus l'auto : c'est le GARAGE. La voiture, elle, ROULE sur
+        // la route (buildCar / tickCar) — une automobile à l'arrêt devant son
+        // garage ne raconte pas l'automobile.
+        const tar = new Color('#4a4f56')
+        p.push(part(new BoxGeometry(2.2, 0.12, 1.7), tar, 0, 0.06, 0))
+        // Le box : trois murs, un toit plat, une porte relevée.
+        p.push(part(new BoxGeometry(1.7, 1.0, 0.16), tint(C.plaster, 3, 0.05), 0, 0.62, -0.72))
+        for (const sx of [-0.77, 0.77])
+          p.push(part(new BoxGeometry(0.16, 1.0, 1.44), tint(C.plaster, 7, 0.05), sx, 0.62, 0))
+        p.push(part(new BoxGeometry(1.9, 0.12, 1.7), tint(C.stoneDark, 5, 0.05), 0, 1.18, 0))
+        p.push(part(new BoxGeometry(1.62, 0.1, 0.5), C.stoneLight, 0, 1.08, 0.6))
+        // La pompe à essence : c'est elle qui dit « automobile » de loin.
+        p.push(part(new BoxGeometry(0.34, 0.9, 0.3), new Color('#c0392b'), 1.34, 0.51, 0.5))
+        p.push(part(new BoxGeometry(0.24, 0.22, 0.04), C.glass, 1.34, 0.78, 0.66))
+        p.push(part(new CylinderGeometry(0.03, 0.03, 0.5, 5).rotateZ(0.5), C.char, 1.6, 0.5, 0.5))
+        // Un bidon et deux pneus posés contre le mur.
+        p.push(part(new CylinderGeometry(0.12, 0.12, 0.3, 8), tint(C.stoneDark, 11, 0.06), -1.0, 0.21, 0.55))
+        for (const sz of [0.2, 0.44])
+          p.push(part(new CylinderGeometry(0.16, 0.16, 0.09, 10).rotateX(Math.PI / 2), C.char, -0.55, 0.17, sz))
         return p
       }
       case 'radio': {
@@ -3783,6 +3793,86 @@ export class Village {
     this.beaconHalo = s
   }
 
+  /** L'AUTOMOBILE. Hors de la fusion, parce qu'elle ROULE : elle parcourt la
+   *  route du village d'un bout à l'autre, marque un temps d'arrêt au ponton
+   *  et au foyer, et repart. C'est la route qui lui donne son sens. */
+  private buildCar(pl: { x: number; y: number; z: number; rot: number }): void {
+    const p: BufferGeometry[] = []
+    const body = C.tile
+    p.push(part(new BoxGeometry(1.15, 0.22, 0.52), body, 0, 0.26, 0))
+    p.push(part(new BoxGeometry(0.55, 0.22, 0.46), C.tileDark, -0.1, 0.47, 0))
+    p.push(part(new BoxGeometry(0.44, 0.14, 0.48), new Color(0.75, 0.95, 1.1), -0.1, 0.44, 0))
+    for (const sx of [-0.38, 0.38])
+      for (const sz of [-0.28, 0.28])
+        p.push(part(new CylinderGeometry(0.11, 0.11, 0.07, 8).rotateX(Math.PI / 2), C.char, sx, 0.13, sz))
+    for (const sz of [-0.17, 0.17])
+      p.push(part(new SphereGeometry(0.04, 5, 4), new Color(1.7, 1.55, 1.0), 0.58, 0.28, sz))
+    for (const sz of [-0.17, 0.17])
+      p.push(part(new BoxGeometry(0.04, 0.06, 0.1), new Color('#a8302a'), -0.58, 0.3, sz))
+    p.push(part(new BoxGeometry(0.04, 0.1, 0.4), C.stoneDark, 0.58, 0.22, 0))
+    p.push(part(new BoxGeometry(0.04, 0.08, 0.42), C.stoneDark, -0.58, 0.2, 0))
+    for (const sx of [-0.38, 0.38])
+      for (const sz of [-0.29, 0.29])
+        p.push(part(new CylinderGeometry(0.05, 0.05, 0.03, 8).rotateX(Math.PI / 2), C.ridge, sx, 0.13, sz))
+    for (const sz of [-0.24, 0.24])
+      p.push(part(new BoxGeometry(0.4, 0.1, 0.02), new Color(0.75, 0.95, 1.1), -0.1, 0.46, sz))
+    p.push(part(new BoxGeometry(0.05, 0.04, 0.04), C.tileDark, 0.14, 0.46, 0.26))
+    const geo = mergeGeometries(p.map((g) => g.scale(2, 2, 2)))
+    if (!geo) return
+    grain(geo, 0.05)
+    const mesh = new Mesh(geo, this.solid)
+    mesh.castShadow = true
+    const pivot = new Group()
+    pivot.add(mesh)
+    this.car = pivot
+    this.carHome = { x: pl.x, y: pl.y, z: pl.z }
+    this.group.add(pivot)
+  }
+
+  private car: Group | null = null
+  private carHome: { x: number; y: number; z: number } | null = null
+  private carT = 0
+
+  /** Le va-et-vient de l'auto sur la route du village. */
+  private tickCar(dt: number): void {
+    const pivot = this.car
+    const pts = this.roadPath
+    if (!pivot || pts.length < 2 || this.roadCum.length < 2) {
+      if (pivot && this.carHome) pivot.position.set(this.carHome.x, this.carHome.y, this.carHome.z)
+      return
+    }
+    const total = this.roadCum[this.roadCum.length - 1]!
+    if (total < 2) return
+    this.carT += dt * 3.4
+    const period = total * 2 + 10
+    let u = this.carT % period
+    let d: number
+    let fwd = true
+    if (u < total) d = u
+    else if (u < total + 5) {
+      d = total
+      fwd = true
+    } else if (u < total * 2 + 5) {
+      d = total - (u - total - 5)
+      fwd = false
+    } else {
+      d = 0
+      fwd = false
+    }
+    let i = 1
+    while (i < this.roadCum.length - 1 && this.roadCum[i]! < d) i++
+    const a = pts[i - 1]!
+    const b = pts[i]!
+    const segLen = Math.max(1e-3, this.roadCum[i]! - this.roadCum[i - 1]!)
+    const t = Math.min(1, Math.max(0, (d - this.roadCum[i - 1]!) / segLen))
+    const x = a.x + (b.x - a.x) * t
+    const z = a.z + (b.z - a.z) * t
+    pivot.position.set(x, this.island.heightAt(x, z) + 0.1, z)
+    // Elle roule sur la voie de droite, comme tout le monde ici.
+    const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+    pivot.rotation.y = (fwd ? yaw : yaw + Math.PI) + Math.PI / 2
+  }
+
   /** L'APPAREIL. Hors de la fusion, parce qu'il doit décoller et se poser :
    *  il roule sur l'aire, prend l'air vers le large, et refait le chemin en
    *  sens inverse au retour de l'expédition. */
@@ -4031,6 +4121,7 @@ export class Village {
       if (pl.id === 'plough') this.buildPloughTeam(pl)
       if (pl.id === 'lighthouse') this.buildBeacon(pl)
       if (pl.id === 'plane') this.buildPlane(pl)
+      if (pl.id === 'garage') this.buildCar(pl)
     }
   }
 
@@ -4158,6 +4249,7 @@ export class Village {
   update(dt: number, t: number): void {
     this.tickTrain(dt)
     this.tickPlane(dt)
+    this.tickCar(dt)
     if (this.beaconHalo) {
       // Respiration lente : un brasier entretenu par un veilleur, pas un feu
       // de camp. Avant le test d'électricité — le phare vit à tous les âges.

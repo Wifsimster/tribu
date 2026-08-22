@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.42.0',
+    title: 'L’automobile prend la route',
+    items: [
+      "L'automobile ne dort plus devant son garage : elle ROULE, d'un bout à l'autre de la route du village, avec un temps d'arrêt à chaque bout. Quatre mécanismes vivent maintenant sur l'île — le train, l'avion, l'auto et le moulin.",
+      "Et le savoir pose enfin un vrai garage : box à trois murs et toit plat, pompe à essence, bidon et pneus contre le mur.",
+    ],
+  },
+  {
     version: '3.41.0',
     title: 'L’avion décolle, le chantier se détaille',
     items: [
