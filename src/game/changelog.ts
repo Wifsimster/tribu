@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.33.0',
+    title: 'Le traîneau dans le ciel',
+    items: [
+      "Du 20 au 26 décembre — sur TON calendrier, pas celui du jeu — des paquets attendent autour du feu du camp.",
+      "Les nuits du 24 et du 25, des grelots résonnent et un traîneau tiré par six rennes traverse le ciel. Il repasse toutes les deux minutes environ, tant que la nuit dure.",
+      "Et comme tout ce que montre Tribu, la scène s'explique : une carte raconte d'où vient le 25 décembre, d'où vient le personnage, quand le traîneau et Rudolph ont été inventés — et pourquoi ce n'est pas Coca-Cola qui l'a habillé de rouge.",
+    ],
+  },
+  {
     version: '3.32.0',
     title: 'Le saviez-vous ?',
     items: [

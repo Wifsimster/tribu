@@ -338,6 +338,33 @@ export class Ambience {
     }
   }
 
+  /** Les grelots du traîneau : une volée de clochettes hautes, irrégulière —
+   *  un harnais secoué n'a pas de tempo. Entièrement synthétisée, comme le
+   *  reste : pas de fichier à télécharger pour un événement d'une nuit. */
+  sleighBells(): void {
+    if (!this.enabled || !this.ctx || !this.master) return
+    const ctx = this.ctx
+    const t0 = ctx.currentTime
+    // Douze secousses sur trois secondes, chacune un petit accord de trois
+    // partiels non harmoniques : c'est ce qui fait « métal » et non « note ».
+    for (let i = 0; i < 12; i++) {
+      const at = i * 0.24 + (i % 3) * 0.03
+      const gain = 0.05 * (0.7 + 0.3 * Math.sin(i * 1.7))
+      for (const f of [2100, 2790, 3480]) {
+        const osc = ctx.createOscillator()
+        const g = ctx.createGain()
+        osc.type = 'triangle'
+        osc.frequency.value = f * (0.97 + ((i * 7) % 5) * 0.015)
+        g.gain.setValueAtTime(0, t0 + at)
+        g.gain.linearRampToValueAtTime(gain, t0 + at + 0.006)
+        g.gain.exponentialRampToValueAtTime(0.0005, t0 + at + 0.22)
+        osc.connect(g).connect(this.master)
+        osc.start(t0 + at)
+        osc.stop(t0 + at + 0.25)
+      }
+    }
+  }
+
   /** Tintement de pièces : le marchand est passé par là. */
   coin(): void {
     if (this.shot('piece', 0.45)) return

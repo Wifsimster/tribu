@@ -2,6 +2,9 @@ import {
   ACESFilmicToneMapping,
   AdditiveBlending,
   BackSide,
+  BufferAttribute,
+  BufferGeometry,
+  ConeGeometry,
   Color,
   CylinderGeometry,
   BoxGeometry,
@@ -77,6 +80,23 @@ const ARC = 1.45
  *  image, elle n'a pas à allouer. */
 const tmpDir = new Vector3()
 const tmpHorizon = new Vector3()
+
+/** Une pièce teintée puis posée, pour les silhouettes du ciel. Le matériau y
+ *  est basique (aucune lumière la nuit ne les éclairerait) : la couleur est
+ *  donc cuite dans les sommets. */
+function skyPart(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
+  const geo = source.index ? source : source.toNonIndexed()
+  geo.translate(x, y, z)
+  const n = geo.attributes.position!.count
+  const rgb = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) {
+    rgb[i * 3] = color.r
+    rgb[i * 3 + 1] = color.g
+    rgb[i * 3 + 2] = color.b
+  }
+  geo.setAttribute('color', new BufferAttribute(rgb, 3))
+  return geo
+}
 
 const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
@@ -542,6 +562,85 @@ export class Stage {
   private auroraMesh: Mesh | null = null
   private auroraLife = 0
   private auroraDur = 0
+
+  /** LE TRAÎNEAU. Une silhouette qui traverse la bande de ciel, d'un bord du
+   *  cadre à l'autre, une fois par passage. Elle vit en espace écran comme le
+   *  soleil et la lune : c'est le seul endroit où il reste de la place au-
+   *  dessus de l'horizon avec ce cadrage. Construite une fois, réutilisée. */
+  private sleighMesh: Mesh | null = null
+  private sleighLife = 0
+  private sleighDur = 0
+
+  sleigh(dur = 17): void {
+    if (!this.sleighMesh) {
+      const p: BufferGeometry[] = []
+      const fur = new Color('#8a5a34')
+      const furDark = new Color('#6b4326')
+      const bone = new Color('#d9c9a8')
+      const red = new Color('#c0392b')
+      const cream = new Color('#f3ece0')
+      const iron = new Color('#4a4038')
+      // Six rennes en file, deux par deux : de profil, la file lit comme un
+      // attelage même à quarante pixels de large.
+      for (let i = 0; i < 6; i++) {
+        const bx = -8.2 + i * 1.45
+        const dy = i % 2 === 0 ? 0.12 : -0.12
+        p.push(skyPart(new BoxGeometry(1.0, 0.5, 0.42), fur, bx, dy, 0))
+        p.push(skyPart(new BoxGeometry(0.42, 0.34, 0.34), fur, bx + 0.62, dy + 0.24, 0))
+        p.push(skyPart(new BoxGeometry(0.34, 0.12, 0.12), furDark, bx + 0.86, dy + 0.18, 0))
+        for (const s of [-1, 1]) {
+          p.push(skyPart(new ConeGeometry(0.09, 0.42, 4).rotateZ(s * 0.5), bone, bx + 0.66 + s * 0.06, dy + 0.6, 0))
+          p.push(skyPart(new BoxGeometry(0.11, 0.46, 0.11), furDark, bx + s * 0.3, dy - 0.44, 0))
+        }
+      }
+      // Les traits de l'attelage.
+      p.push(skyPart(new BoxGeometry(9.2, 0.07, 0.07), furDark, -3.6, -0.05, 0))
+      // Le traîneau : caisse, patin recourbé, dossier.
+      p.push(skyPart(new BoxGeometry(2.3, 0.8, 0.9), red, 1.9, 0.1, 0))
+      p.push(skyPart(new BoxGeometry(0.5, 0.9, 0.9), red, 0.85, 0.5, 0))
+      p.push(skyPart(new BoxGeometry(2.9, 0.12, 0.12), iron, 1.9, -0.42, 0))
+      p.push(skyPart(new ConeGeometry(0.32, 0.7, 4).rotateZ(-1.9), iron, 3.4, -0.3, 0))
+      // Le personnage : manteau, ceinture, barbe, bonnet à pompon.
+      p.push(skyPart(new BoxGeometry(0.62, 0.8, 0.6), red, 1.85, 0.85, 0))
+      p.push(skyPart(new BoxGeometry(0.66, 0.14, 0.64), cream, 1.85, 0.7, 0))
+      p.push(skyPart(new BoxGeometry(0.3, 0.34, 0.4), cream, 2.1, 1.05, 0))
+      p.push(skyPart(new ConeGeometry(0.32, 0.5, 6), red, 1.8, 1.5, 0))
+      p.push(skyPart(new BoxGeometry(0.2, 0.2, 0.2), cream, 1.8, 1.78, 0))
+      // La hotte, débordant de paquets.
+      p.push(skyPart(new BoxGeometry(0.9, 0.7, 0.7), furDark, 2.6, 0.7, 0))
+      p.push(skyPart(new BoxGeometry(0.3, 0.3, 0.3).rotateY(0.5), cream, 2.5, 1.1, 0))
+      p.push(skyPart(new BoxGeometry(0.26, 0.26, 0.26).rotateY(1.1), bone, 2.82, 1.14, 0))
+      const geo = mergeGeometries(p) ?? new BufferGeometry()
+      const mesh = new Mesh(
+        geo,
+        new MeshBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+          fog: false,
+          toneMapped: false,
+          opacity: 0,
+        }),
+      )
+      mesh.renderOrder = 991
+      mesh.visible = false
+      this.camera.add(mesh)
+      this.sleighMesh = mesh
+    }
+    this.sleighDur = dur
+    this.sleighLife = dur
+  }
+
+  get sleighFlying(): boolean {
+    return this.sleighLife > 0
+  }
+
+  /** La course du traîneau avance au temps RÉEL, pas au nombre d'images : sur
+   *  une machine lente il traversait le ciel en six minutes. */
+  tickSleigh(dt: number): void {
+    if (this.sleighLife > 0) this.sleighLife = Math.max(0, this.sleighLife - dt)
+  }
 
   /** Une aurore : un voile vert qui ondule au-dessus de l'horizon nocturne. */
   aurora(dur = 45): void {
@@ -1192,6 +1291,23 @@ export class Stage {
     this.moonGlow.position.set(mx, halfH * Math.min(hz + moonElev * 0.42, 0.92), -D)
     this.moonGlow.scale.setScalar((halfH * 0.8) / 52)
     const mEdge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(mx))
+    // Le traîneau traverse le cadre en ligne, avec une légère cloche : il
+    // monte au milieu de sa course. Il s'efface aux deux bouts pour ne pas
+    // apparaître d'un coup au bord de l'écran.
+    const sl = this.sleighMesh
+    if (sl && this.sleighLife > 0) {
+      const t = 1 - this.sleighLife / this.sleighDur
+      const x = (t * 2.5 - 1.25) * halfW
+      const arc = Math.sin(t * Math.PI) * 0.12
+      sl.position.set(x, halfH * (Math.min(hz, 0.74) + arc), -D)
+      sl.scale.setScalar((halfH * 0.62) / 11)
+      const fade = smoothstep(0, 0.12, t) * (1 - smoothstep(0.88, 1, t))
+      ;(sl.material as MeshBasicMaterial).opacity = fade
+      sl.visible = fade > 0.01
+    } else if (sl && sl.visible) {
+      sl.visible = false
+    }
+
     // La voûte d'étoiles s'ancre à l'HORIZON, pas à une altitude fixe. Elle
     // vivait à y = −79..51 : avec cette caméra, l'horizon vrai tombe au ras du
     // bord haut du cadre (mesuré : NDC ≥ 0,95), donc TOUT ce qui est sous la

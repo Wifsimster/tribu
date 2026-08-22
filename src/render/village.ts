@@ -1306,6 +1306,8 @@ export class Village {
     private island: Island,
     private readonly age = 0,
     private readonly electric = false,
+    /** Le temps des cadeaux : des paquets attendent autour du feu. */
+    private readonly yule = false,
   ) {
     this.buildCampfire()
     this.buildShore()
@@ -1861,6 +1863,30 @@ export class Village {
   private camp(p: BufferGeometry[]): void {
     const put = (parts: BufferGeometry[], s: { x: number; z: number }, yaw?: number): void =>
       place(p, parts, yaw ?? facingFire(s.x, s.z), s.x, s.z)
+
+    // Le temps des cadeaux : quelques paquets posés au pied du foyer. Ils
+    // vivent dans la géométrie du camp — zéro appel de rendu de plus — et ne
+    // durent que la semaine de Noël sur l'horloge du joueur.
+    if (this.yule) {
+      const wrap = [new Color('#c0392b'), new Color('#1e7a4a'), new Color('#e0b13a')]
+      const ribbon = new Color('#f5efe0')
+      const spots: readonly (readonly [number, number, number, number])[] = [
+        [1.42, 0.62, 0.46, 0.5],
+        [1.86, 1.24, 0.34, 1.4],
+        [0.72, 1.5, 0.4, 0.2],
+        [-0.5, 1.72, 0.3, 2.3],
+        [2.1, 0.1, 0.28, 0.9],
+      ]
+      spots.forEach(([bx, bz, sz, yaw], i) => {
+        const box = new BoxGeometry(sz, sz * 0.8, sz).rotateY(yaw)
+        p.push(part(box, tint(wrap[i % 3]!, i * 9, 0.07), bx, sz * 0.4, bz))
+        // Les deux rubans croisés : c'est ce qui fait lire « paquet » et non
+        // « caisse » à quarante pixels.
+        p.push(part(new BoxGeometry(sz * 1.03, sz * 0.83, sz * 0.16).rotateY(yaw), ribbon, bx, sz * 0.4, bz))
+        p.push(part(new BoxGeometry(sz * 0.16, sz * 0.83, sz * 1.03).rotateY(yaw), ribbon, bx, sz * 0.4, bz))
+        p.push(part(new BoxGeometry(sz * 0.3, sz * 0.12, sz * 0.3).rotateY(yaw + 0.6), ribbon, bx, sz * 0.86, bz))
+      })
+    }
 
     if (this.age <= 1) {
       // Deux loges, une grande et une petite, dont les silhouettes se recouvrent à

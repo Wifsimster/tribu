@@ -136,6 +136,25 @@ export const AGES: AgeDef[] = [
   },
 ]
 
+/** LE TEMPS DES CADEAUX. Sur l'horloge du joueur, pas sur celle du jeu : du
+ *  20 au 26 décembre, des paquets attendent autour du feu ; les nuits du 24 et
+ *  du 25, un traîneau traverse le ciel. C'est le seul endroit du jeu où le
+ *  calendrier réel entre — d'où le nom explicite. */
+export type YuleState = 'none' | 'gifts' | 'flight'
+
+export function yuleState(now = new Date()): YuleState {
+  if (now.getMonth() !== 11) return 'none'
+  const d = now.getDate()
+  if (d === 24 || d === 25) return 'flight'
+  return d >= 20 && d <= 26 ? 'gifts' : 'none'
+}
+
+/** Ce que raconte la carte du traîneau : la vraie histoire, et un mythe défait.
+ *  Le jeu explique TOUT ce qu'il montre — un événement sans son fait ne serait
+ *  qu'une décoration. */
+export const YULE_STORY =
+  "Le 25 décembre ne doit rien à une date de naissance : l'Église l'a fixé au IVe siècle sur le solstice romain du Sol Invictus, la fête du soleil qui renaît. Le personnage, lui, vient de saint Nicolas de Myre, évêque du IVe siècle réputé pour ses dons secrets, que les Néerlandais emportent en Amérique sous le nom de Sinterklaas. Le traîneau et ses huit rennes n'apparaissent qu'en 1823, dans un poème américain ; Rudolph, le neuvième, est inventé en 1939 par un grand magasin de Chicago pour son catalogue de Noël. Et non : ce n'est pas Coca-Cola qui l'a habillé de rouge — le dessinateur Thomas Nast le représentait déjà ainsi dans les années 1860, quarante ans avant la marque."
+
 /** Une journée complète en secondes de jeu, et l'heure de la première aube.
  *  Vivent ici parce que la nuit est une règle du jeu, pas un habillage. */
 export const DAY_SECONDS = 240

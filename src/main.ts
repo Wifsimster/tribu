@@ -52,7 +52,11 @@ import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
 import { Hud, escapeHtml, fmt } from './ui/hud'
-import { AGES, RELIC_BY_ID, RESOURCES, TECHS } from './game/content'
+import { AGES, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, yuleState } from './game/content'
+
+/** Le seul endroit du jeu où le calendrier RÉEL entre : la semaine de Noël.
+ *  Lu une fois au chargement — une partie ne dure pas d'un jour à l'autre. */
+const yule = yuleState()
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
@@ -117,7 +121,7 @@ function buildWorld(): void {
   island = new Island(game.save.seed, growthForAge(game.save.age))
   // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
   // brasero, lampadaire dès que l'électricité est sue.
-  village = new Village(island, game.save.age, game.knows('electricity'))
+  village = new Village(island, game.save.age, game.knows('electricity'), yule !== 'none')
   // Le plan sauvegardé d'abord : ce qui est bâti ne se redéplace pas.
   // Plan d'une version antérieure : il est retracé selon les règles du jour.
   village.adoptLayout(game.save.layoutV === 2 ? game.save.layout : [])
@@ -466,6 +470,12 @@ game.on((e) => {
 
 // ── Événements du monde : épave et éclipse ─────────────────────────────────
 const ECLIPSE_DUR = 38
+// Le traîneau : il repasse toutes les deux minutes environ, mais seulement la
+// nuit et seulement les 24 et 25 décembre. La carte d'explication, elle, ne
+// s'ouvre qu'une fois par session — un événement s'explique, il ne se répète
+// pas.
+let sleighIn = 7
+let sleighTold = false
 let eclipseLeft = 0
 let wreck: Group | null = null
 let wreckFact = ''
@@ -1437,6 +1447,27 @@ function frame(now: number): void {
   villagers.update(dt, elapsed, game.sleepTime, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
+  stage.tickSleigh(dt)
+  // Nuit de Noël : les grelots, puis la silhouette qui traverse le ciel.
+  if (yule === 'flight' && !paused) {
+    if (game.isNight) {
+      sleighIn -= dt
+      if (sleighIn <= 0 && !stage.sleighFlying) {
+        sleighIn = 95 + Math.random() * 80
+        stage.sleigh(17)
+        ambience.sleighBells()
+        hud.toast('Des grelots, très haut dans la nuit — un traîneau traverse le ciel')
+        if (!sleighTold) {
+          sleighTold = true
+          hud.showStory('La nuit du 25 décembre', 'Le traîneau dans le ciel', YULE_STORY)
+        }
+      }
+    } else {
+      // Au jour, on réarme court : la première nuit venue, il passe.
+      sleighIn = Math.min(sleighIn, 10)
+    }
+  }
+
   if (wreckTimer > 0) {
     wreckTimer -= dt
     if (wreckTimer <= 0) despawnWreck()
