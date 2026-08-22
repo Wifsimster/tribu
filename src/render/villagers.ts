@@ -188,19 +188,24 @@ export class Villagers {
     s.walking = true
   }
 
-  update(dt: number, time: number, night: boolean): void {
+  /** `night` est l'heure du coucher des ADULTES — repoussée par la lumière
+   *  découverte (veillée). `childNight` est celle de l'ENFANT : la tombée de
+   *  la nuit, point. Aucun lampadaire ne fait veiller un enfant. */
+  update(dt: number, time: number, night: boolean, childNight = night): void {
     for (let i = 0; i < 2; i++) {
       const s = this.souls[i]!
       const active = i < this.count
       if (!active) continue
+      // L'index 1 est l'enfant (bodies construits dans l'ordre adulte, enfant).
+      const asleep = i === 1 ? childNight : night
 
       // La nuit, chacun rentre au camp et s'efface ; l'aube les rend.
-      if (night && !s.home) {
+      if (asleep && !s.home) {
         s.tx = CAMP_HOME.x + (i === 0 ? 1.2 : -0.8)
         s.tz = CAMP_HOME.z + 1.4
         s.walking = true
         if (Math.hypot(s.x - s.tx, s.z - s.tz) < 0.4) s.home = true
-      } else if (!night && s.home) {
+      } else if (!asleep && s.home) {
         s.home = false
         s.timer = 1 + Math.random() * 3
         s.walking = false
@@ -216,12 +221,13 @@ export class Villagers {
             s.timer = 2.5 + Math.random() * 6
           } else {
             s.heading = Math.atan2(dx, dz)
-            const sp = (i === 0 ? 0.62 : 0.95) * (night ? 1.4 : 1)
+            // On rentre d'un pas plus vif que l'on flâne.
+            const sp = (i === 0 ? 0.62 : 0.95) * (asleep ? 1.4 : 1)
             s.x += Math.sin(s.heading) * sp * dt
             s.z += Math.cos(s.heading) * sp * dt
             s.phase += dt * (i === 0 ? 7 : 11)
           }
-        } else if (!night) {
+        } else if (!asleep) {
           s.timer -= dt
           if (s.timer <= 0) this.pickTarget(s)
         }

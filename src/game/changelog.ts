@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.31.0',
+    title: 'Les enfants au lit',
+    items: [
+      "L'enfant du village est couché dès la tombée de la nuit, et non plus à l'heure des adultes : aucun lampadaire ne fait veiller un enfant. Les grands, eux, profitent toujours de la veillée que leur offre la lumière découverte — plus elle est bonne, plus ils travaillent tard.",
+    ],
+  },
+  {
     version: '3.30.0',
     title: 'Le premier plan s’ouvre',
     items: [

@@ -1377,7 +1377,9 @@ function frame(now: number): void {
   village.update(dt, elapsed)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
-  villagers.update(dt, elapsed, game.sleepTime)
+  // Les adultes veillent tant que la lumière le permet ; l'enfant est couché
+  // dès la tombée de la nuit.
+  villagers.update(dt, elapsed, game.sleepTime, game.isNight)
   // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
   // où elle s'était arrêtée, pas toujours au même matin.
   if (wreckTimer > 0) {
