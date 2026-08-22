@@ -1874,6 +1874,10 @@ export class Village {
       }
     }
     this.railStop = this.railCum[best] ?? 0
+    // La gare n'est pas un bâtiment du plan : sans réservation, un atelier
+    // pouvait se poser sur son quai. Même traitement que le phare.
+    this.taken.push(new Vector3(pts[best]!.x, 0, pts[best]!.z))
+    this.takenFp.push(2.2)
     const a = pts[best - 1]!
     const b = pts[best + 1]!
     const yaw = Math.atan2(b.x - a.x, b.z - a.z)
@@ -2541,6 +2545,13 @@ export class Village {
       // continue de regarder le large.
       const rot = b === 'lighthouse' ? Math.atan2(-s.x, -s.z) : this.slotRot
       this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot })
+      // Le phare ne passe pas par `nextSlot` : personne ne l'inscrivait donc
+      // parmi les emplacements PRIS, et un atelier pouvait venir se coller
+      // contre une tour de dix unités. On l'inscrit à la main.
+      if (b === 'lighthouse') {
+        this.taken.push(s.clone())
+        this.takenFp.push(fp)
+      }
       this.placed.add(b)
       dirty = true
       // La borne milliaire n'est que la signature des voies romaines : ce que

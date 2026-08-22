@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.40.0',
+    title: 'Trois règles de plus',
+    items: [
+      "La caravelle ne pose plus d'atelier sur l'île : comme la voile et la machine à vapeur, elle fait évoluer TA BARQUE. Un savoir de flotte se voit sur l'eau, pas dans un pré.",
+      "Le phare occupe enfin sa place dans le plan du village. Il se posait hors du plan, donc rien ne l'inscrivait parmi les emplacements pris : un atelier pouvait venir se coller contre une tour de dix unités.",
+      "Même chose pour la gare : son quai est réservé, on ne bâtit plus dessus.",
+    ],
+  },
+  {
     version: '3.39.0',
     title: 'La gare, et deux nouveaux voyages',
     items: [

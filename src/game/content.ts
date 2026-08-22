@@ -735,7 +735,6 @@ export const TECHS: TechDef[] = [
     funFact:
       "Pour rentrer d'Afrique, les Portugais ont dû apprendre à faire fausse route : s'éloigner de la côte vers le large pour retrouver des vents portants. Cette boucle contre-intuitive s'appelle la volta do mar — et c'est elle qui rend l'exploration réversible.",
     effects: [
-      { kind: 'building', building: 'caravel' },
       { kind: 'expeditionSpeed', mult: 1.6 },
     ],
   },
