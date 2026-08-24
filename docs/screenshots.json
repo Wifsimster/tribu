@@ -1,0 +1,54 @@
+{
+  "url": "https://tribu.battistella.ovh",
+  "capturedAt": "2026-08-24T12:24:58.822Z",
+  "runs": [
+    {
+      "label": "screenshot",
+      "preset": "desktop",
+      "hour": "0.22",
+      "file": "docs/screenshot.png",
+      "info": {
+        "calls": 87,
+        "triangles": 131446,
+        "programs": 31,
+        "geometries": 60,
+        "textures": 10,
+        "age": 6,
+        "techs": 35
+      },
+      "errors": []
+    },
+    {
+      "label": "screenshot-nuit",
+      "preset": "desktop",
+      "hour": "0.78",
+      "file": "docs/screenshot-nuit.png",
+      "info": {
+        "calls": 68,
+        "triangles": 77729,
+        "programs": 27,
+        "geometries": 62,
+        "textures": 12,
+        "age": 6,
+        "techs": 35
+      },
+      "errors": []
+    },
+    {
+      "label": "screenshot-mobile",
+      "preset": "mobile",
+      "hour": "0.22",
+      "file": "docs/screenshot-mobile.png",
+      "info": {
+        "calls": 91,
+        "triangles": 131670,
+        "programs": 31,
+        "geometries": 64,
+        "textures": 10,
+        "age": 6,
+        "techs": 35
+      },
+      "errors": []
+    }
+  ]
+}

@@ -4,6 +4,15 @@
 
 **En ligne : [tribu.battistella.ovh](https://tribu.battistella.ovh)** · Progression du chantier : [/progress](https://tribu.battistella.ovh/progress/)
 
+![Une île à la Renaissance : le phare, le village aux toits d'ardoise, la Merveille en chantier, et les silhouettes des tribus voisines à l'horizon](docs/screenshot.png)
+
+<details>
+<summary>La même île à la nuit tombée</summary>
+
+![La nuit : le phare balaie la mer, le foyer éclaire le village, et les feux des voisins piquent l'horizon](docs/screenshot-nuit.png)
+
+</details>
+
 Tribu est un jeu d'attente (*idle game*) qui tient dans un onglet et se joue au pouce.
 Un seul colon débarque au Paléolithique. Il chasse, ramasse du bois, casse des cailloux,
 et à mesure que le savoir s'accumule, la tribu découvre des technologies qui la font
@@ -121,6 +130,17 @@ Par défaut, notre build est mesuré **bridé** (4G simulée, CPU ×4). Le champ
 une affirmation sur le GPU d'un vrai téléphone : le headless rend via SwiftShader.
 Les chiffres qui font foi sont `firstDrawMs`, `calls`, `triangles` et
 `transferredBytes`.
+
+Les images de ce README sont produites par `tools/screenshot-readme.mjs`. Un
+chargement neuf ne montrerait qu'une île vide au Paléolithique : le script sème
+donc une sauvegarde de Renaissance dans le `localStorage` **avant** le
+chargement — jamais après, le `pagehide` → `game.flush()` écraserait l'injection —
+et laisse le jeu construire son monde à partir de cet état.
+
+```bash
+NODE_PATH=/tmp/node_modules node tools/screenshot-readme.mjs
+ffmpeg -y -i docs/screenshot.png -vf "scale=1600:-1:flags=lanczos" docs/screenshot.png
+```
 
 ## Déploiement
 
