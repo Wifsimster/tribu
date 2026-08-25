@@ -166,7 +166,11 @@ const int = (v, min, max) => {
 
 /** Un pseudo est du texte affiché chez les autres : ni contrôle, ni roman. */
 function cleanName(v) {
-  const s = String(v ?? '')
+  // Un nom qui n'est pas du TEXTE n'en est pas un. `String({})` rend
+  // « [object Object] » : le voisinage entier se serait mis à afficher ça,
+  // pour toujours, à cause d'une seule sauvegarde bricolée.
+  if (typeof v !== 'string') return 'Tribu sans nom'
+  const s = v
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()

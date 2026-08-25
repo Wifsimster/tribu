@@ -111,6 +111,15 @@ export function emptySave(now: number): SaveV1 {
   }
 }
 
+const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+/** Une identité de voisinage n'est utilisable que si ses trois champs sont du
+ *  texte : sinon elle vaut mieux absente qu'illisible pour les autres. */
+function cleanTribe(t: SaveV1['tribe']): SaveV1['tribe'] {
+  if (!t || typeof t.id !== 'string' || typeof t.secret !== 'string') return null
+  return { id: t.id, secret: t.secret, name: text(t.name).trim().slice(0, 24) || 'Tribu sans nom' }
+}
+
 export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } {
   let raw: string | null = null
   try {
@@ -126,13 +135,21 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
     if (parsed.v !== 1) return { save: emptySave(now), offlineSeconds: 0 }
     const elapsed = Math.max(0, Math.min((now - parsed.t) / 1000, OFFLINE_CAP_SECONDS))
     const base = emptySave(now)
-    return {
+    const save = {
       // `layoutV` doit venir de la sauvegarde LUE, pas du gabarit : une save
       // d'avant les rues n'a pas la clé, et le spread lui aurait prêté la
       // version du jour — son vieux plan aurait été adopté tel quel.
-      save: { ...base, ...parsed, layoutV: parsed.layoutV ?? 0, res: { ...base.res, ...parsed.res } },
-      offlineSeconds: elapsed,
+      ...base,
+      ...parsed,
+      layoutV: parsed.layoutV ?? 0,
+      res: { ...base.res, ...parsed.res },
     }
+    // Les NOMS relus d'une sauvegarde doivent être du texte. Une save bricolée
+    // (ou un transfert modifié) portant un objet ici se publiait telle quelle
+    // dans le voisinage, où tout le monde lisait « [object Object] ».
+    save.village = text(save.village)
+    save.tribe = cleanTribe(save.tribe)
+    return { save, offlineSeconds: elapsed }
   } catch {
     return { save: emptySave(now), offlineSeconds: 0 }
   }

@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.46.0',
+    title: 'Plus de tribu sans nom lisible',
+    items: [
+      "Une tribu s'affichait à l'horizon sous le nom « [object Object] ». Le serveur convertissait en texte tout ce qu'on lui envoyait comme nom : une sauvegarde dont le nom n'était pas du texte donnait cette formule, et le voisinage entier la lisait.",
+      "Un nom doit désormais ÊTRE du texte, des deux côtés : la sauvegarde nettoie le sien à la relecture, et le serveur refuse le reste au lieu de le transformer. À défaut, la tribu s'appelle « Tribu sans nom » — et son joueur peut la renommer d'un tap.",
+    ],
+  },
+  {
     version: '3.45.0',
     title: 'Les bâtiments ont un âge',
     items: [
