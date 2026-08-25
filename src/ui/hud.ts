@@ -439,8 +439,18 @@ export class Hud {
     el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
-  /** Une histoire hors savoir : épave, événement — même écrin que les faits. */
-  showStory(kicker: string, title: string, text: string, html?: string, asideLabel?: string): void {
+  /** Une histoire hors savoir : épave, événement — même écrin que les faits.
+   *  `asidePlain` retire la lettrine du cartouche : elle habille un paragraphe
+   *  qu'on LIT, pas une ligne de chiffres — un « +20 % » coiffé d'une capitale
+   *  de 42 px ne se lit plus du tout. */
+  showStory(
+    kicker: string,
+    title: string,
+    text: string,
+    html?: string,
+    asideLabel?: string,
+    asidePlain = false,
+  ): void {
     el('fact-kicker').textContent = kicker
     el('fact-title').textContent = title
     el('fact-text').textContent = text
@@ -450,6 +460,7 @@ export class Hud {
     aside.hidden = !html
     if (html) {
       el('fact-fun').innerHTML = html
+      el('fact-fun').classList.toggle('plain', asidePlain)
       el('fact-aside-kicker').textContent = asideLabel ?? 'Le saviez-vous ?'
     }
     el('fact').classList.add('open')
@@ -469,6 +480,7 @@ export class Hud {
     aside.hidden = !tech.funFact
     if (tech.funFact) {
       el('fact-fun').textContent = tech.funFact
+      el('fact-fun').classList.remove('plain')
       el('fact-aside-kicker').textContent = 'Le saviez-vous ?'
     }
     el('fact').classList.add('open')

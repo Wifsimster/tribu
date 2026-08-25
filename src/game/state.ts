@@ -36,6 +36,10 @@ export interface SaveV1 {
   totalPlaySeconds: number
   /** Reliques rapportées d'expédition, exposées au musée du village. */
   relics: string[]
+  /** Outils achetés au marchand. Contrairement aux reliques, ils ne montent
+   *  pas dans la cale de l'Exode : la tribu emporte sa mémoire, pas son
+   *  outillage — il reste sur l'île avec le village qu'il a servi. */
+  tools: string[]
   /** Secondes avant le prochain événement rare du monde (live uniquement). */
   eventIn: number
   /** Hauts faits accomplis. */
@@ -96,6 +100,7 @@ export function emptySave(now: number): SaveV1 {
     seenFacts: [],
     totalPlaySeconds: 0,
     relics: [],
+    tools: [],
     eventIn: 420,
     chronicle: [],
     feats: [],
@@ -149,6 +154,10 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
     // dans le voisinage, où tout le monde lisait « [object Object] ».
     save.village = text(save.village)
     save.tribe = cleanTribe(save.tribe)
+    // Les listes d'identifiants sont relues comme du TEXTE, jamais telles
+    // quelles : `recompute` parcourt les outils à chaque changement, et une
+    // sauvegarde bricolée ne doit pas pouvoir y glisser autre chose.
+    save.tools = Array.isArray(save.tools) ? save.tools.filter((t) => typeof t === 'string') : []
     return { save, offlineSeconds: elapsed }
   } catch {
     return { save: emptySave(now), offlineSeconds: 0 }

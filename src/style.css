@@ -1242,6 +1242,16 @@ body.night .age-bar {
   color: #b98a2e;
 }
 .fact-aside p { margin: 0; font-size: 14px; line-height: 1.5; opacity: 0.92; }
+/* Un cartouche « nu » : ce qu'un outil change tient en une ligne, et une
+   lettrine sur une ligne unique décale tout le reste sans rien embellir. */
+.fact-aside p.plain { font-weight: 700; }
+.fact-aside p.plain::first-letter {
+  float: none;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  padding: 0;
+}
 
 /* Le détail du chantier : une ligne par matériau, sa barre et son reste. */
 .wc-row {
@@ -1399,6 +1409,7 @@ body.night .age-bar {
 }
 .chron-age { font-weight: 700; }
 .chron-exodus { font-weight: 700; color: #b98a2e; }
+.chron-tool { font-weight: 700; }
 .chron-world {
   margin-top: 8px;
   font-weight: 800;
@@ -1449,6 +1460,27 @@ body.night .age-bar {
 .feat { opacity: 0.55; }
 .feat.done { opacity: 1; }
 .feat.done b { color: #b98a2e; }
+
+/* L'atelier : possédé en clair, à portée en demi-teinte, hors d'époque en
+   filigrane — la même gradation que les hauts faits, plus le fait historique
+   en petit sous l'objet acquis. */
+.tools-intro {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+.tool { opacity: 0.7; }
+.tool.has { opacity: 1; }
+.tool.has b { color: #b98a2e; }
+.tool.locked { opacity: 0.38; }
+.tool-fact {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  opacity: 0.72;
+}
 
 /* Sur grand écran, le cadran d'horizon se range sur la LIGNE du bouton de
    menu — deux pastilles alignées en haut à droite au lieu d'une sous l'autre.

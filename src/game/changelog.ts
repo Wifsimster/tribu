@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.47.0',
+    title: 'Le marchand ouvre sa cale',
+    items: [
+      "Le troc n'apportait rien : il prenait un tiers du tas le plus haut et rendait la ressource la plus basse, sans jamais faire entrer sur l'île autre chose que ce qu'elle produisait déjà. Une barque venue du bout du monde n'avait littéralement rien à vendre.",
+      "Le marchand sort désormais des OUTILS de sa cale — neuf objets qu'aucun savoir ne donne et qu'aucune expédition ne ramène : le lingot d'étain qui manque au cuivre, le pain de sel de Hallstatt, le rouleau de papyrus, le gouvernail d'étambot, le réal d'argent de Potosí, le caoutchouc vulcanisé, le roulement à billes, le conteneur normalisé, le fût de terres rares. Chacun porte son fait historique, et chacun sert POUR TOUJOURS.",
+      "Il en sort un par passage, le plus ancien qui manque, et seulement si la tribu peut le payer d'un coup : le marchand ne fait pas crédit. Deux de ces outils changent le troc lui-même — avec le réal puis le conteneur, chaque échange rapporte 30 % puis 50 % de plus.",
+      "« L'atelier », dans le menu, montre ce qui a été acheté, ce qui est à portée et à quel prix, et ce que garde encore une époque à venir. Deux hauts faits s'y ajoutent. Un outil reste sur l'île le jour de l'Exode : la tribu emporte son musée, pas son outillage.",
+    ],
+  },
+  {
     version: '3.46.0',
     title: 'Plus de tribu sans nom lisible',
     items: [

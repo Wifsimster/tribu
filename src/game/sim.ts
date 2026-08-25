@@ -15,11 +15,14 @@ import {
   RESOURCES,
   TECHS,
   TECH_BY_ID,
+  TOOLS,
+  TOOL_BY_ID,
   type AgeDef,
   type DestinationDef,
   type RelicDef,
   type ResourceId,
   type TechDef,
+  type ToolDef,
 } from './content'
 import { OFFLINE_CAP_SECONDS, emptySave, loadSave, writeSave, type SaveV1 } from './state'
 
@@ -62,6 +65,15 @@ export type GameEvent =
       got: { res: ResourceId; amount: number }
       insight: number
       tale: string | null
+    }
+  | {
+      /** Le marchand ouvre sa cale : un objet que l'île ne fabrique pas change
+       *  de mains. `silent` distingue le passage rattrapé pendant l'absence du
+       *  troc joué sous les yeux du joueur — le second mérite sa fiche. */
+      type: 'caravanTool'
+      def: ToolDef
+      paid: Partial<Record<ResourceId, number>>
+      silent: boolean
     }
   | { type: 'caravanLeave' }
   | { type: 'nightfall'; floor: number }
@@ -244,6 +256,8 @@ export class Game {
   private nightFloor = NIGHT_BASE_FLOOR
   /** Le grand marchand (événement) paie mieux — consommé au départ de la barque. */
   private goldenTrade = false
+  /** Ce que les outils achetés font gagner sur CHAQUE troc, cumulé. */
+  private tradeBonus = 1
   private lastSeasonId = -1
   private lightFactor = 1
   private wasNight = false
@@ -376,12 +390,18 @@ export class Game {
     this.insightAdd = 0
     this.carry = 0
     this.expeditionSpeed = 1
+    this.tradeBonus = 1
     this.nightFloor = NIGHT_BASE_FLOOR
     this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
     this.buildings = new Set()
 
-    for (const id of this.save.techs) {
-      const tech = TECH_BY_ID.get(id)
+    // Savoirs ET outils versent dans le même moulin : un outil n'est qu'un
+    // paquet d'effets de plus, qui vient du dehors au lieu de l'arbre.
+    const sources = [
+      ...this.save.techs.map((id) => TECH_BY_ID.get(id)),
+      ...this.save.tools.map((id) => TOOL_BY_ID.get(id)),
+    ]
+    for (const tech of sources) {
       if (!tech) continue
       for (const e of tech.effects) {
         switch (e.kind) {
@@ -405,6 +425,9 @@ export class Game {
             break
           case 'nightFloor':
             this.nightFloor = Math.max(this.nightFloor, e.value)
+            break
+          case 'tradeBonus':
+            this.tradeBonus *= e.mult
             break
         }
       }
@@ -819,6 +842,10 @@ export class Game {
    *  brille au-dessus de la récolte. */
   exodus(): boolean {
     if (!this.treeComplete) return false
+    // Ce qui monte dans la cale se nomme ici, et rien d'autre : les OUTILS
+    // n'y sont pas. Ils appartiennent à l'île et au village qu'ils ont servi ;
+    // la tribu recommence avec sa mémoire, pas avec son outillage — sans quoi
+    // chaque Exode empilerait ses bonus au lieu de rouvrir une page.
     const relics = this.save.relics
     const legacy = this.save.legacy + 1
     this.record('exodus', "L'Exode : la tribu largue les amarres, l'île retourne au silence")
@@ -984,6 +1011,8 @@ export class Game {
       sage: this.treeComplete,
       relique: S.relics.length >= 1,
       musee: S.relics.length >= 14,
+      outil: S.tools.length >= 1,
+      atelier: S.tools.length >= TOOLS.length,
       merveille: S.wonders.length >= 1,
       comptoir: S.outpost,
       exode: S.legacy >= 1,
@@ -1014,6 +1043,12 @@ export class Game {
     return this.save.relics
       .map((id) => RELIC_BY_ID.get(id))
       .filter((r): r is RelicDef => !!r)
+  }
+
+  /** Les outils possédés, dans l'ordre des époques — l'ordre où ils sont
+   *  arrivés, puisque le marchand sort toujours le plus ancien qui manque. */
+  get tools(): ToolDef[] {
+    return TOOLS.filter((t) => this.save.tools.includes(t.id))
   }
 
   /** Les événements rares ne vivent qu'en direct : l'absence ne les simule
@@ -1127,10 +1162,13 @@ export class Game {
     }
     if (!get) return
 
+    // Les outils de commerce (le réal, le conteneur) ne changent pas ce que la
+    // tribu donne — ils changent ce qu'elle obtient en face.
+    const paying = mult * this.tradeBonus
     const gave = Math.min(this.amount(give) * 0.33, 40 + this.save.age * 50)
     const value = gave * price(give)
-    const got = Math.max(1, Math.round((value * 0.75 * mult) / price(get)))
-    const insight = Math.round((6 + this.save.age * 8) * mult)
+    const got = Math.max(1, Math.round((value * 0.75 * paying) / price(get)))
+    const insight = Math.round((6 + this.save.age * 8) * paying)
 
     this.save.res[give] = this.amount(give) - gave
     this.save.res[get] = this.amount(get) + got
@@ -1149,6 +1187,41 @@ export class Game {
         tale,
       })
     }
+
+    this.offerTool(silent)
+  }
+
+  /** LA CALE. Un marchand n'apporte pas que des tas à rééquilibrer : il pose
+   *  parfois sur le sable un objet que l'île ne saura jamais faire pousser ni
+   *  cuire. C'est la seule source d'outils du jeu — aucun savoir n'en donne,
+   *  aucune expédition n'en ramène.
+   *
+   *  Il n'en sort qu'un par passage, le plus ancien qui manque, et seulement si
+   *  la tribu peut le payer d'un coup : le marchand ne fait pas crédit. Une
+   *  ressource encore inconnue ajourne l'offre plutôt que de l'annuler — on ne
+   *  paie pas en fer avant de savoir ce qu'est le fer. */
+  private offerTool(silent: boolean): void {
+    const def = TOOLS.find(
+      (t) =>
+        t.age <= this.save.age &&
+        !this.save.tools.includes(t.id) &&
+        Object.entries(t.price).every(
+          ([res, n]) => this.unlocked.has(res as ResourceId) && this.amount(res as ResourceId) >= n,
+        ),
+    )
+    if (!def) return
+
+    const paid: Partial<Record<ResourceId, number>> = {}
+    for (const [res, n] of Object.entries(def.price) as [ResourceId, number][]) {
+      this.save.res[res] = this.amount(res) - n
+      paid[res] = n
+    }
+    this.save.tools.push(def.id)
+    // Un outil change les taux : la simulation doit le savoir tout de suite,
+    // sans quoi le gain n'apparaîtrait qu'au prochain savoir découvert.
+    this.recompute()
+    this.record('tool', `${def.name} entre au village — ${def.boon.toLowerCase()}.`)
+    this.emit({ type: 'caravanTool', def, paid, silent })
   }
 
   /** Part du rendement conservée en pleine nuit — la meilleure lumière connue. */

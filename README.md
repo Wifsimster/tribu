@@ -22,6 +22,13 @@ Chaque découverte livre **un fait historique réel** : la corde néandertalienn
 l'Abri du Maras, les épieux de Schöningen, la hache en cuivre d'Ötzi. C'est la
 récompense du jeu autant que le bonus de production.
 
+À partir de l'âge du bronze, une barque marchande accoste régulièrement. Elle
+troque les surplus — et elle ouvre parfois sa cale sur un **outil** que l'île ne
+saura jamais fabriquer : le lingot d'étain qui manque au cuivre, le pain de sel
+de Hallstatt, le gouvernail d'étambot, le conteneur normalisé. Neuf objets,
+achetés une fois et acquis pour toujours, qu'aucune technologie ne donne — la
+seule chose du jeu qui vienne vraiment du dehors.
+
 ## Ce que le joueur fait (et ne fait pas)
 
 Le jeu se joue tout seul. Le joueur n'est **pas** nécessaire — il est invité.

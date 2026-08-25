@@ -38,7 +38,7 @@ import {
   type Snapshot,
 } from './net/neighbors'
 import { CHANGELOG } from './game/changelog'
-import { FEATS, WONDER_BY_AGE } from './game/content'
+import { FEATS, TOOLS, WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
 import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
@@ -393,6 +393,25 @@ game.on((e) => {
           `${RESOURCES[e.got.res].icon}\u202F${fmt(e.got.amount)} + ✨\u202F${e.insight}`,
       )
       if (e.tale) hud.toast(`Le marchand raconte : ${e.tale}`)
+      break
+    }
+    case 'caravanTool': {
+      ambience.chime()
+      const price = Object.entries(e.paid)
+        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
+        .join('  ')
+      hud.toast(`Le marchand ouvre sa cale : ${e.def.icon}\u202F${e.def.name.toLowerCase()} · ${price}`)
+      // Un objet acheté pendant l'absence se lit dans l'Atelier : on n'ouvre
+      // pas une fiche par-dessus le rattrapage de huit heures de jeu.
+      if (!e.silent)
+        hud.showStory(
+          `L’outil du marchand · ${AGES[e.def.age]?.name ?? game.age.name}`,
+          `${e.def.icon} ${e.def.name}`,
+          e.def.fact,
+          e.def.boon,
+          'Ce qu’il change',
+          true,
+        )
       break
     }
     case 'caravanLeave':
@@ -807,6 +826,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('menu-news').hidden = true
     menuEl('menu-chronicle').hidden = true
     menuEl('menu-feats').hidden = true
+    menuEl('menu-tools').hidden = true
     menuEl('menu-transfer').hidden = true
     menuEl('menu-neighbors').hidden = true
     menuEl('menu-market').hidden = true
@@ -924,6 +944,37 @@ function menuEl<T extends HTMLElement>(id: string): T {
     menuEl('menu-feats').hidden = false
   })
   menuEl('menu-feats-close').addEventListener('click', showHome)
+
+  // L'atelier : ce que le marchand a posé sur le sable, et ce qu'il reste à
+  // lui acheter. Les outils encore absents sont montrés, avec leur prix : le
+  // joueur doit pouvoir VISER une cale — sinon le troc reste une loterie.
+  menuEl('menu-tools-open').addEventListener('click', () => {
+    const owned = game.save.tools
+    menuEl('tools-intro').textContent =
+      owned.length === 0
+        ? 'Le marchand ne fait pas que rééquilibrer les tas : il apporte ce que l’île ne sait pas faire. Il ouvre sa cale quand la tribu peut payer d’un coup — un objet par passage, le plus ancien qui manque.'
+        : `${owned.length} outil${owned.length > 1 ? 's' : ''} sur ${TOOLS.length}. Chacun sert pour toujours — mais reste sur l’île le jour de l’Exode.`
+    const list = menuEl('tools-list')
+    list.textContent = ''
+    for (const t of TOOLS) {
+      const has = owned.includes(t.id)
+      const seen = t.age <= game.save.age
+      const li = document.createElement('li')
+      li.className = has ? 'tool has' : seen ? 'tool' : 'tool locked'
+      const price = Object.entries(t.price)
+        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
+        .join('  ')
+      li.innerHTML = has
+        ? `<b>${t.icon} ${t.name}.</b> ${t.boon}. <span class="tool-fact">${t.fact}</span>`
+        : seen
+          ? `<b>${t.icon} ${t.name}.</b> ${t.boon} — il en demande ${price}.`
+          : `<b>Une cale encore fermée.</b> ${AGES[t.age]?.name ?? ''} — il faudra atteindre cette époque.`
+      list.appendChild(li)
+    }
+    home.hidden = true
+    menuEl('menu-tools').hidden = false
+  })
+  menuEl('menu-tools-close').addEventListener('click', showHome)
 
   menuEl('menu-news-open').addEventListener('click', () => {
     home.hidden = true

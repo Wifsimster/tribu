@@ -223,6 +223,9 @@ export type Effect =
   | { kind: 'building'; building: string }
   /** Part du rendement conservée en pleine nuit (la meilleure source l'emporte). */
   | { kind: 'nightFloor'; value: number }
+  /** Ce que le marchand consent en plus au troc — le seul effet qu'aucun savoir
+   *  ne porte : il n'appartient qu'aux outils achetés au marchand lui-même. */
+  | { kind: 'tradeBonus'; mult: number }
 
 export interface TechDef {
   id: string
@@ -1324,6 +1327,137 @@ export const RELICS: RelicDef[] = [
 
 export const RELIC_BY_ID = new Map(RELICS.map((r) => [r.id, r]))
 
+// ── Les outils du marchand ───────────────────────────────────────────────────
+
+/** Ce que l’île ne saura JAMAIS fabriquer, et qu’aucun savoir ne donne : il
+ *  faut qu’une cale venue d’ailleurs le pose sur le sable. Chaque objet a
+ *  réellement circulé par le commerce à son époque — l’étain qui manque au
+ *  cuivre, le sel qui fait passer l’hiver, la boîte qui a fait la
+ *  mondialisation. C’est la raison d’être du troc : il n’échange pas seulement
+ *  des tas, il APPORTE.
+ *
+ *  Un outil s’achète une fois, sur les réserves, et sert pour toujours. Il ne
+ *  survit pas à l’Exode : la tribu emporte sa mémoire (le musée), pas son
+ *  outillage — celui-ci reste sur l’île avec le village qu’il a servi. */
+export interface ToolDef {
+  id: string
+  name: string
+  icon: string
+  /** Le marchand ne le sort de sa cale qu’à partir de cet âge. */
+  age: number
+  /** Ce qu’il en demande, prélevé sur les réserves EN PLUS du troc ordinaire.
+   *  Une ressource encore inconnue de la tribu ajourne l’offre : on ne paie
+   *  pas en fer avant de savoir ce qu’est le fer. */
+  price: Partial<Record<ResourceId, number>>
+  /** Ce qu’il change, en une ligne. Les savoirs se lisent dans l’arbre, où le
+   *  coût dit déjà le poids ; un outil, lui, arrive sans qu’on l’ait demandé —
+   *  il doit annoncer lui-même ce qu’il fait. */
+  boon: string
+  fact: string
+  effects: Effect[]
+}
+
+export const TOOLS: ToolDef[] = [
+  {
+    id: 'etain',
+    name: 'Un lingot d’étain',
+    icon: '🔩',
+    age: 2,
+    price: { copper: 90, stone: 250, food: 150 },
+    boon: 'Bois et pierre +20 %',
+    fact: 'L’étain ne gît presque jamais près du cuivre : celui des bronzes d’Orient venait des Cornouailles, de Galice ou des montagnes d’Asie centrale. Un alliage à un dixième d’étain a suffi à rendre un continent entier dépendant de routes de plusieurs milliers de kilomètres — et quand ces routes se sont rompues, vers −1200, l’Âge du bronze s’est effondré avec elles.',
+    effects: [
+      { kind: 'gatherRate', resource: 'wood', mult: 1.2 },
+      { kind: 'gatherRate', resource: 'stone', mult: 1.2 },
+    ],
+  },
+  {
+    id: 'sel',
+    name: 'Un pain de sel gemme',
+    icon: '🧂',
+    age: 3,
+    price: { food: 400, clay: 200, wood: 300 },
+    boon: 'Nourriture +30 %',
+    fact: 'À Hallstatt, dans les Alpes autrichiennes, on descend chercher le sel dans la montagne depuis environ −1500. L’air salé y a conservé les sacs de peau, les pioches de bois et jusqu’aux torches de sapin des mineurs. Le sel n’assaisonne pas : il CONSERVE — c’est lui qui permet de manger en hiver ce qu’on a pris en été.',
+    effects: [{ kind: 'gatherRate', resource: 'food', mult: 1.3 }],
+  },
+  {
+    id: 'papyrus',
+    name: 'Un rouleau de papyrus',
+    icon: '📜',
+    age: 4,
+    price: { fiber: 400, food: 400, stone: 400 },
+    boon: 'Savoir +0,6 par seconde',
+    fact: 'Le papyrus ne pousse que dans le delta du Nil, et l’Égypte en tenait le monopole. La tradition rapporte que les Ptolémées en coupèrent l’export pour étouffer la bibliothèque rivale de Pergame — laquelle mit alors au point le PARCHEMIN, la peau qui remplace la plante et qui porte encore le nom de la ville.',
+    effects: [{ kind: 'insightRate', add: 0.6 }],
+  },
+  {
+    id: 'gouvernail',
+    name: 'Un gouvernail d’étambot',
+    icon: '⚓',
+    age: 5,
+    price: { wood: 900, iron: 250, fiber: 400 },
+    boon: 'Les expéditions raccourcissent d’environ un dixième',
+    fact: 'Le gouvernail d’étambot — une pelle articulée sur l’arrière, au lieu d’un aviron tenu au flanc — est attesté en Chine dès le Ier siècle et apparaît en Europe vers 1180, sculpté sur des fonts baptismaux tournaisiens. Un seul homme tient alors un navire que trois ne dirigeaient plus : c’est ce qui autorise les gros porteurs de la Hanse.',
+    effects: [{ kind: 'expeditionSpeed', mult: 1.3 }],
+  },
+  {
+    id: 'real',
+    name: 'Un réal d’argent de Potosí',
+    icon: '🪙',
+    age: 6,
+    price: { copper: 700, stone: 900, food: 900 },
+    boon: 'Le marchand paie 30 % de mieux',
+    fact: 'La montagne d’argent de Potosí, ouverte en 1545, a fourni l’essentiel de l’argent du monde pendant un siècle — extrait au prix d’un travail forcé qui a tué par dizaines de milliers. Le réal de huit frappé avec elle circulait de Séville à Canton et resta monnaie légale aux États-Unis jusqu’en 1857 : la première monnaie vraiment mondiale.',
+    effects: [{ kind: 'tradeBonus', mult: 1.3 }],
+  },
+  {
+    id: 'caoutchouc',
+    name: 'Une balle de caoutchouc vulcanisé',
+    icon: '⚫',
+    age: 7,
+    price: { fiber: 1800, food: 900, wood: 1200 },
+    boon: 'Portage +8 (toute la récolte suit)',
+    fact: 'Le caoutchouc naturel fond à la chaleur et casse au froid. En 1839, Charles Goodyear le cuit par accident avec du soufre sur un poêle : la vulcanisation le rend stable en toute saison, et lance un siècle de course à la sève — celle qui a bâti un opéra en plein cœur de l’Amazonie, à Manaus.',
+    effects: [{ kind: 'carry', add: 8 }],
+  },
+  {
+    id: 'roulement',
+    name: 'Un roulement à billes',
+    icon: '⚙️',
+    age: 8,
+    price: { iron: 2500, copper: 1200, stone: 1500 },
+    boon: 'Fer et cuivre +25 %',
+    fact: 'Un roulement remplace le frottement par du roulement, et divise la perte par dix. Les navires de Caligula sur le lac de Nemi en portaient déjà, en bois ; mais c’est la bille d’acier parfaitement sphérique, produite en série à partir des années 1880, qui a rendu possibles la bicyclette moderne, l’automobile et la machine-outil.',
+    effects: [
+      { kind: 'gatherRate', resource: 'iron', mult: 1.25 },
+      { kind: 'gatherRate', resource: 'copper', mult: 1.25 },
+    ],
+  },
+  {
+    id: 'conteneur',
+    name: 'Un conteneur normalisé',
+    icon: '📦',
+    age: 9,
+    price: { iron: 9000, wood: 4000, copper: 3000 },
+    boon: 'Le marchand paie 50 % de mieux',
+    fact: 'Le 26 avril 1956, l’Ideal X quitte Newark avec cinquante-huit caisses métalliques sur le pont. Charger un navire à la main coûtait alors près de six dollars la tonne ; en conteneurs, seize cents. Ce n’est pas une machine qui a fait la mondialisation, c’est une BOÎTE — et surtout la décision de la faire partout de la même taille.',
+    effects: [{ kind: 'tradeBonus', mult: 1.5 }],
+  },
+  {
+    id: 'terresrares',
+    name: 'Un fût de terres rares',
+    icon: '🧪',
+    age: 10,
+    price: { stone: 30000, copper: 12000, iron: 20000 },
+    boon: 'Savoir +2 par seconde',
+    fact: 'Les « terres rares » ne sont pas rares : le cérium est plus abondant dans la croûte terrestre que le cuivre. Ce qui est rare, c’est de les SÉPARER — dix-sept métaux aux propriétés chimiques presque identiques, qu’il faut trier par des centaines d’étapes d’extraction successives. Sans eux, ni aimant de moteur électrique, ni écran, ni éolienne.',
+    effects: [{ kind: 'insightRate', add: 2 }],
+  },
+]
+
+export const TOOL_BY_ID = new Map(TOOLS.map((t) => [t.id, t]))
+
 // ── Les Merveilles : une grande œuvre par époque ─────────────────────────────
 
 export interface WonderDef {
@@ -1360,6 +1494,8 @@ export const FEATS: FeatDef[] = [
   { id: 'michemin', name: 'À mi-chemin', desc: 'Connaître 26 savoirs.' },
   { id: 'sage', name: 'La tribu sage', desc: 'Réunir tous les savoirs.' },
   { id: 'relique', name: 'Première vitrine', desc: 'Rapporter une relique.' },
+  { id: 'outil', name: 'La cale ouverte', desc: 'Acheter un outil au marchand.' },
+  { id: 'atelier', name: 'L’atelier complet', desc: 'Réunir les neuf outils du marchand.' },
   { id: 'musee', name: 'Le musée plein', desc: 'Exposer les 14 reliques.' },
   { id: 'merveille', name: 'Bâtisseurs', desc: 'Achever une Merveille.' },
   { id: 'comptoir', name: 'Les feux répondent', desc: "Fonder le comptoir de l'îlot." },
