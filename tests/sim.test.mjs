@@ -11,7 +11,7 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k),
 }
 
-const { Game, drawLands, landMilestones } = await import('../src/game/sim.ts')
+const { Game, drawLands, landMilestones, landBonds, hexDistance } = await import('../src/game/sim.ts')
 const { SAVE_KEY, OFFLINE_CAP_SECONDS } = await import('../src/game/state.ts')
 const { TECH_BY_ID, AGES } = await import('../src/game/content.ts')
 
@@ -176,4 +176,132 @@ test('sauvegarde bricolée : terres inconnues ou coordonnées folles ignorées',
   const back = new Game(NOW)
   assert.deepEqual(back.save.land, [{ kind: 'foret', q: 1, r: 2 }])
   assert.deepEqual(back.save.landPending, [{ n: 1, kinds: ['prairie'] }])
+})
+
+// ── Incrément 3 : l'emplacement choisi et le voisinage ──────────────────────
+
+/** Le taux de bois d'une partie dont les terres posées sont `land`. */
+function woodWith(land) {
+  const g = freshWith(42, 2)
+  g.setFocus('wood')
+  g.save.land = land
+  g.recompute()
+  return g.rates.wood
+}
+
+test('voisinage : deux forêts adjacentes donnent bois ×1,12², ×1,08² sinon', () => {
+  const bare = woodWith([])
+  // Centres à 3 cellules : les anneaux se touchent, bord contre bord.
+  assert.equal(hexDistance(0, -12, 3, -12), 3)
+  const near = woodWith([{ kind: 'foret', q: 0, r: -12 }, { kind: 'foret', q: 3, r: -12 }])
+  // À 4 cellules : une rangée d'eau les sépare.
+  assert.equal(hexDistance(0, -12, 4, -12), 4)
+  const far = woodWith([{ kind: 'foret', q: 0, r: -12 }, { kind: 'foret', q: 4, r: -12 }])
+  assert.ok(Math.abs(near - bare * 1.12 ** 2) < 1e-9, `${near} vs ${bare * 1.12 ** 2}`)
+  assert.ok(Math.abs(far - bare * 1.08 ** 2) < 1e-9, `${far} vs ${bare * 1.08 ** 2}`)
+  // Le voisinage ne vaut qu'entre terres du même type.
+  const mixed = woodWith([{ kind: 'foret', q: 0, r: -12 }, { kind: 'prairie', q: 3, r: -12 }])
+  assert.ok(Math.abs(mixed - bare * 1.08) < 1e-9)
+  assert.deepEqual(landBonds([{ kind: 'foret', q: 0, r: 0 }, { kind: 'foret', q: 3, r: 0 }, { kind: 'foret', q: 9, r: 0 }]), [true, true, false])
+})
+
+test('une ancre qui chevauche une terre déjà gagnée est rejetée', () => {
+  const g = freshWith(42, 2)
+  g.save.land = [{ kind: 'foret', q: 3, r: -9 }]
+  g.recompute()
+  const kind = g.landOffer.kinds[0]
+  for (const [q, r] of [[3, -9], [4, -9], [5, -9], [3, -7]]) {
+    assert.ok(g.landOverlaps(q, r), `${q},${r}`)
+    assert.equal(g.chooseLand(kind, q, r), false, `chevauchement ${q},${r} refusé`)
+  }
+  assert.equal(g.save.landPending.length, 1, 'la carte reste en file')
+  assert.equal(g.save.land.length, 1)
+  assert.equal(g.landOverlaps(6, -9), false)
+  assert.ok(g.landBondAt('foret', 6, -9))
+  assert.equal(g.landBondAt('prairie', 6, -9), false)
+  assert.ok(g.chooseLand(kind, 6, -9))
+})
+
+test('annuler : la carte retourne dans la file, intacte, et rien ne se pose', () => {
+  const g = freshWith(42, 2)
+  g.setFocus('wood')
+  const queue = structuredClone(g.save.landPending)
+  assert.equal(g.pickLand('crique'), false, 'terre absente de la carte')
+  assert.ok(g.pickLand('foret'))
+  assert.equal(g.placing, 'foret')
+  // Pendant le choix, la carte ne rapporte toujours rien.
+  for (let t = 0; t < 300; t += 0.5) g.tick(0.5, NOW + t * 1000)
+  assert.deepEqual(g.save.land, [])
+  g.cancelLand()
+  assert.equal(g.placing, null)
+  assert.deepEqual(g.save.landPending, queue)
+  assert.equal(g.placeLand(3, -9), false, 'plus rien à poser après annulation')
+  // Et un rechargement rend la même carte.
+  g.flush(NOW)
+  const back = new Game(NOW)
+  assert.deepEqual(back.save.landPending, queue)
+  assert.deepEqual(back.save.land, [])
+  // On peut y revenir : choisir, puis poser à l'ancre touchée.
+  const wood = back.rates.wood
+  assert.ok(back.pickLand('foret'))
+  assert.ok(back.placeLand(3, -9))
+  assert.deepEqual(back.save.land, [{ kind: 'foret', q: 3, r: -9 }])
+  assert.equal(back.save.landPending.length, 0)
+  assert.equal(back.placing, null)
+  assert.ok(Math.abs(back.rates.wood - wood * 1.08) < 1e-9)
+})
+
+/** Les 21 parcelles d'une partie v3.50 d'âge 10, posées à l'ancre par défaut
+ *  (save de mesure de l'incrément 2). */
+const LAND_V350 = [
+  { kind: 'crique', q: -12, r: 1 }, { kind: 'carriere', q: 7, r: -14 }, { kind: 'roseliere', q: -14, r: 4 },
+  { kind: 'crique', q: 11, r: -14 }, { kind: 'foret', q: 3, r: 10 }, { kind: 'crique', q: 6, r: 8 },
+  { kind: 'crique', q: -11, r: -2 }, { kind: 'roseliere', q: 5, r: -15 }, { kind: 'crique', q: -15, r: 7 },
+  { kind: 'prairie', q: 14, r: -13 }, { kind: 'crique', q: 0, r: 13 }, { kind: 'carriere', q: 9, r: 7 },
+  { kind: 'affleurement', q: -14, r: 0 }, { kind: 'roseliere', q: 10, r: -16 }, { kind: 'roseliere', q: -15, r: 12 },
+  { kind: 'affleurement', q: 16, r: -10 }, { kind: 'affleurement', q: 4, r: 12 }, { kind: 'carriere', q: 12, r: 4 },
+  { kind: 'crique', q: -11, r: -5 }, { kind: 'roseliere', q: 3, r: -16 }, { kind: 'prairie', q: -16, r: 10 },
+]
+
+test('save v3.50 avec 21 parcelles : rechargée à l’identique, positions conservées', () => {
+  const g = freshWith(1_337_042, 2)
+  g.flush(NOW)
+  const raw = JSON.parse(store.get(SAVE_KEY))
+  raw.land = structuredClone(LAND_V350)
+  raw.landPending = []
+  raw.landN = 21
+  delete raw.placing
+  store.set(SAVE_KEY, JSON.stringify(raw))
+  const back = new Game(NOW)
+  assert.deepEqual(back.save.land, LAND_V350)
+  assert.deepEqual(back.save.landPending, [])
+  assert.equal(back.save.landN, 21)
+  // Rien de neuf n'est écrit dans la sauvegarde : la pose en cours n'y vit pas.
+  back.flush(NOW)
+  const again = JSON.parse(store.get(SAVE_KEY))
+  assert.deepEqual(again.land, LAND_V350)
+  assert.equal('placing' in again, false)
+  // Les voisinages déjà présents sur cette île comptent, sans rien déplacer.
+  assert.deepEqual(
+    landBonds(LAND_V350).flatMap((b, i) => (b ? [i] : [])),
+    LAND_V350.flatMap((a, i) =>
+      LAND_V350.some((b, j) => j !== i && b.kind === a.kind && hexDistance(a.q, a.r, b.q, b.r) <= 3) ? [i] : [],
+    ),
+  )
+})
+
+test('8 h hors ligne avec deux forêts voisines : gains exacts au taux majoré', () => {
+  const g = freshWith(99, 4)
+  g.save.landPending = []
+  g.save.land = [{ kind: 'foret', q: 0, r: -12 }, { kind: 'foret', q: 3, r: -12 }]
+  g.setFocus('wood')
+  g.save.res = { food: 10, wood: 10, stone: 10, insight: 10, fiber: 10 }
+  g.flush(NOW - OFFLINE_CAP_SECONDS * 1000)
+  const save = JSON.parse(store.get(SAVE_KEY))
+  const back = new Game(NOW)
+  for (const id of ['food', 'wood', 'stone', 'fiber', 'insight']) {
+    const expected = back.rates[id] * OFFLINE_CAP_SECONDS
+    const got = back.save.res[id] - save.res[id]
+    assert.ok(Math.abs(got - expected) < 1e-6 * Math.max(1, expected), `${id} : ${got} vs ${expected}`)
+  }
 })

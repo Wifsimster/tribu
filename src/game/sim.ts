@@ -22,6 +22,7 @@ import {
   TOOL_BY_ID,
   type AgeDef,
   type DestinationDef,
+  type Effect,
   type RelicDef,
   type ResourceId,
   type TechDef,
@@ -249,6 +250,37 @@ export function landMilestones(age: number, techs: readonly string[]): number {
   return Math.min(age, AGES.length - 1) * 2 + (done >= Math.ceil(cur.techsToAdvance / 2) ? 1 : 0)
 }
 
+/** Distance entre deux cellules du réseau hexagonal axial (q, r). */
+export function hexDistance(aq: number, ar: number, bq: number, br: number): number {
+  const dq = aq - bq
+  const dr = ar - br
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2
+}
+
+/** Une parcelle couvre son centre et l'anneau autour : deux parcelles se
+ *  chevauchent si leurs centres sont à 2 cellules ou moins, et se TOUCHENT
+ *  — bord contre bord — à 3. */
+export const LAND_OVERLAP = 2
+export const LAND_TOUCH = 3
+/** Le voisinage : une terre qui touche une terre du même type voit son bonus
+ *  majoré de moitié (×1,08 devient ×1,12). La seule règle, sans combinatoire :
+ *  trois forêts en chaîne valent trois forêts voisines, pas davantage. */
+export const LAND_BOND = 1.5
+
+/** Pour chaque parcelle posée : touche-t-elle une parcelle du même type ? */
+export function landBonds(land: readonly { kind: string; q: number; r: number }[]): boolean[] {
+  return land.map((a, i) =>
+    land.some((b, j) => j !== i && b.kind === a.kind && hexDistance(a.q, a.r, b.q, b.r) <= LAND_TOUCH),
+  )
+}
+
+/** L'effet d'une terre qui a une voisine de son type : le gain majoré de
+ *  moitié. Seuls les multiplicateurs grandissent. */
+function bonded(e: Effect): Effect {
+  if (e.kind === 'gatherRate' || e.kind === 'expeditionSpeed') return { ...e, mult: 1 + (e.mult - 1) * LAND_BOND }
+  return e
+}
+
 /** Les trois terres d'un jalon : tirées sans doublon parmi celles que la
  *  tribu peut exploiter, par un PRNG semé sur l'île ET le numéro du jalon —
  *  même île, même jalon, mêmes cartes. */
@@ -432,14 +464,19 @@ export class Game {
 
     // Savoirs ET outils versent dans le même moulin : un outil n'est qu'un
     // paquet d'effets de plus, qui vient du dehors au lieu de l'arbre.
-    const sources = [
-      ...this.save.techs.map((id) => TECH_BY_ID.get(id)),
-      ...this.save.tools.map((id) => TOOL_BY_ID.get(id)),
-      ...this.save.land.map((l) => LAND_BY_ID.get(l.kind)),
+    // Les terres aussi, chacune majorée si une voisine est du même type.
+    const bonds = landBonds(this.save.land)
+    const sources: (readonly Effect[] | undefined)[] = [
+      ...this.save.techs.map((id) => TECH_BY_ID.get(id)?.effects),
+      ...this.save.tools.map((id) => TOOL_BY_ID.get(id)?.effects),
+      ...this.save.land.map((l, i) => {
+        const fx = LAND_BY_ID.get(l.kind)?.effects
+        return fx && bonds[i] ? fx.map(bonded) : fx
+      }),
     ]
-    for (const tech of sources) {
-      if (!tech) continue
-      for (const e of tech.effects) {
+    for (const effects of sources) {
+      if (!effects) continue
+      for (const e of effects) {
         switch (e.kind) {
           case 'gatherRate':
             mult[e.resource] *= e.mult
@@ -606,14 +643,51 @@ export class Game {
     return this.save.landPending[0] ?? null
   }
 
+  /** La terre retenue sur la carte, en attente de son emplacement. Rien n'est
+   *  écrit dans la sauvegarde tant qu'elle n'est pas posée : la carte reste en
+   *  tête de file, et un rechargement la rend telle quelle. */
+  placing: string | null = null
+
+  /** Le joueur retient une terre de la carte : reste à choisir où la poser. */
+  pickLand(kind: string): boolean {
+    const offer = this.landOffer
+    if (!offer || !offer.kinds.includes(kind) || !LAND_BY_ID.has(kind)) return false
+    this.placing = kind
+    return true
+  }
+
+  /** Il se ravise : la carte retourne dans la file, intacte. */
+  cancelLand(): void {
+    this.placing = null
+  }
+
+  /** Une parcelle en (q, r) mordrait-elle sur une terre déjà gagnée ? La
+   *  validation que la simulation peut faire seule ; l'île de base, elle, se
+   *  vérifie côté rendu (`Island.canAnchor`). */
+  landOverlaps(q: number, r: number): boolean {
+    return this.save.land.some((l) => hexDistance(l.q, l.r, q, r) <= LAND_OVERLAP)
+  }
+
+  /** Poser `kind` en (q, r) créerait-il un voisinage ? */
+  landBondAt(kind: string, q: number, r: number): boolean {
+    return this.save.land.some((l) => l.kind === kind && hexDistance(l.q, l.r, q, r) <= LAND_TOUCH)
+  }
+
+  /** Pose la terre retenue (`pickLand`) à l'ancre (q, r). */
+  placeLand(q: number, r: number): boolean {
+    return this.placing !== null && this.chooseLand(this.placing, q, r)
+  }
+
   /** Le joueur retient une terre de la carte en tête de file ; elle se pose à
-   *  la cellule (q, r) que le rendu a choisie. L'effet compte dès maintenant,
-   *  sans rétroactivité. */
+   *  l'ancre (q, r) qu'il a touchée. L'effet compte dès maintenant, sans
+   *  rétroactivité. */
   chooseLand(kind: string, q: number, r: number): boolean {
     const offer = this.landOffer
     const def = LAND_BY_ID.get(kind)
     if (!offer || !def || !offer.kinds.includes(kind)) return false
     if (!Number.isInteger(q) || !Number.isInteger(r)) return false
+    if (this.landOverlaps(q, r)) return false
+    this.placing = null
     this.save.landPending.shift()
     this.save.land.push({ kind, q, r })
     this.recompute()

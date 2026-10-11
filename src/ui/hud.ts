@@ -127,6 +127,12 @@ export class Hud {
   private landAfterFact = false
   /** Le joueur retient une terre — main.ts choisit l'endroit et la pose. */
   onLandChoose: ((kind: string) => void) | null = null
+  /** Pendant le choix de l'emplacement : le jeu pose à sa place, ou on renonce. */
+  onPlaceAuto: (() => void) | null = null
+  onPlaceCancel: (() => void) | null = null
+  /** Une étiquette d'ancre touchée : même effet qu'un tap sur l'ancre. */
+  onAnchorTag: ((i: number) => void) | null = null
+  private placingOpen = false
 
   constructor(private game: Game) {
     this.buildResources()
@@ -189,6 +195,8 @@ export class Hud {
     el('fact-close').addEventListener('click', () => this.closeFact())
     el('land-pill').addEventListener('click', () => this.openLand())
     el('land-close').addEventListener('click', () => this.closeLand())
+    el('placing-auto').addEventListener('click', () => this.onPlaceAuto?.())
+    el('placing-cancel').addEventListener('click', () => this.onPlaceCancel?.())
     el('scrim').addEventListener('click', () => {
       this.closeLand()
       this.closeFact()
@@ -215,6 +223,7 @@ export class Hud {
     })
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (this.placingOpen) this.onPlaceCancel?.()
         this.closeLand()
         this.closeFact()
         this.toggleSheet(false)
@@ -522,7 +531,7 @@ export class Hud {
    *  est à l'écran, la mer attend qu'on l'ait lue. */
   openLand(): void {
     const offer = this.game.landOffer
-    if (!offer) return
+    if (!offer || this.placingOpen) return
     if (this.factOpen) {
       this.landAfterFact = true
       return
@@ -555,6 +564,67 @@ export class Hud {
     el('land').classList.remove('open')
     this.landOpen = false
     this.syncScrim()
+  }
+
+  /** Le choix de l'emplacement : la consigne en bas, une étiquette par ancre.
+   *  Le reste du bas d'écran s'efface le temps du choix. */
+  startPlacing(text: string, tags: { bond: boolean; label: string; sub: string }[]): void {
+    this.placingOpen = true
+    document.body.classList.add('placing')
+    el('placing').hidden = false
+    el('placing-text').textContent = text
+    const host = el('anchor-tags')
+    host.textContent = ''
+    tags.forEach((t, i) => {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = t.bond ? 'anchor-tag bond' : 'anchor-tag'
+      b.dataset.anchor = String(i)
+      b.innerHTML = t.sub ? `${escapeHtml(t.label)}<small>${escapeHtml(t.sub)}</small>` : escapeHtml(t.label)
+      b.hidden = true
+      b.addEventListener('click', () => this.onAnchorTag?.(i))
+      host.appendChild(b)
+    })
+  }
+
+  stopPlacing(): void {
+    this.placingOpen = false
+    document.body.classList.remove('placing')
+    el('placing').hidden = true
+    el('anchor-tags').textContent = ''
+  }
+
+  get placing(): boolean {
+    return this.placingOpen
+  }
+
+  /** Recolle chaque étiquette au-dessus de son ancre (coordonnées écran, `null`
+   *  quand l'ancre passe derrière la caméra). */
+  moveAnchorTags(points: ({ x: number; y: number } | null)[]): void {
+    const tags = el('anchor-tags').children
+    // Deux ancres proches à l'écran : l'étiquette du fond monte au-dessus de
+    // l'autre au lieu de la recouvrir.
+    const order = points
+      .map((p, i) => ({ p, i }))
+      .filter((o): o is { p: { x: number; y: number }; i: number } => o.p !== null)
+      .sort((a, b) => b.p.y - a.p.y)
+    const placed: { x: number; y: number; w: number; h: number }[] = []
+    for (const { p, i } of order) {
+      const t = tags[i] as HTMLElement | undefined
+      if (!t) continue
+      const w = t.offsetWidth || 60
+      const h = t.offsetHeight || 30
+      let y = p.y
+      // Chaque étiquette occupe [y − h, y] (accrochée par le bas).
+      for (const o of placed)
+        if (Math.abs(o.x - p.x) < (o.w + w) / 2 + 4 && y - h < o.y + 4 && y > o.y - o.h - 4) y = o.y - o.h - 4
+      placed.push({ x: p.x, y, w, h })
+      t.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(y)}px) translate(-50%, -100%)`
+    }
+    points.forEach((p, i) => {
+      const t = tags[i] as HTMLElement | undefined
+      if (t) t.hidden = !p
+    })
   }
 
   showBanner(small: string, big: string): void {

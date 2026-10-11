@@ -100,6 +100,18 @@
           <span class="land-pill-label">La mer recule</span>
           <span class="badge" id="land-count">1</span>
         </button>
+        <!-- Pendant le choix de l'emplacement : la consigne, et deux issues. -->
+        <div class="placing" id="placing" hidden>
+          <p class="placing-text" id="placing-text">Touche une des terres en surbrillance</p>
+          <div class="placing-actions">
+            <button class="btn" id="placing-cancel" type="button">
+              <span class="label">Annuler</span>
+            </button>
+            <button class="btn primary" id="placing-auto" type="button">
+              <span class="label">Pose-la pour moi</span>
+            </button>
+          </div>
+        </div>
         <div class="actions">
           <button class="btn" id="btn-expedition" type="button">
             <span class="fill" id="expedition-fill"></span>
@@ -112,6 +124,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Les étiquettes des ancres, accrochées au-dessus de chaque emplacement. -->
+    <div class="anchor-tags" id="anchor-tags"></div>
 
     <div class="scrim" id="scrim"></div>
 

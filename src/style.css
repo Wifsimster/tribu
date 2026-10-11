@@ -617,6 +617,93 @@ body {
   cursor: pointer;
 }
 
+/* ── Où poser la terre : la consigne en bas, une étiquette par ancre ─────── */
+
+.placing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.placing[hidden] {
+  display: none;
+}
+
+.placing-text {
+  margin: 0;
+  max-width: min(420px, calc(100vw - 28px));
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  box-shadow: var(--shadow-s);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink);
+}
+
+.placing-actions {
+  display: flex;
+  gap: 10px;
+  width: min(420px, 100%);
+}
+
+body.placing .actions,
+body.placing .land-pill,
+body.placing .dest-chooser {
+  display: none;
+}
+
+.anchor-tags {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.anchor-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  background: #2f6f8f;
+  box-shadow: var(--shadow-s);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: #fff;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.anchor-tag small {
+  font-size: 10.5px;
+  font-weight: 700;
+  opacity: 0.92;
+}
+
+.anchor-tag.bond {
+  background: #b0780c;
+}
+
+.anchor-tag[hidden] {
+  display: none;
+}
+
 /* ── Fact card ───────────────────────────────────────────────────────────── */
 
 .fact {
