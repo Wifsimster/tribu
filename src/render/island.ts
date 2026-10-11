@@ -125,8 +125,18 @@ function seabedHex(
   }
   return t0
 }
+/** Distance entre deux cellules axiales (la même que `hexDistance` de la
+ *  simulation, que le rendu n'importe pas). */
+function hexDistance(aq: number, ar: number, bq: number, br: number): number {
+  const dq = aq - bq
+  const dr = ar - br
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2
+}
+function sectorHas(list: readonly { q: number; r: number }[], o: { q: number; r: number }): boolean {
+  return list.some((a) => a.q === o.q && a.r === o.r)
+}
 /** Centre monde d'une cellule axiale. */
-function hexCenter(q: number, r: number): [number, number] {
+export function hexCenter(q: number, r: number): [number, number] {
   return [HEX_DX * q, HEX_DZ * (r + q / 2)]
 }
 
@@ -277,6 +287,9 @@ const PLOT_LOOK: Record<string, PlotLook> = {
   // Une butte de roche rouillée, deux paliers au-dessus de l'anneau.
   affleurement: { ring: STEP * 2, center: STEP * 4, beach: false, ground: new Color('#b98a5a') },
 }
+/** Part de la neige d'hiver que prend le sol d'une parcelle (1 sur l'île de
+ *  base) : assez pour lire la saison, pas assez pour effacer le type. */
+const PLOT_SNOW = 0.4
 /** Le hasard propre à une parcelle : la graine de l'île mêlée à sa position.
  *  Poser une terre ne consomme rien du tirage de l'île de base — la forêt
  *  d'origine ne se rebat pas. */
@@ -285,6 +298,10 @@ function plotRandom(seed: number, p: LandPlot, salt: number): () => number {
 }
 function plotLook(kind: string): PlotLook {
   return PLOT_LOOK[kind] ?? PLOT_LOOK.foret!
+}
+/** La teinte de sol d'un type de terre — la surbrillance des ancres la reprend. */
+export function plotTint(kind: string): Color {
+  return plotLook(kind).ground
 }
 
 /** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran.
@@ -709,8 +726,11 @@ export class Island {
     }
     this.cells.forEach((cell, i) => {
       // La neige tient mal sur le sable mouillé : la plage n'en prend qu'un
-      // tiers, et le trait de côte survit à l'hiver.
-      put((i * 2 + 1) * 3, mix * (cell.beach ? 0.35 : 1))
+      // tiers, et le trait de côte survit à l'hiver. Sur une terre gagnée
+      // sur la mer, elle reste une pellicule : sous un blanc plein, forêt,
+      // prairie et roselière devenaient la même dalle, et l'on ne savait plus
+      // quelle terre on avait posée où.
+      put((i * 2 + 1) * 3, mix * (cell.beach ? 0.35 : cell.plot && id === 3 ? PLOT_SNOW : 1))
       // Le socle, lui, ne fait que refroidir ou se réchauffer : une falaise
       // enneigée sur toute sa hauteur redevient un bloc plat.
       put(i * 2 * 3, mix * 0.22)
@@ -2255,13 +2275,28 @@ export class Island {
     return this.cells.reduce((n, c) => n + (c.plot ? 1 : 0), 0)
   }
 
-  /** Où poser la prochaine parcelle quand le joueur ne choisit pas l'endroit.
-   *  Sept cellules d'eau, dont au moins deux touchent la côte. La côte est
-   *  coupée en six secteurs ; on prend le moins garni, en partant de
-   *  l'ARRIÈRE du cadrage par défaut (la caméra regarde vers −x, −z) pour ne
-   *  jamais masquer le village, et dans ce secteur la place la plus proche du
-   *  centre — la terre colle au rivage au lieu de flotter au large. */
-  defaultAnchor(): { q: number; r: number } | null {
+  /** Une parcelle peut-elle se poser en (q, r) ? Ses sept cellules sont dans
+   *  l'eau — ni sur l'île, ni sur une terre déjà gagnée, ni dans les eaux
+   *  gardées d'une crique — et au moins deux touchent la côte : la terre colle
+   *  au rivage au lieu de flotter au large. */
+  canAnchor(q: number, r: number): boolean {
+    const [x, z] = hexCenter(q, r)
+    if (Math.hypot(x, z) > this.radius + TILE * 4) return false
+    let touching = 0
+    for (let k = -1; k < 6; k++) {
+      const gx = q + (k < 0 ? 0 : NB[k]![0])
+      const gz = r + (k < 0 ? 0 : NB[k]![1])
+      if (this.byKey.has(key(gx, gz)) || this.reserved.has(key(gx, gz))) return false
+      if (NB.some(([dq, dr]) => this.byKey.has(key(gx + dq, gz + dr)))) touching++
+    }
+    return touching >= 2
+  }
+
+  /** Toutes les ancres valides, rangées par secteur de côte (six secteurs de
+   *  60°, le secteur 0 à l'ARRIÈRE du cadrage par défaut : la caméra regarde
+   *  vers −x, −z), chacune triée de la plus proche du centre à la plus
+   *  lointaine. `used` compte les parcelles déjà posées par secteur. */
+  private anchorsBySector(): { sectors: { q: number; r: number; d: number }[][]; used: number[] } {
     const back = Math.atan2(-1, -1)
     const sectorOf = (x: number, z: number): number => {
       let a = Math.atan2(z, x) - back + Math.PI / 6
@@ -2273,39 +2308,82 @@ export class Island {
       const [x, z] = hexCenter(p.q, p.r)
       used[sectorOf(x, z)]!++
     }
-    const best: ({ q: number; r: number; d: number } | null)[] = [null, null, null, null, null, null]
+    const sectors: { q: number; r: number; d: number }[][] = [[], [], [], [], [], []]
     const span = 48
     for (let q = -span; q <= span; q++) {
       for (let r = -span; r <= span; r++) {
+        if (!this.canAnchor(q, r)) continue
         const [x, z] = hexCenter(q, r)
-        const d = Math.hypot(x, z)
-        if (d > this.radius + TILE * 4) continue
-        let free = true
-        let touching = 0
-        for (let k = -1; k < 6 && free; k++) {
-          const gx = q + (k < 0 ? 0 : NB[k]![0])
-          const gz = r + (k < 0 ? 0 : NB[k]![1])
-          if (this.byKey.has(key(gx, gz)) || this.reserved.has(key(gx, gz))) free = false
-          else if (NB.some(([dq, dr]) => this.byKey.has(key(gx + dq, gz + dr)))) touching++
-        }
-        if (!free || touching < 2) continue
-        const s = sectorOf(x, z)
-        const cur = best[s]
-        if (!cur || d < cur.d) best[s] = { q, r, d }
+        sectors[sectorOf(x, z)]!.push({ q, r, d: Math.hypot(x, z) })
       }
     }
-    // Ordre de préférence : l'arrière, puis en s'éloignant de part et d'autre.
-    const order = [0, 1, 5, 2, 4, 3]
+    for (const list of sectors) list.sort((a, b) => a.d - b.d)
+    return { sectors, used }
+  }
+
+  /** Ordre de préférence des secteurs : le moins garni d'abord, et à égalité
+   *  l'arrière, puis en s'éloignant de part et d'autre — le devant en dernier,
+   *  pour ne pas masquer le village. */
+  private static readonly SECTOR_ORDER = [0, 1, 5, 2, 4, 3]
+
+  /** Où poser la prochaine parcelle quand le joueur s'en remet au jeu. Dans
+   *  le secteur le moins garni, la place la plus proche du centre. */
+  defaultAnchor(): { q: number; r: number } | null {
+    const { sectors, used } = this.anchorsBySector()
     let pick: { q: number; r: number } | null = null
     let pickUsed = Infinity
-    for (const s of order) {
-      const b = best[s]
+    for (const s of Island.SECTOR_ORDER) {
+      const b = sectors[s]![0]
       if (b && used[s]! < pickUsed) {
         pick = { q: b.q, r: b.r }
         pickUsed = used[s]!
       }
     }
     return pick
+  }
+
+  /** Les emplacements proposés au joueur pour une terre de type `kind` : `n`
+   *  ancres sur des secteurs de côte différents, assez écartées pour ne pas se
+   *  confondre à l'écran. La première est l'ancre par défaut. Si une ancre
+   *  peut toucher une terre du même type, l'une des propositions en est une :
+   *  le voisinage doit se voir pour qu'on le joue. `bond` le signale. */
+  anchorCandidates(kind: string, n = 3): { q: number; r: number; bond: boolean }[] {
+    const { sectors, used } = this.anchorsBySector()
+    const bondAt = (q: number, r: number): boolean =>
+      this.land.some((p) => p.kind === kind && hexDistance(p.q, p.r, q, r) <= 3)
+    const order = [...Island.SECTOR_ORDER].sort((a, b) => used[a]! - used[b]!)
+    const out: { q: number; r: number; bond: boolean }[] = []
+    // Deux ancres à moins de 4 cellules se recouvrent à l'écran.
+    const apart = (q: number, r: number): boolean => out.every((o) => hexDistance(o.q, o.r, q, r) >= 4)
+    const def = this.defaultAnchor()
+    if (def) out.push({ ...def, bond: bondAt(def.q, def.r) })
+    // Une ancre de voisinage, s'il en existe une, dans l'ordre des secteurs.
+    if (!out.some((o) => o.bond)) {
+      for (const s of order) {
+        const b = sectors[s]!.find((a) => bondAt(a.q, a.r) && apart(a.q, a.r))
+        if (b) {
+          out.push({ q: b.q, r: b.r, bond: true })
+          break
+        }
+      }
+    }
+    // Puis un secteur neuf à chaque fois ; s'il en manque, on repasse.
+    for (let pass = 0; pass < 2 && out.length < n; pass++) {
+      for (const s of order) {
+        if (out.length >= n) break
+        if (pass === 0 && out.some((o) => sectorHas(sectors[s]!, o))) continue
+        const b = sectors[s]!.find((a) => apart(a.q, a.r))
+        if (b) out.push({ q: b.q, r: b.r, bond: bondAt(b.q, b.r) })
+      }
+    }
+    return out.slice(0, n)
+  }
+
+  /** Les sept cellules d'une ancre, en coordonnées monde — pour la surbrillance. */
+  static anchorCells(q: number, r: number): [number, number][] {
+    const out: [number, number][] = [hexCenter(q, r)]
+    for (const [dq, dr] of NB) out.push(hexCenter(q + dq, r + dr))
+    return out
   }
 
   /** Y a-t-il de la terre ici ? La question que `heightAt` ne pouvait PAS

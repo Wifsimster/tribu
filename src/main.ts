@@ -38,7 +38,7 @@ import {
   type Snapshot,
 } from './net/neighbors'
 import { CHANGELOG } from './game/changelog'
-import { FEATS, TOOLS, WONDER_BY_AGE } from './game/content'
+import { FEATS, LAND_BY_ID, TOOLS, WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
 import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
@@ -51,6 +51,7 @@ import { Fauna } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
+import { AnchorMarks, type Anchor } from './render/anchors'
 import { Hud, escapeHtml, fmt, icon } from './ui/hud'
 import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, livingBuildings, yuleState } from './game/content'
 
@@ -266,15 +267,55 @@ function spotFor(resource: ResourceId): Vector3 {
 
 const hud = new Hud(game)
 hud.onWonderTap = () => openWonderCard()
-// Le joueur retient une terre : elle se pose à l'emplacement par défaut, à
-// l'arrière de l'île vue de la caméra de départ.
-hud.onLandChoose = (kind) => {
-  const at = island.defaultAnchor()
-  if (!at) {
+// Le joueur retient une terre, puis choisit OÙ la poser : trois ancres
+// s'allument sur la côte, un tap en pose la terre. Rien ne part tout seul —
+// ni minuterie ni pose d'office : on peut toujours annuler, la carte retourne
+// alors dans la file.
+const anchorMarks = new AnchorMarks()
+stage.scene.add(anchorMarks.group)
+const anchorAt = new Vector3()
+
+function beginPlacing(kind: string): void {
+  const def = LAND_BY_ID.get(kind)
+  if (!def || !game.pickLand(kind)) return
+  const anchors = island.anchorCandidates(kind)
+  if (anchors.length === 0) {
+    game.cancelLand()
     hud.toast("Plus un pouce de rivage libre : la mer ne recule plus ici")
     return
   }
-  game.chooseLand(kind, at.q, at.r)
+  anchorMarks.show(anchors, kind)
+  hud.startPlacing(
+    `${def.name} (${def.gain}) : touche l'un des emplacements qui brillent sur la côte`,
+    anchors.map((a) => ({ bond: a.bond, label: 'Ici', sub: a.bond ? 'voisinage : +50 %' : '' })),
+  )
+  // Le cadrage s'élargit le temps du choix : une ancre au large ne doit pas
+  // tomber hors de l'écran du téléphone.
+  stage.islandRadius = Math.max(island.radius, anchorMarks.reach())
+}
+
+function endPlacing(): void {
+  anchorMarks.hide()
+  hud.stopPlacing()
+  stage.islandRadius = island.radius
+}
+
+function placeAt(a: Anchor | undefined): void {
+  if (!a) return
+  // La pose reconstruit le monde (événement landPlaced, synchrone) : le
+  // cadrage revient ensuite sur la nouvelle île.
+  if (game.placeLand(a.q, a.r)) endPlacing()
+  else hud.toast('La mer ne recule pas ici : choisis un autre emplacement')
+}
+
+hud.onLandChoose = (kind) => beginPlacing(kind)
+hud.onAnchorTag = (i) => placeAt(anchorMarks.anchors[i])
+hud.onPlaceAuto = () => placeAt(anchorMarks.anchors[0])
+hud.onPlaceCancel = () => {
+  game.cancelLand()
+  endPlacing()
+  hud.refreshLand()
+  hud.toast('La carte retourne dans la file : elle t’attendra')
 }
 hud.refreshLand()
 // La file héritée d'une session précédente (ou d'un rattrapage) se signale
@@ -670,6 +711,22 @@ attachControls(stage, canvas, (x, y) => {
   if (stage.photo) return
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1)
   raycaster.setFromCamera(pointer, stage.camera)
+
+  // Pendant le choix de l'emplacement, le tap ne sert qu'à ça : on vise le
+  // plan d'eau, l'ancre la plus proche du point touché est posée.
+  if (hud.placing) {
+    const t = -raycaster.ray.origin.y / raycaster.ray.direction.y
+    const hit =
+      t > 0
+        ? anchorMarks.pick(
+            raycaster.ray.origin.x + raycaster.ray.direction.x * t,
+            raycaster.ray.origin.z + raycaster.ray.direction.z * t,
+          )
+        : null
+    if (hit) placeAt(hit)
+    else hud.toast('Touche l’un des emplacements qui brillent, ou annule')
+    return
+  }
 
   if (caravan.group.visible && raycaster.intersectObject(caravan.group, true).length > 0) {
     if (game.haggle()) {
@@ -1679,6 +1736,20 @@ function frame(now: number): void {
   )
   stage.updateCamera()
   hud.update()
+  if (hud.placing) {
+    // La carte a pu disparaître sous le choix (Exode) : on referme.
+    if (!game.landOffer) endPlacing()
+    else {
+      anchorMarks.tick(dt)
+      hud.moveAnchorTags(
+        anchorMarks.anchors.map((a) => {
+          anchorMarks.labelPoint(a, anchorAt).project(stage.camera)
+          if (anchorAt.z > 1) return null
+          return { x: ((anchorAt.x + 1) / 2) * window.innerWidth, y: ((1 - anchorAt.y) / 2) * window.innerHeight }
+        }),
+      )
+    }
+  }
   if (fpsPanel) fpsJs = performance.now() - t0
   stage.render()
   if (fpsPanel) {
@@ -1706,6 +1777,7 @@ requestAnimationFrame((t) => {
 // La scène seule, en plongée et en tilt-shift. Le post-traitement vit dans
 // Stage.setPhoto : hors de ce mode, il n'existe pas.
 function setPhotoMode(on: boolean): void {
+  if (on && hud.placing) hud.onPlaceCancel?.()
   stage.setPhoto(on)
   document.body.classList.toggle('photo', on)
 }
@@ -1751,6 +1823,7 @@ document.getElementById('photo-save')!.addEventListener('click', () => {
   villagers: () => villagers,
   village: () => village,
   island: () => island,
+  anchors: () => anchorMarks.anchors,
 }
 
 // Credit real elapsed time when the tab comes back, and never lose a session.

@@ -50,7 +50,7 @@ flowchart LR
     C -- non --> A
     C -- oui --> D[Découverte<br/>+ fait historique]
     D --> E[Effets : rendement,<br/>ressource débloquée,<br/>bâtiment]
-    D -. mi-âge et passage .-> L[La mer recule :<br/>3 terres au choix,<br/>parcelle posée sur la côte]
+    D -. mi-âge et passage .-> L[La mer recule :<br/>3 terres au choix,<br/>le joueur touche l'emplacement,<br/>terres sœurs voisines : bonus ×1,5]
     E --> F{4 à 5 technos<br/>dans l'âge ?}
     F -- non --> A
     F -- oui --> G[Nouvel âge<br/>ciel et lumière changent]
@@ -112,7 +112,8 @@ flowchart TD
   que les faces visibles. Le budget est un plafond dur (≤ 60 draw calls,
   ≤ 120 000 triangles), vérifié à chaque round par `tools/shoot.mjs`. Mesuré en
   3.50.0 : partie neuve 53 calls / 50 k triangles ; Ère des limites avec
-  21 parcelles 78 calls / 95 k. Les calls ne tiennent le plafond qu'en début de
+  21 parcelles 78 calls / 95 k, inchangé en 3.51.0 (la surbrillance des
+  emplacements n'ajoute 2 calls que pendant le choix). Les calls ne tiennent le plafond qu'en début de
   partie : le colon articulé (une pièce et son contour par membre) et les
   mécanismes animés du village (train, moulin, voiture…) restent un mesh chacun.
 - **DPR bridé sur mobile.** `Math.min(devicePixelRatio, 1.75)` sur pointeur
