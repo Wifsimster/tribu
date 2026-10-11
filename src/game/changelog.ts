@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.51.0',
+    title: 'La terre où tu la veux',
+    items: [
+      "La terre gagnée sur la mer se posait d'elle-même, toujours au même bout de l'île. C'est toi qui choisis, désormais : une fois la carte retenue, trois emplacements s'allument sur la côte — des hexagones teintés comme la terre à venir, une colonne de lumière au-dessus — et un tap sur l'un d'eux y pose la parcelle. Ils se répartissent autour de l'île, de préférence à l'arrière vu de la caméra de départ : le village ne se cache pas derrière une butte.",
+      "Rien ne se pose sans toi. « Annuler » remet la carte dans la file, intacte, et elle t'attend autant qu'il faut ; « Pose-la pour moi » laisse la tribu choisir : la terre va au premier des trois emplacements.",
+      "Les terres du même type se tiennent chaud : deux forêts bord contre bord donnent chacune +12 % de bois au lieu de +8 %, et il en va de même pour chaque terre — la moitié de son bonus en plus dès qu'elle touche une sœur. Quand un emplacement crée un tel voisinage, il brille en or et le dit : « voisinage : +50 % ». Les terres déjà posées gardent leur place, et celles qui se touchaient déjà en profitent tout de suite.",
+      "Sous la neige, prairie, forêt et roselière devenaient la même dalle blanche. Sur les terres gagnées, l'hiver ne pose plus qu'une pellicule : on reconnaît chacune en toute saison.",
+    ],
+  },
+  {
     version: '3.50.0',
     title: 'Chaque terre a son visage',
     items: [
