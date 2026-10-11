@@ -2,6 +2,12 @@
 // Screenshot + measurement harness for the gauntlet loop.
 //
 //   node tools/shoot.mjs <url> <label> [--presets mobile,desktop] [--settle 6000]
+//                        [--save partie.json]
+//
+// `--save` sème une sauvegarde (JSON d'une `tribu.save.v1`) avant le
+// chargement : c'est ainsi qu'on mesure une île avancée, parcelles comprises.
+// La mesure d'audience (Umami, production) est toujours bloquée : une mesure
+// ne doit jamais compter comme une visite.
 //
 // Captures the same viewports for our build and for the bar (Townscaper), so a
 // critic can put them side by side with the labels stripped. Also records the
@@ -12,7 +18,7 @@
 // on this machine, never a claim about a real phone's GPU.
 
 import { chromium } from 'playwright'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const PRESETS = {
@@ -48,9 +54,13 @@ const cpuRate = Number(arg('cpu', 4))
 // Le build Unity de la barre en DPR 3 dépasse les 60 s de capture sous SwiftShader.
 const dprOverride = arg('dpr', null)
 const throttleNet = arg('net', '4g') !== 'off'
+const savePath = arg('save', null)
+const seeded = savePath ? JSON.parse(await readFile(savePath, 'utf8')) : null
 
 await mkdir(outDir, { recursive: true })
 const browser = await chromium.launch({
+  // Navigateur déjà installé ailleurs (version de Playwright différente).
+  executablePath: process.env.PW_CHROME || undefined,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 })
 
@@ -68,6 +78,14 @@ for (const name of presets) {
     hasTouch: viewport.hasTouch,
     locale: 'fr-FR',
   })
+  // Script vide plutôt qu'une requête avortée : pas d'erreur console parasite.
+  await context.route(/umami/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }))
+  if (seeded)
+    await context.addInitScript((save) => {
+      // Date du jour : une date figée créditerait huit heures d'absence.
+      localStorage.setItem('tribu.save.v1', JSON.stringify({ ...save, t: Date.now() }))
+      localStorage.setItem('tribu.sound.v1', '0')
+    }, seeded)
   const page = await context.newPage()
 
   const cdp = await context.newCDPSession(page)

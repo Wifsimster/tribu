@@ -203,17 +203,34 @@ function shoreEdge(theta: number, seed: number, growth = 1): number {
   )
 }
 
-/** L'île grandit avec les âges : la tribu gagne du terrain sur la mer, et la
- *  place des nouveaux bâtiments avec. */
-export function growthForAge(age: number): number {
-  // +11 %/âge jusqu'au fer, +7 % jusqu'au Moyen Âge, puis +3 % : la croissance
-  // s'essouffle pour que dix époques tiennent dans les budgets de rendu.
+/** L'ÉTALEMENT du village avec les âges (moulin, aqueduc, cathédrale…) : il
+ *  ne fait plus grandir l'île — seules les parcelles gagnées sur la mer
+ *  l'agrandissent — mais il repousse toujours la forêt hors du bourg. */
+export function spreadForAge(age: number): number {
+  // +11 %/âge jusqu'au fer, +7 % jusqu'au Moyen Âge, puis +3 %.
   return (
     1 +
     Math.min(age, 3) * 0.11 +
     Math.max(0, Math.min(age, 5) - 3) * 0.07 +
     Math.max(0, Math.min(age, 10) - 5) * 0.03
   )
+}
+
+/** Taille de l'île de BASE, fixée une fois pour toutes. L'île ne grandit plus
+ *  par âge : elle doit donc porter dès le départ le village complet de l'Ère
+ *  des limites — rues, voie ferrée, chaussée — pour un joueur qui ne pose
+ *  jamais une parcelle. MESURÉ (2026-10-11, 58 savoirs, plan retracé à neuf,
+ *  `village.fallbacks` / `village.cramped`) : 1,30 → 1 bâtiment au repli et
+ *  37 parcelles relâchées ; 1,38 → 0 / 29 ; 1,45 → 0 / 13 ; l'ancienne île
+ *  d'âge 10 (1,62) → 0 / 12. 1,45 est la plus petite île qui loge le village
+ *  final aussi bien qu'avant — à peu près la taille qu'avait l'île au Moyen Âge. */
+export const BASE_GROWTH = 1.45
+
+/** Une parcelle : un centre et son anneau, sept hexagones. */
+export interface LandPlot {
+  kind: string
+  q: number
+  r: number
 }
 
 /** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran.
@@ -255,6 +272,8 @@ export interface Cell {
   outz: number
   /** Terre battue de la clairière. */
   trod: boolean
+  /** Type de la parcelle gagnée sur la mer, si la cellule en vient. */
+  plot?: string
 }
 
 export type NodeKind = 'wood' | 'stone' | 'food'
@@ -299,12 +318,17 @@ export class Island {
   /** Rayon réel de CETTE île (dépend de la croissance) — la caméra cadre dessus. */
   readonly radius: number
 
+  /** Parcelles posées sur CETTE île. */
+  readonly land: readonly LandPlot[]
+  private readonly growth = BASE_GROWTH
+
   constructor(
     private readonly seed = DEFAULT_SEED,
-    private readonly growth = 1,
     /** L'époque : la friche recule à mesure que le village s'étend. */
     private readonly age = 0,
+    land: readonly LandPlot[] = [],
   ) {
+    this.land = land
     const rnd = mulberry32(seed)
     const half = GRID / 2
     const plaza = STEP * 4
@@ -320,7 +344,7 @@ export class Island {
         const dz = wz / TILE
         const r = Math.hypot(dx, dz)
         const theta = Math.atan2(dz, dx)
-        const edge = shoreEdge(theta, seed, growth)
+        const edge = shoreEdge(theta, seed, this.growth)
         if (r > edge) continue
         const inland = edge - r
         const hill = fbm(dx * 0.23, dz * 0.23, seed)
@@ -370,6 +394,9 @@ export class Island {
         this.byKey.set(key(gx, gz), cell)
       }
     }
+    // Les terres gagnées sur la mer : des cellules AJOUTÉES après l'île de
+    // base, jamais un masque élargi — l'île d'origine ne bouge pas d'un pouce.
+    for (const p of land) this.addPlot(p)
 
     this.bakeOcclusion()
     this.bakeFootprint()
@@ -1418,7 +1445,10 @@ export class Island {
   /** Trees, rocks and berry bushes: three instanced draw calls for the whole map,
    *  each one also serving as the tap target that sets the settler's focus. */
   private scatter(rnd: () => number): void {
-    const solid = this.cells.filter((c) => !c.beach)
+    // Les parcelles restent hors des tirages : la forêt de l'île de base ne
+    // se rebat pas à chaque terre gagnée (leur décor viendra avec leur propre
+    // tirage).
+    const solid = this.cells.filter((c) => !c.beach && !c.plot)
     const near = solid
       .filter((c) => Math.hypot(c.x, c.z) <= PLAZA_RADIUS + 1.2)
       .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))
@@ -1430,7 +1460,7 @@ export class Island {
     // Les sapins reculent bien au-delà de la place : le feu est le seul signe
     // d'habitat de la maquette, il lui faut de l'air autour.
     const wooded = open.filter(
-      (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth),
+      (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)),
     )
 
     const centers: Cell[] = []
@@ -1486,7 +1516,7 @@ export class Island {
         clustered(free, 9),
         (c) =>
           c.height > 1.2 &&
-          Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth) * 0.62,
+          Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.62,
       ),
       rnd,
     )
@@ -1498,7 +1528,7 @@ export class Island {
       take(
         Math.round(24 * wild * this.growth * this.growth),
         clustered(free, 6),
-        (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, this.growth) * 0.5,
+        (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.5,
       ),
       rnd,
     )
@@ -1769,6 +1799,94 @@ export class Island {
     if (dq > dr && dq > ds) rq = -rr - rs
     else if (dr > ds) rr = -rq - rs
     return this.byKey.get(key(rq, rr)) ?? null
+  }
+
+  /** Pose les sept cellules d'une parcelle. Une cellule déjà en terre est
+   *  laissée telle quelle. Hauteurs fixées à la main (la courbe de rivage ne
+   *  les connaît pas) : l'anneau au niveau d'une côte de falaise, le centre
+   *  un palier au-dessus. */
+  private addPlot(p: LandPlot): void {
+    for (let k = -1; k < 6; k++) {
+      const gx = p.q + (k < 0 ? 0 : NB[k]![0])
+      const gz = p.r + (k < 0 ? 0 : NB[k]![1])
+      if (this.byKey.has(key(gx, gz))) continue
+      const [x, z] = hexCenter(gx, gz)
+      const cell: Cell = {
+        gx,
+        gz,
+        x,
+        z,
+        height: k < 0 ? STEP * 3 : STEP * 2,
+        beach: false,
+        inland: k < 0 ? 2 : 1,
+        ao: 1,
+        rim: false,
+        outx: 0,
+        outz: 0,
+        trod: false,
+        plot: p.kind,
+      }
+      this.cells.push(cell)
+      this.byKey.set(key(gx, gz), cell)
+    }
+  }
+
+  /** Nombre de cellules venues des parcelles — exposé au harnais de test. */
+  get plotCells(): number {
+    return this.cells.reduce((n, c) => n + (c.plot ? 1 : 0), 0)
+  }
+
+  /** Où poser la prochaine parcelle quand le joueur ne choisit pas l'endroit.
+   *  Sept cellules d'eau, dont au moins deux touchent la côte. La côte est
+   *  coupée en six secteurs ; on prend le moins garni, en partant de
+   *  l'ARRIÈRE du cadrage par défaut (la caméra regarde vers −x, −z) pour ne
+   *  jamais masquer le village, et dans ce secteur la place la plus proche du
+   *  centre — la terre colle au rivage au lieu de flotter au large. */
+  defaultAnchor(): { q: number; r: number } | null {
+    const back = Math.atan2(-1, -1)
+    const sectorOf = (x: number, z: number): number => {
+      let a = Math.atan2(z, x) - back + Math.PI / 6
+      a = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+      return Math.floor(a / (Math.PI / 3)) % 6
+    }
+    const used = [0, 0, 0, 0, 0, 0]
+    for (const p of this.land) {
+      const [x, z] = hexCenter(p.q, p.r)
+      used[sectorOf(x, z)]!++
+    }
+    const best: ({ q: number; r: number; d: number } | null)[] = [null, null, null, null, null, null]
+    const span = 48
+    for (let q = -span; q <= span; q++) {
+      for (let r = -span; r <= span; r++) {
+        const [x, z] = hexCenter(q, r)
+        const d = Math.hypot(x, z)
+        if (d > this.radius + TILE * 4) continue
+        let free = true
+        let touching = 0
+        for (let k = -1; k < 6 && free; k++) {
+          const gx = q + (k < 0 ? 0 : NB[k]![0])
+          const gz = r + (k < 0 ? 0 : NB[k]![1])
+          if (this.byKey.has(key(gx, gz))) free = false
+          else if (NB.some(([dq, dr]) => this.byKey.has(key(gx + dq, gz + dr)))) touching++
+        }
+        if (!free || touching < 2) continue
+        const s = sectorOf(x, z)
+        const cur = best[s]
+        if (!cur || d < cur.d) best[s] = { q, r, d }
+      }
+    }
+    // Ordre de préférence : l'arrière, puis en s'éloignant de part et d'autre.
+    const order = [0, 1, 5, 2, 4, 3]
+    let pick: { q: number; r: number } | null = null
+    let pickUsed = Infinity
+    for (const s of order) {
+      const b = best[s]
+      if (b && used[s]! < pickUsed) {
+        pick = { q: b.q, r: b.r }
+        pickUsed = used[s]!
+      }
+    }
+    return pick
   }
 
   /** Y a-t-il de la terre ici ? La question que `heightAt` ne pouvait PAS

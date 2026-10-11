@@ -95,6 +95,11 @@
 
       <div class="bottom">
         <div class="dest-chooser" id="dest-chooser" hidden></div>
+        <!-- Les terres gagnées sur la mer qui attendent le choix du joueur. -->
+        <button class="land-pill" id="land-pill" type="button" hidden>
+          <span class="land-pill-label">La mer recule</span>
+          <span class="badge" id="land-count">1</span>
+        </button>
         <div class="actions">
           <button class="btn" id="btn-expedition" type="button">
             <span class="fill" id="expedition-fill"></span>
@@ -147,6 +152,16 @@
       <button class="btn primary wide" id="fact-close" type="button">
         <span class="label">Continuer</span>
       </button>
+    </div>
+
+    <div class="land" id="land" role="dialog" aria-modal="true" aria-labelledby="land-title">
+      <div class="fact-head">
+        <span class="kicker" id="land-kicker">La mer recule</span>
+      </div>
+      <h3 id="land-title">Quelle terre gagner sur l’eau&nbsp;?</h3>
+      <div class="rule"></div>
+      <div class="land-cards" id="land-cards"></div>
+      <button class="land-later" id="land-close" type="button">Plus tard</button>
     </div>
 
     <div class="banner" id="banner">

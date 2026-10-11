@@ -10,6 +10,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.49.0',
+    title: 'La mer recule',
+    items: [
+      "L'île grandissait toute seule à chaque âge, d'un cran égal partout : la tribu ne décidait de rien. Elle ne grandit plus qu'à ta main. Deux fois par âge — à mi-chemin, puis au passage — la mer recule et trois terres te sont proposées : prairie, forêt, carrière, puis roselière, crique et affleurement quand la tribu sait s'en servir. Chacune porte son histoire vraie, des prés-salés du Mont-Saint-Michel aux puits de silex de Grimes Graves.",
+      "La terre choisie se pose sur la côte, à l'arrière de l'île pour ne jamais cacher le village, et son effet compte pour toujours : +8 % sur sa ressource, un peu plus pour les terres rares. Rien ne presse : une carte attend autant qu'il faut, même pendant ton absence, et ne rapporte rien tant qu'elle n'est pas posée. La pastille « La mer recule » tient le compte.",
+      "Une île déjà avancée reçoit tous les jalons qu'elle a franchis : une tribu de la Renaissance trouve treize terres qui l'attendent.",
+      "Sans parcelle, l'île de départ est désormais celle qu'on avait au Moyen Âge : assez grande, mesurée, pour porter le village complet de l'Ère des limites — rues, voie ferrée, chaussée — même pour qui ne pose jamais une terre.",
+      "Chaque reconstruction de l'île laissait ses textures en mémoire graphique ; avec une reconstruction par terre posée, elles sont désormais libérées.",
+    ],
+  },
+  {
     version: '3.48.0',
     title: 'L’île sous la loupe',
     items: [

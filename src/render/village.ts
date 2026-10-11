@@ -2403,6 +2403,11 @@ export class Village {
    *  Lue par `sync` juste après l'appel — un bâtiment tourné vers le centre
    *  géométrique de l'île présentait son pignon à la ruelle. */
   private slotRot = 0
+  /** Bâtiments posés au repli, faute de parcelle : le harnais le surveille —
+   *  c'est le signe qu'une île est trop petite pour son village. */
+  fallbacks = 0
+  /** Passes où l'emprise ou l'écart ont dû être relâchés. */
+  cramped = 0
 
   /** La prochaine parcelle libre. On balaie les rues en rond et, sur chacune,
    *  les parcelles en s'éloignant de la place, en alternant les deux côtés :
@@ -2473,8 +2478,10 @@ export class Village {
     }
     // Plus une parcelle : on relâche l'emprise, puis l'écart — un bâtiment
     // sans place doit exister quand même.
+    this.cramped++
     if (footprint > 0) return this.nextSlot(spacing, 0, central)
     if (spacing > 1.6) return this.nextSlot(spacing * 0.7, 0, central)
+    this.fallbacks++
     const n = this.taken.length
     const fr = 7 + Math.min(n * 0.4, 7)
     const fallback = new Vector3(Math.cos(n * 2.4) * fr, 0, Math.sin(n * 2.4) * fr)

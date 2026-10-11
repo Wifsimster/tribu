@@ -50,6 +50,7 @@ flowchart LR
     C -- non --> A
     C -- oui --> D[Découverte<br/>+ fait historique]
     D --> E[Effets : rendement,<br/>ressource débloquée,<br/>bâtiment]
+    D -. mi-âge et passage .-> L[La mer recule :<br/>3 terres au choix,<br/>parcelle posée sur la côte]
     E --> F{4 à 5 technos<br/>dans l'âge ?}
     F -- non --> A
     F -- oui --> G[Nouvel âge<br/>ciel et lumière changent]
@@ -120,6 +121,7 @@ flowchart TD
 corepack pnpm install
 corepack pnpm dev        # http://localhost:5173
 corepack pnpm build      # typecheck strict + bundle
+corepack pnpm test       # tests de simulation (Node 24, sans DOM ni dépendance)
 ```
 
 ### Captures et mesures
@@ -130,6 +132,7 @@ que la référence et relève les métriques objectives.
 ```bash
 node tools/shoot.mjs https://tribu.battistella.ovh/ tribu-r2 --settle 8000
 node tools/shoot.mjs https://oskarstalberg.com/Townscaper/ bar --net off --cpu 1 --settle 90000
+node tools/shoot.mjs 'http://127.0.0.1:4173/?nomenu=1' age10 --save partie.json  # île semée
 ```
 
 Par défaut, notre build est mesuré **bridé** (4G simulée, CPU ×4). Le champ
