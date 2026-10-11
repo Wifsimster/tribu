@@ -287,6 +287,9 @@ const PLOT_LOOK: Record<string, PlotLook> = {
   // Une butte de roche rouillée, deux paliers au-dessus de l'anneau.
   affleurement: { ring: STEP * 2, center: STEP * 4, beach: false, ground: new Color('#b98a5a') },
 }
+/** Part de la neige d'hiver que prend le sol d'une parcelle (1 sur l'île de
+ *  base) : assez pour lire la saison, pas assez pour effacer le type. */
+const PLOT_SNOW = 0.4
 /** Le hasard propre à une parcelle : la graine de l'île mêlée à sa position.
  *  Poser une terre ne consomme rien du tirage de l'île de base — la forêt
  *  d'origine ne se rebat pas. */
@@ -723,8 +726,11 @@ export class Island {
     }
     this.cells.forEach((cell, i) => {
       // La neige tient mal sur le sable mouillé : la plage n'en prend qu'un
-      // tiers, et le trait de côte survit à l'hiver.
-      put((i * 2 + 1) * 3, mix * (cell.beach ? 0.35 : 1))
+      // tiers, et le trait de côte survit à l'hiver. Sur une terre gagnée
+      // sur la mer, elle reste une pellicule : sous un blanc plein, forêt,
+      // prairie et roselière devenaient la même dalle, et l'on ne savait plus
+      // quelle terre on avait posée où.
+      put((i * 2 + 1) * 3, mix * (cell.beach ? 0.35 : cell.plot && id === 3 ? PLOT_SNOW : 1))
       // Le socle, lui, ne fait que refroidir ou se réchauffer : une falaise
       // enneigée sur toute sa hauteur redevient un bloc plat.
       put(i * 2 * 3, mix * 0.22)
