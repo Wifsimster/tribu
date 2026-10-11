@@ -615,6 +615,9 @@ const raycaster = new Raycaster()
 const pointer = new Vector2()
 
 attachControls(stage, canvas, (x, y) => {
+  // En mode photo, le doigt cadre : un tap ne doit pas envoyer le colon
+  // ailleurs ni ouvrir une fiche par-dessus la photo.
+  if (stage.photo) return
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1)
   raycaster.setFromCamera(pointer, stage.camera)
 
@@ -1647,6 +1650,35 @@ function frame(now: number): void {
 requestAnimationFrame((t) => {
   last = t
   requestAnimationFrame(frame)
+})
+
+// ── Mode photo maquette ────────────────────────────────────────────────────
+// La scène seule, en plongée et en tilt-shift. Le post-traitement vit dans
+// Stage.setPhoto : hors de ce mode, il n'existe pas.
+function setPhotoMode(on: boolean): void {
+  stage.setPhoto(on)
+  document.body.classList.toggle('photo', on)
+}
+document.getElementById('photo-open')!.addEventListener('click', () => setPhotoMode(true))
+document.getElementById('photo-close')!.addEventListener('click', () => setPhotoMode(false))
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && stage.photo) setPhotoMode(false)
+})
+// L'image part sur l'appareil du joueur, nulle part ailleurs. Le tampon WebGL
+// est vidé après chaque présentation : on redessine puis on le lit dans la
+// même tâche, sans avoir à le conserver à chaque image.
+document.getElementById('photo-save')!.addEventListener('click', () => {
+  stage.render()
+  canvas.toBlob((blob) => {
+    if (!blob) return
+    const day = Math.floor(game.save.totalPlaySeconds / DAY_SECONDS) + 1
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = transferFilename(game.age.name, day, 'png')
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }, 'image/png')
 })
 
 // Measurement hook for the screenshot/perf harness in tools/. Costs one object;

@@ -27,6 +27,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import type { DataTexture } from 'three'
+import type { PhotoFx } from './photo'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
@@ -44,6 +45,10 @@ function targetPixelRatio(): number {
  *  comme une maquette. Un grand angle proche donnait un point de vue de joueur
  *  posé dans l'herbe. */
 const FOV = 27
+/** Mode photo : focale encore plus longue et plongée plus franche — l'œil
+ *  d'un photographe penché sur une maquette, pas celui d'un joueur. */
+const PHOTO_FOV = 13
+const PHOTO_POLAR = Math.PI * 0.27
 
 /** Hauteur de la voûte d'étoiles : 30 unités pour un rayon de 320, soit 5,4°
  *  de ciel au-dessus de l'horizon. C'est EXACTEMENT la bande visible : à 27°
@@ -1214,10 +1219,8 @@ export class Stage {
     this.renderer.setSize(w, h, true)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
-
-    const z = -this.vignette.position.z
-    const vh = 2 * z * Math.tan((this.camera.fov * Math.PI) / 360)
-    this.vignette.scale.set(vh * this.camera.aspect, vh, 1)
+    this.fitVignette()
+    this.photoFx?.resize()
   }
 
   /** Le cadrage est calculé, pas réglé à la main : quel que soit l'écran, l'île
@@ -1247,7 +1250,8 @@ export class Stage {
   }
 
   updateCamera(): void {
-    const d = this.frameDistance() * (this.distance / BASE_ZOOM)
+    this.easeLens()
+    const d =this.frameDistance() * (this.distance / BASE_ZOOM)
     const sinP = Math.sin(this.polar)
     this.camera.position.set(
       this.target.x + d * sinP * Math.sin(this.azimuth),
@@ -1372,7 +1376,77 @@ export class Stage {
     this.fog.far = d * 2.05
   }
 
+  // ── Mode photo maquette ──────────────────────────────────────────────────
+  /** Hors mode photo, `photoFx` est nul et `render()` reste l'appel direct
+   *  d'avant : mêmes draw calls, aucune cible de rendu allouée. */
+  photo = false
+  private photoFx: PhotoFx | null = null
+  private fovTarget = FOV
+  private polarTarget: number | null = null
+  private beforePhoto = { polar: 0, distance: 0 }
+  private lensAt = 0
+
+  /** Entre ou sort du mode photo. L'effet arrive à la première image où son
+   *  module est chargé ; d'ici là, la caméra a déjà commencé à reculer. */
+  setPhoto(on: boolean): void {
+    if (on === this.photo) return
+    this.photo = on
+    if (on) {
+      this.beforePhoto = { polar: this.polar, distance: this.distance }
+      // Plongée et longue focale : la perspective s'écrase, l'île devient un
+      // objet posé sur une table. Le cadrage calculé (frameDistance) recule
+      // tout seul quand le champ se resserre.
+      this.fovTarget = PHOTO_FOV
+      this.polarTarget = PHOTO_POLAR
+      this.distance = BASE_ZOOM
+      void import('./photo').then(({ PhotoFx }) => {
+        // Sorti entre-temps, ou déjà prêt (double entrée rapide) : rien à faire.
+        if (!this.photo || this.photoFx) return
+        this.photoFx = new PhotoFx(this.renderer, this.scene, this.camera)
+      })
+    } else {
+      this.fovTarget = FOV
+      this.polarTarget = this.beforePhoto.polar
+      this.distance = this.beforePhoto.distance
+      // Libéré à la sortie : deux cibles plein écran en demi-flottant, c'est
+      // de la mémoire GPU qu'un téléphone n'a pas à garder pour rien.
+      this.photoFx?.dispose()
+      this.photoFx = null
+    }
+  }
+
+  /** Glisse le champ et l'inclinaison vers leur cible, à l'entrée et à la
+   *  sortie du mode photo. L'inclinaison n'est tenue que le temps du
+   *  glissement : ensuite le doigt la reprend. */
+  private easeLens(): void {
+    // Au temps réel, pas à l'image : même glissement à 30 et à 120 Hz, et une
+    // demi-seconde environ pour arriver.
+    const now = performance.now()
+    const dt = Math.min(0.25, (now - this.lensAt) / 1000)
+    this.lensAt = now
+    const k = 1 - Math.exp(-dt * 9)
+    if (this.polarTarget !== null) {
+      this.polar += (this.polarTarget - this.polar) * k
+      if (Math.abs(this.polarTarget - this.polar) < 0.002) {
+        this.polar = this.polarTarget
+        this.polarTarget = null
+      }
+    }
+    const df = this.fovTarget - this.camera.fov
+    if (df === 0) return
+    this.camera.fov = Math.abs(df) < 0.02 ? this.fovTarget : this.camera.fov + df * k
+    this.camera.updateProjectionMatrix()
+    this.fitVignette()
+  }
+
+  private fitVignette(): void {
+    const z = -this.vignette.position.z
+    const vh = 2 * z * Math.tan((this.camera.fov * Math.PI) / 360)
+    this.vignette.scale.set(vh * this.camera.aspect, vh, 1)
+  }
+
   render(): void {
-    this.renderer.render(this.scene, this.camera)
+    if (this.photoFx) this.photoFx.render()
+    else this.renderer.render(this.scene, this.camera)
   }
 }

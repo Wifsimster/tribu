@@ -15,7 +15,13 @@ export default defineConfig({
     cssMinify: true,
     rollupOptions: {
       output: {
-        manualChunks: (id) => (id.includes('node_modules/three') ? 'three' : undefined),
+        // Les passes de post-traitement ne servent qu'au mode photo : laissées
+        // hors du chunk three, elles suivent son import dynamique et le premier
+        // chargement n'en paie rien.
+        manualChunks: (id) =>
+          id.includes('node_modules/three') && !/examples\/jsm\/(postprocessing|shaders)\//.test(id)
+            ? 'three'
+            : undefined,
       },
     },
   },

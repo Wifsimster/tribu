@@ -1497,3 +1497,80 @@ body.night .age-bar {
     right: 116px;
   }
 }
+
+/* ── Mode photo maquette ─────────────────────────────────────────────────── */
+
+/* Sous les deux cadrans, dans la même colonne : discret, jamais sur la scène. */
+.photo-fab {
+  position: fixed;
+  top: 134px;
+  right: 17px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--ink-soft);
+  box-shadow: var(--shadow-s);
+  cursor: pointer;
+  z-index: 6;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease;
+}
+.photo-fab:active { transform: scale(0.92); }
+
+/* En mode photo, il ne reste que deux boutons, en bas au centre. */
+.photo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + var(--safe-b));
+  transform: translateX(-50%);
+  display: none;
+  gap: 14px;
+  z-index: 9;
+}
+.photo-btn {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--ink-soft);
+  box-shadow: var(--shadow-s);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease, opacity 0.2s ease;
+}
+.photo-btn:active { transform: scale(0.92); }
+
+body.photo .photo-bar { display: flex; }
+/* Tout le reste s'efface : la scène est le seul sujet de la photo. Les
+   fiches qui s'ouvriraient pendant ce temps attendent la sortie. */
+body.photo #ui,
+body.photo .menu-fab,
+body.photo .photo-fab,
+body.photo .toasts,
+body.photo .banner,
+body.photo .sheet,
+body.photo .scrim,
+body.photo .fact {
+  display: none;
+}
+
+@media (min-width: 760px) {
+  /* Sur la ligne du menu et des cadrans, à leur gauche. */
+  .photo-fab {
+    top: calc(12px + var(--safe-t));
+    right: 158px;
+  }
+}
