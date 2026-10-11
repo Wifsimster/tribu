@@ -1,4 +1,4 @@
-import type { ResourceId } from './content'
+import { LAND_BY_ID, type ResourceId } from './content'
 
 export interface Expedition {
   /** Seconds of expedition work still to do, before speed multipliers. */
@@ -76,6 +76,18 @@ export interface SaveV1 {
    *  le code de transfert, et une tribu restaurée ailleurs reste la même aux
    *  yeux des autres. Le secret n'est jamais montré. */
   tribe: { id: string; secret: string; name: string } | null
+  /** Les terres gagnées sur la mer : type et cellule centrale (axiale) de la
+   *  parcelle de sept hexagones. Elles appartiennent à l'île, comme les
+   *  outils : l'Exode les laisse derrière lui. */
+  land: { kind: string; q: number; r: number }[]
+  /** Les jalons franchis dont la carte attend le choix du joueur, du plus
+   *  ancien au plus récent : numéro du jalon et les trois terres tirées. Rien
+   *  ne se pose tout seul — une carte en attente ne rapporte rien. */
+  landPending: { n: number; kinds: string[] }[]
+  /** Nombre de jalons déjà distribués (posés ou en file). Absent d'une
+   *  sauvegarde d'avant les parcelles : il vaut alors 0, et tous les jalons
+   *  déjà franchis arrivent en file au chargement. */
+  landN: number
 }
 
 export const SAVE_KEY = 'tribu.save.v1'
@@ -113,6 +125,9 @@ export function emptySave(now: number): SaveV1 {
     village: '',
     legacy: 0,
     tribe: null,
+    land: [],
+    landPending: [],
+    landN: 0,
   }
 }
 
@@ -123,6 +138,31 @@ const text = (v: unknown): string => (typeof v === 'string' ? v : '')
 function cleanTribe(t: SaveV1['tribe']): SaveV1['tribe'] {
   if (!t || typeof t.id !== 'string' || typeof t.secret !== 'string') return null
   return { id: t.id, secret: t.secret, name: text(t.name).trim().slice(0, 24) || 'Tribu sans nom' }
+}
+
+const coord = (v: unknown): v is number => Number.isInteger(v) && Math.abs(v as number) <= 60
+
+function cleanLand(v: unknown): SaveV1['land'] {
+  if (!Array.isArray(v)) return []
+  const out: SaveV1['land'] = []
+  for (const e of v as Partial<SaveV1['land'][number]>[]) {
+    if (!e || typeof e.kind !== 'string' || !LAND_BY_ID.has(e.kind)) continue
+    if (!coord(e.q) || !coord(e.r)) continue
+    out.push({ kind: e.kind, q: e.q, r: e.r })
+  }
+  return out
+}
+
+function cleanPending(v: unknown): SaveV1['landPending'] {
+  if (!Array.isArray(v)) return []
+  const out: SaveV1['landPending'] = []
+  for (const e of v as Partial<SaveV1['landPending'][number]>[]) {
+    if (!e || !Number.isInteger(e.n) || !Array.isArray(e.kinds)) continue
+    const kinds = e.kinds.filter((k): k is string => typeof k === 'string' && LAND_BY_ID.has(k))
+    if (kinds.length === 0) continue
+    out.push({ n: e.n as number, kinds })
+  }
+  return out
 }
 
 export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } {
@@ -158,6 +198,11 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
     // quelles : `recompute` parcourt les outils à chaque changement, et une
     // sauvegarde bricolée ne doit pas pouvoir y glisser autre chose.
     save.tools = Array.isArray(save.tools) ? save.tools.filter((t) => typeof t === 'string') : []
+    // Les terres passent par `recompute` comme les outils : type connu,
+    // coordonnées entières et bornées, sinon la parcelle est ignorée.
+    save.land = cleanLand(save.land)
+    save.landPending = cleanPending(save.landPending)
+    save.landN = Number.isInteger(save.landN) && save.landN >= 0 && save.landN <= 999 ? save.landN : 0
     return { save, offlineSeconds: elapsed }
   } catch {
     return { save: emptySave(now), offlineSeconds: 0 }

@@ -1504,3 +1504,78 @@ export const FEATS: FeatDef[] = [
   { id: 'annee', name: 'Une année vécue', desc: "Vivre une année entière de l'île (4 saisons)." },
   { id: 'memoire', name: 'La mémoire longue', desc: 'Écrire 100 lignes de Chronique.' },
 ]
+
+/** « La mer recule » : les terres que la tribu gagne sur l'eau, deux fois par
+ *  âge. Chacune est un paquet d'effets de plus — le même moulin que savoirs et
+ *  outils — et porte, comme eux, une ligne d'histoire vraie. */
+export interface LandDef {
+  id: string
+  name: string
+  /** Ce que la carte promet, en une ligne lisible. */
+  gain: string
+  effects: Effect[]
+  fact: string
+  /** Ressource qu'il faut savoir récolter pour que la carte soit tirée. */
+  needs?: ResourceId
+  /** Âge à partir duquel la carte peut sortir. */
+  fromAge?: number
+}
+
+export const LANDS: LandDef[] = [
+  {
+    id: 'prairie',
+    name: 'Prairie',
+    gain: '+8 % de nourriture',
+    effects: [{ kind: 'gatherRate', resource: 'food', mult: 1.08 }],
+    fact: "Les prés-salés de la baie du Mont-Saint-Michel sont des terres prises à la mer par les sédiments : les moutons y paissent une herbe que la marée recouvre, et leur viande en garde le goût.",
+  },
+  {
+    id: 'foret',
+    name: 'Forêt',
+    gain: '+8 % de bois',
+    effects: [{ kind: 'gatherRate', resource: 'wood', mult: 1.08 }],
+    fact: "Les dunes de Gascogne avançaient sur les villages : à partir de la fin du XVIIIe siècle, on les fixa en semant des pins maritimes. Il en est sorti la forêt des Landes, l'une des plus grandes forêts plantées d'Europe.",
+  },
+  {
+    id: 'carriere',
+    name: 'Carrière',
+    gain: '+8 % de pierre',
+    effects: [{ kind: 'gatherRate', resource: 'stone', mult: 1.08 }],
+    fact: "À Grimes Graves, en Angleterre, vers −2600, plus de 400 puits furent creusés au pic en bois de cerf pour atteindre le meilleur silex, à une douzaine de mètres sous la craie.",
+  },
+  {
+    id: 'roseliere',
+    name: 'Roselière',
+    gain: '+10 % de fibres et d’argile',
+    effects: [
+      { kind: 'gatherRate', resource: 'fiber', mult: 1.1 },
+      { kind: 'gatherRate', resource: 'clay', mult: 1.1 },
+    ],
+    fact: "Le roseau des marais couvre les toits depuis des millénaires : bien posé, un toit de chaume en roseau tient plusieurs décennies, et l'argile du même marais scelle les murs.",
+    needs: 'fiber',
+  },
+  {
+    id: 'crique',
+    name: 'Crique',
+    gain: '+5 % de vitesse en mer, +4 % de nourriture',
+    effects: [
+      { kind: 'expeditionSpeed', mult: 1.05 },
+      { kind: 'gatherRate', resource: 'food', mult: 1.04 },
+    ],
+    fact: "Les Phéniciens fondaient leurs comptoirs sur des îlots et des criques abrités, comme Tyr ou Motyé : un mouillage sûr valait mieux qu'une plaine fertile.",
+    fromAge: 2,
+  },
+  {
+    id: 'affleurement',
+    name: 'Affleurement',
+    gain: '+10 % de cuivre et de fer',
+    effects: [
+      { kind: 'gatherRate', resource: 'copper', mult: 1.1 },
+      { kind: 'gatherRate', resource: 'iron', mult: 1.1 },
+    ],
+    fact: "À Rio Tinto, en Espagne, le minerai affleure si bien que la rivière en coule rouge : on y extrait du cuivre depuis environ 5 000 ans.",
+    needs: 'copper',
+  },
+]
+
+export const LAND_BY_ID = new Map(LANDS.map((l) => [l.id, l]))

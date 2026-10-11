@@ -8,6 +8,9 @@ import {
   SEASON_DAYS,
   SEASONS,
   FEATS,
+  LAND_BY_ID,
+  LANDS,
+  type LandDef,
   WONDER_BY_AGE,
   type WonderDef,
   RELIC_BY_ID,
@@ -76,6 +79,10 @@ export type GameEvent =
       silent: boolean
     }
   | { type: 'caravanLeave' }
+  /** La mer recule : `count` nouvelles cartes en file. `catchUp` signale le
+   *  rattrapage d'une sauvegarde au chargement, pas un jalon vécu en direct. */
+  | { type: 'landOffer'; count: number; catchUp: boolean }
+  | { type: 'landPlaced'; def: LandDef }
   | { type: 'nightfall'; floor: number }
   | { type: 'daybreak' }
 
@@ -232,6 +239,30 @@ const VISIT_SIGHTS = [
   'leur feu commun brûler au milieu du village, exactement comme le nôtre',
 ]
 
+/** Combien de jalons « la mer recule » une partie a franchis : deux par âge
+ *  révolu (mi-âge, puis passage), plus celui de mi-âge de l'âge courant. Se
+ *  lit sur l'état, sans historique : c'est ce qui permet le rattrapage d'une
+ *  sauvegarde d'avant les parcelles. */
+export function landMilestones(age: number, techs: readonly string[]): number {
+  const cur = AGES[Math.min(age, AGES.length - 1)]!
+  const done = techs.filter((id) => TECH_BY_ID.get(id)?.age === cur.id).length
+  return Math.min(age, AGES.length - 1) * 2 + (done >= Math.ceil(cur.techsToAdvance / 2) ? 1 : 0)
+}
+
+/** Les trois terres d'un jalon : tirées sans doublon parmi celles que la
+ *  tribu peut exploiter, par un PRNG semé sur l'île ET le numéro du jalon —
+ *  même île, même jalon, mêmes cartes. */
+export function drawLands(seed: number, n: number, age: number, unlocked: ReadonlySet<ResourceId>): string[] {
+  const pool = LANDS.filter((l) => (l.fromAge ?? 0) <= age && (!l.needs || unlocked.has(l.needs))).map((l) => l.id)
+  let h = (seed ^ Math.imul(n + 1, 0x9e3779b1)) >>> 0
+  for (let i = pool.length - 1; i > 0; i--) {
+    h = (Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0
+    const j = h % (i + 1)
+    ;[pool[i], pool[j]] = [pool[j]!, pool[i]!]
+  }
+  return pool.slice(0, 3)
+}
+
 export class Game {
   save: SaveV1
   /** Live per-second yields, recomputed whenever anything structural changes. */
@@ -272,6 +303,10 @@ export class Game {
 
     if (offlineSeconds > 60) this.creditAbsence(offlineSeconds)
     this.catchUpAge()
+    // Une sauvegarde d'avant les parcelles (ou qui a franchi un âge en
+    // rattrapage) reçoit en file tous ses jalons passés. Ils attendent le
+    // joueur comme les autres : rien ne se pose sans lui.
+    this.syncLand(true)
 
     // Les tribus d'avant la Chronique ouvrent leur registre en cours de route.
     if (this.save.chronicle.length === 0 && this.save.techs.length > 0)
@@ -400,6 +435,7 @@ export class Game {
     const sources = [
       ...this.save.techs.map((id) => TECH_BY_ID.get(id)),
       ...this.save.tools.map((id) => TOOL_BY_ID.get(id)),
+      ...this.save.land.map((l) => LAND_BY_ID.get(l.kind)),
     ]
     for (const tech of sources) {
       if (!tech) continue
@@ -548,6 +584,41 @@ export class Game {
     this.record('tech', `Découverte : ${tech.name}`)
     this.emit({ type: 'tech', tech })
     this.checkAge()
+    this.syncLand(false)
+    return true
+  }
+
+  /** Met la file à jour des jalons franchis. Les cartes s'accumulent sans
+   *  limite ni minuterie : c'est le joueur qui les pose, quand il veut. */
+  private syncLand(catchUp: boolean): void {
+    const target = landMilestones(this.save.age, this.save.techs)
+    let count = 0
+    while (this.save.landN < target) {
+      const n = this.save.landN++
+      this.save.landPending.push({ n, kinds: drawLands(this.save.seed, n, this.save.age, this.unlocked) })
+      count++
+    }
+    if (count > 0) this.emit({ type: 'landOffer', count, catchUp })
+  }
+
+  /** La carte la plus ancienne de la file : c'est elle qu'on choisit d'abord. */
+  get landOffer(): { n: number; kinds: string[] } | null {
+    return this.save.landPending[0] ?? null
+  }
+
+  /** Le joueur retient une terre de la carte en tête de file ; elle se pose à
+   *  la cellule (q, r) que le rendu a choisie. L'effet compte dès maintenant,
+   *  sans rétroactivité. */
+  chooseLand(kind: string, q: number, r: number): boolean {
+    const offer = this.landOffer
+    const def = LAND_BY_ID.get(kind)
+    if (!offer || !def || !offer.kinds.includes(kind)) return false
+    if (!Number.isInteger(q) || !Number.isInteger(r)) return false
+    this.save.landPending.shift()
+    this.save.land.push({ kind, q, r })
+    this.recompute()
+    this.record('land', `La mer recule : ${def.name.toLowerCase()} gagnée sur l'eau`)
+    this.emit({ type: 'landPlaced', def })
     return true
   }
 

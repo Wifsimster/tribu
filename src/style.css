@@ -480,6 +480,143 @@ body {
   color: var(--ink-soft);
 }
 
+/* ── La mer recule : la file des terres et ses trois cartes ─────────────── */
+
+.land-pill {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  box-shadow: var(--shadow-s), inset 0 -2px 0 rgba(78, 150, 190, 0.35);
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.land-pill[hidden] {
+  display: none;
+}
+
+.land-pill .badge {
+  position: static;
+}
+
+.land {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: min(440px, calc(100vw - 28px));
+  max-height: 88dvh;
+  overflow-y: auto;
+  transform: translate(-50%, -46%) scale(0.96);
+  background: linear-gradient(168deg, #fbfdfd 0%, #eef5f4 100%);
+  border-radius: 20px;
+  box-shadow: var(--shadow-l), inset 0 3px 0 #6aa7c4;
+  padding: 20px 18px 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1);
+  z-index: 21;
+}
+
+.land.open {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+
+.land .kicker {
+  font-size: 10.5px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #3f7d9a;
+}
+
+.land h3 {
+  margin: 7px 0 0;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #23313a;
+}
+
+.land .rule {
+  width: 34px;
+  height: 2px;
+  border-radius: 2px;
+  background: #6aa7c4;
+  margin: 12px 0 12px;
+}
+
+.land-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.land-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: var(--shadow-s);
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.land-card:active {
+  transform: scale(0.985);
+}
+
+.land-card b {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.land-card .gain {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #2f7a52;
+}
+
+.land-card p {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.land-later {
+  display: block;
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
 /* ── Fact card ───────────────────────────────────────────────────────────── */
 
 .fact {

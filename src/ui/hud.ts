@@ -1,4 +1,4 @@
-import { AGES, DAY_SECONDS, DAY_START, DESTINATIONS, RESOURCES, SEASONS, SEASON_DAYS, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
+import { AGES, DAY_SECONDS, DAY_START, DESTINATIONS, LAND_BY_ID, RESOURCES, SEASONS, SEASON_DAYS, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -122,6 +122,11 @@ export class Hud {
   private lastValues = new Map<ResourceId, number>()
   private sheetOpen = false
   private factOpen = false
+  private landOpen = false
+  /** Une carte arrivée pendant qu'une fiche était lue : elle s'ouvre après. */
+  private landAfterFact = false
+  /** Le joueur retient une terre — main.ts choisit l'endroit et la pose. */
+  onLandChoose: ((kind: string) => void) | null = null
 
   constructor(private game: Game) {
     this.buildResources()
@@ -182,7 +187,10 @@ export class Hud {
     })
     el('sheet-close').addEventListener('click', () => this.toggleSheet(false))
     el('fact-close').addEventListener('click', () => this.closeFact())
+    el('land-pill').addEventListener('click', () => this.openLand())
+    el('land-close').addEventListener('click', () => this.closeLand())
     el('scrim').addEventListener('click', () => {
+      this.closeLand()
       this.closeFact()
       this.toggleSheet(false)
     })
@@ -207,6 +215,7 @@ export class Hud {
     })
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        this.closeLand()
         this.closeFact()
         this.toggleSheet(false)
       }
@@ -230,7 +239,7 @@ export class Hud {
 
   /** Un seul voile pour la feuille et la carte : la scène reste le sujet. */
   private syncScrim(): void {
-    el('scrim').classList.toggle('on', this.sheetOpen || this.factOpen)
+    el('scrim').classList.toggle('on', this.sheetOpen || this.factOpen || this.landOpen)
   }
 
   /** L'arbre complet, âge par âge : l'acquis, l'atteignable, et la route qui
@@ -490,8 +499,61 @@ export class Hud {
   }
 
   private closeFact(): void {
+    const was = this.factOpen
     el('fact').classList.remove('open')
     this.factOpen = false
+    this.syncScrim()
+    if (was && this.landAfterFact) {
+      this.landAfterFact = false
+      this.openLand()
+    }
+  }
+
+  /** La pastille des terres en attente : visible tant que la file n'est pas
+   *  vide, jamais un rappel insistant — attendre ne coûte rien. */
+  refreshLand(): void {
+    const n = this.game.save.landPending.length
+    el('land-pill').hidden = n === 0
+    el('land-count').textContent = String(n)
+    if (n === 0 && this.landOpen) this.closeLand()
+  }
+
+  /** Ouvre les trois cartes du plus ancien jalon. Si une fiche de découverte
+   *  est à l'écran, la mer attend qu'on l'ait lue. */
+  openLand(): void {
+    const offer = this.game.landOffer
+    if (!offer) return
+    if (this.factOpen) {
+      this.landAfterFact = true
+      return
+    }
+    const n = this.game.save.landPending.length
+    el('land-kicker').textContent = n > 1 ? `La mer recule · encore ${n - 1} en attente` : 'La mer recule'
+    const host = el('land-cards')
+    host.textContent = ''
+    for (const kind of offer.kinds) {
+      const def = LAND_BY_ID.get(kind)
+      if (!def) continue
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'land-card'
+      card.dataset.kind = kind
+      card.innerHTML = `<b>${escapeHtml(def.name)}</b><span class="gain">${escapeHtml(def.gain)}</span><p>${escapeHtml(def.fact)}</p>`
+      card.addEventListener('click', () => {
+        this.closeLand()
+        this.onLandChoose?.(kind)
+      })
+      host.appendChild(card)
+    }
+    host.scrollTop = 0
+    el('land').classList.add('open')
+    this.landOpen = true
+    this.syncScrim()
+  }
+
+  closeLand(): void {
+    el('land').classList.remove('open')
+    this.landOpen = false
     this.syncScrim()
   }
 

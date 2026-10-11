@@ -1,11 +1,12 @@
 {
   "name": "tribu",
-  "version": "3.47.0",
+  "version": "3.49.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "node --import ./tests/resolve-ts.mjs --test 'tests/*.test.mjs'",
     "preview": "vite preview --host"
   },
   "dependencies": {

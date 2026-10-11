@@ -44,7 +44,7 @@ import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
-import { Island, growthForAge } from './render/island'
+import { Island } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
 import { Fauna } from './render/fauna'
@@ -82,22 +82,34 @@ let fauna!: Fauna
 let villagers!: Villagers
 const nodeSpots = new Map<string, Vector3[]>()
 
+/** Un matériau ne libère pas ses textures : sans ce balayage, chaque
+ *  reconstruction du monde laissait les siennes (eau, halos) en mémoire GPU —
+ *  quatre de plus par terre posée, vingt et une poses par partie. */
+function disposeMaterial(m: unknown): void {
+  for (const mat of Array.isArray(m) ? m : [m]) {
+    if (!mat) continue
+    for (const v of Object.values(mat as Record<string, unknown>))
+      if (v && (v as { isTexture?: boolean }).isTexture) (v as { dispose(): void }).dispose()
+    ;(mat as { dispose(): void }).dispose()
+  }
+}
+
 function disposeWorld(): void {
   if (villagers) {
     stage.scene.remove(villagers.group)
     villagers.group.traverse((o) => {
-      const m = o as { geometry?: { dispose(): void }; material?: { dispose(): void } }
+      const m = o as { geometry?: { dispose(): void }; material?: unknown }
       m.geometry?.dispose()
-      m.material?.dispose()
+      disposeMaterial(m.material)
     })
   }
   for (const g of [island?.group, village?.group, settler?.group, fauna?.group]) {
     if (!g) continue
     stage.scene.remove(g)
     g.traverse((o) => {
-      const mesh = o as { geometry?: { dispose(): void }; material?: { dispose(): void } }
+      const mesh = o as { geometry?: { dispose(): void }; material?: unknown }
       mesh.geometry?.dispose()
-      mesh.material?.dispose()
+      disposeMaterial(mesh.material)
     })
   }
 }
@@ -124,13 +136,19 @@ let firstCatch = true
  *  chaque passage d'âge : le monde s'agrandit sous la bannière. */
 function buildWorld(): void {
   disposeWorld()
-  island = new Island(game.save.seed, growthForAge(game.save.age), game.save.age)
+  // L'île ne grandit plus avec les âges : seulement des terres que le joueur
+  // a gagnées sur la mer.
+  island = new Island(game.save.seed, game.save.age, game.save.land)
   // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
   // brasero, lampadaire dès que l'électricité est sue.
   village = new Village(island, game.save.age, game.knows('electricity'), yule !== 'none')
   // Le plan sauvegardé d'abord : ce qui est bâti ne se redéplace pas.
   // Plan d'une version antérieure : il est retracé selon les règles du jour.
-  village.adoptLayout(game.save.layoutV === 2 ? game.save.layout : [])
+  // Un plan tracé sur une île plus grande que celle d'aujourd'hui (avant les
+  // parcelles, l'île grandissait à chaque âge) est retracé une fois : un
+  // bâtiment ne se pose pas dans l'eau.
+  const plan = game.save.layoutV === 2 ? game.save.layout : []
+  village.adoptLayout(plan.every((p) => island.isLand(p.x, p.z)) ? plan : [])
   game.save.layoutV = 2
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
@@ -248,6 +266,23 @@ function spotFor(resource: ResourceId): Vector3 {
 
 const hud = new Hud(game)
 hud.onWonderTap = () => openWonderCard()
+// Le joueur retient une terre : elle se pose à l'emplacement par défaut, à
+// l'arrière de l'île vue de la caméra de départ.
+hud.onLandChoose = (kind) => {
+  const at = island.defaultAnchor()
+  if (!at) {
+    hud.toast("Plus un pouce de rivage libre : la mer ne recule plus ici")
+    return
+  }
+  game.chooseLand(kind, at.q, at.r)
+}
+hud.refreshLand()
+// La file héritée d'une session précédente (ou d'un rattrapage) se signale
+// une fois, après le chargement — sans rien ouvrir.
+if (game.save.landPending.length > 0) {
+  const n = game.save.landPending.length
+  setTimeout(() => hud.toast(n > 1 ? `${n} terres attendent ton choix` : 'Une terre attend ton choix'), 1500)
+}
 
 // L'ambiance sonore : coupée par défaut, activée au menu, reprise au premier
 // geste si la préférence est déjà « on » (l'audio exige un geste utilisateur).
@@ -416,6 +451,21 @@ game.on((e) => {
     }
     case 'caravanLeave':
       caravan.depart()
+      break
+    case 'landOffer':
+      hud.refreshLand()
+      // Au chargement, la file se signale sans rien ouvrir (toast plus haut) :
+      // un rattrapage de treize jalons ne doit pas tomber sur le joueur à la
+      // première image.
+      if (!e.catchUp) hud.openLand()
+      break
+    case 'landPlaced':
+      ambience.chime()
+      hud.toast(`La mer recule : ${e.def.name.toLowerCase()} — ${e.def.gain}`)
+      hud.refreshLand()
+      // La terre se pose : l'île est reconstruite avec elle, le plan du
+      // village (persisté) ne bouge pas.
+      buildWorld()
       break
     case 'exodus':
       stage.applyAge(0)
