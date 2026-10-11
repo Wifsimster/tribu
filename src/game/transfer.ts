@@ -99,12 +99,12 @@ export async function decodeSave(raw: string): Promise<DecodeResult> {
 }
 
 /** Nom de fichier parlant : l'âge et le jour de la tribu, pas un identifiant. */
-export function transferFilename(ageName: string, day: number): string {
+export function transferFilename(ageName: string, day: number, ext = 'txt'): string {
   const slug = ageName
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return `tribu-${slug}-jour-${day}.txt`
+  return `tribu-${slug}-jour-${day}.${ext}`
 }

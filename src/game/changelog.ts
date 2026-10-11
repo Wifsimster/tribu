@@ -21,6 +21,15 @@ export const CHANGELOG: Release[] = [
     ],
   },
   {
+    version: '3.48.0',
+    title: 'L’île sous la loupe',
+    items: [
+      "Un nouveau bouton, l'appareil photo, sous les cadrans : il efface tout l'écran de jeu et pose l'île comme une MAQUETTE sur une table. La caméra recule et plonge, la focale s'allonge, et seule une bande au milieu reste nette — le haut et le bas se perdent dans un flou de miniature, comme sur les photos de villes prises au tilt-shift.",
+      "Le doigt cadre comme d'habitude : un doigt fait tourner l'île, deux doigts zooment. Un tap ne commande plus rien tant que la photo est ouverte — on ne renvoie pas le colon au bois par mégarde.",
+      "La flèche enregistre l'image sur ton appareil, sans aucun bandeau ni bouton dedans. Elle ne part nulle part ailleurs. La croix (ou Échap) rend l'écran de jeu, la caméra reprend sa place, et l'effet est libéré : hors du mode photo, l'île se dessine exactement comme avant.",
+    ],
+  },
+  {
     version: '3.47.0',
     title: 'Le marchand ouvre sa cale',
     items: [
