@@ -2023,7 +2023,9 @@ export class Village {
     let best: Vector3 | null = null
     let bestK = -Infinity
     for (const c of this.island.cells) {
-      if (!c.rim || c.trod) continue
+      // Pas sur une parcelle : le phare ne doit pas changer de côte quand une
+      // terre se pose.
+      if (!c.rim || c.trod || c.plot) continue
       const r = Math.hypot(c.x, c.z) + 1e-6
       const dx = c.x / r
       const dz = c.z / r
@@ -2066,7 +2068,9 @@ export class Village {
     let best: { x: number; z: number; h: number } | null = null
     let bestK = -Infinity
     for (const c of this.island.cells) {
-      if (!c.beach || !c.rim) continue
+      // Le sable d'une crique n'attire pas le ponton : il resterait à sa
+      // place d'origine, sur l'île de base.
+      if (!c.beach || !c.rim || c.plot) continue
       const r = Math.hypot(c.x, c.z) + 1e-6
       const dx = c.x / r
       const dz = c.z / r
@@ -2628,11 +2632,13 @@ export class Village {
 
   // ── Ateliers de savoir ────────────────────────────────────────────────────
   // Chaque technologie pose son objet dans le village : le savoir se VOIT.
-  // Tous les ateliers vivent dans UN SEUL mesh fusionné (this.propsMesh) :
-  // dix-sept objets pour un draw call.
+  // Tous les ateliers vivent dans UN SEUL mesh fusionné (`restack`, avec la
+  // Merveille et le musée) : dix-sept objets pour un draw call.
 
   private readonly propPlacements: { id: string; x: number; y: number; z: number; rot: number }[] = []
-  private propsMesh: Mesh | null = null
+  private propsGeo: BufferGeometry | null = null
+  /** Le mesh (ou, en repli, les meshes) qui porte ateliers, Merveille, musée. */
+  private statics: Mesh[] = []
   /** Le phare est joué à part : c'est un amer, pas un atelier. Il doit passer
    *  au-dessus de la pinède (sapins ≈ 9,6 u) pour être vu du large. */
   private static readonly BEACON_K = 1.55
@@ -4209,13 +4215,10 @@ export class Village {
   }
 
   private rebuildProps(): void {
-    if (this.propsMesh) {
-      this.group.remove(this.propsMesh)
-      this.propsMesh.geometry.dispose()
-      this.propsMesh = null
-    }
+    this.propsGeo?.dispose()
+    this.propsGeo = null
     this.clearMovers()
-    if (this.propPlacements.length === 0) return
+    if (this.propPlacements.length === 0) return this.restack()
     const all: BufferGeometry[] = []
     for (const pl of this.propPlacements) {
       const parts = this.propGeo(pl.id)
@@ -4231,15 +4234,8 @@ export class Village {
       2.7,
     )
     if (this.electric) this.streetLights(all)
-    const merged = mergeGeometries(all)
-    if (!merged) return
-    this.propsMesh = new Mesh(merged, this.solid)
-    this.propsMesh.castShadow = true
-    // Les bâtiments hérités recevaient les ombres (avant-toits, arches, nuages)
-    // quand ils étaient des meshes séparés : le mesh fusionné doit continuer,
-    // sinon leurs murs sous corniche s'éclaircissent.
-    this.propsMesh.receiveShadow = true
-    this.group.add(this.propsMesh)
+    this.propsGeo = mergeGeometries(all)
+    this.restack()
 
     for (const pl of this.propPlacements) {
       if (pl.id === 'windmill') this.buildWindmillSails(pl)
@@ -4293,7 +4289,7 @@ export class Village {
   }
 
   // ── La Merveille ──────────────────────────────────────────────────────────
-  private wonderMesh: Mesh | null = null
+  private wonderGeo: BufferGeometry | null = null
   private wonderPos: { x: number; y: number; z: number } | null = null
   private wonderKey = ''
 
@@ -4301,12 +4297,9 @@ export class Village {
     const key = age === null ? '' : `${age}-${stage}`
     if (key === this.wonderKey) return
     this.wonderKey = key
-    if (this.wonderMesh) {
-      this.group.remove(this.wonderMesh)
-      this.wonderMesh.geometry.dispose()
-      this.wonderMesh = null
-    }
-    if (age === null) return
+    this.wonderGeo?.dispose()
+    this.wonderGeo = null
+    if (age === null) return this.restack()
     if (!this.wonderPos) {
       const slot = this.nextSlot(4.2, 2.4, true)
       this.wonderPos = { x: slot.x, y: slot.y, z: slot.z }
@@ -4315,10 +4308,8 @@ export class Village {
     grain(geo, 0.08)
     geo.rotateY(Math.atan2(-this.wonderPos.x, -this.wonderPos.z))
     geo.translate(this.wonderPos.x, this.wonderPos.y, this.wonderPos.z)
-    this.wonderMesh = new Mesh(geo, this.solid)
-    this.wonderMesh.castShadow = true
-    this.wonderMesh.receiveShadow = true
-    this.group.add(this.wonderMesh)
+    this.wonderGeo = geo
+    this.restack()
   }
 
   get wonderAt(): { x: number; z: number } | null {
@@ -4330,16 +4321,13 @@ export class Village {
   // une esplanade dallée qui se remplit au fil des voyages. Un seul mesh,
   // reconstruit à chaque nouvelle pièce.
 
-  private museumMesh: Mesh | null = null
+  private museumGeo: BufferGeometry | null = null
   private museumPos: { x: number; y: number; z: number } | null = null
 
   setRelics(count: number): void {
-    if (this.museumMesh) {
-      this.group.remove(this.museumMesh)
-      this.museumMesh.geometry.dispose()
-      this.museumMesh = null
-    }
-    if (count <= 0) return
+    this.museumGeo?.dispose()
+    this.museumGeo = null
+    if (count <= 0) return this.restack()
     if (!this.museumPos) {
       const slot = this.nextSlot(2.4, 1.4, false)
       this.museumPos = { x: slot.x, y: slot.y, z: slot.z }
@@ -4372,10 +4360,36 @@ export class Village {
     const rot = Math.atan2(-this.museumPos.x, -this.museumPos.z)
     geo.rotateY(rot)
     geo.translate(this.museumPos.x, this.museumPos.y, this.museumPos.z)
-    this.museumMesh = new Mesh(geo, this.solid)
-    this.museumMesh.castShadow = true
-    this.museumMesh.receiveShadow = true
-    this.group.add(this.museumMesh)
+    this.museumGeo = geo
+    this.restack()
+  }
+
+  /** Ateliers, Merveille et musée sont immobiles et partagent le même
+   *  matériau : UN mesh pour les trois, refait quand l'un d'eux change. Trois
+   *  meshes, c'étaient six draw calls par image, ombre comprise. Si la fusion
+   *  échoue (attributs qui divergent), chacun garde le sien — rien ne
+   *  disparaît. */
+  private restack(): void {
+    for (const m of this.statics) {
+      this.group.remove(m)
+      // La géométrie fusionnée est une copie : les sources restent à nous.
+      if (m.geometry !== this.propsGeo && m.geometry !== this.wonderGeo && m.geometry !== this.museumGeo)
+        m.geometry.dispose()
+    }
+    this.statics = []
+    const parts = [this.propsGeo, this.wonderGeo, this.museumGeo].filter((g): g is BufferGeometry => !!g)
+    if (parts.length === 0) return
+    const merged = parts.length === 1 ? null : mergeGeometries(parts)
+    for (const geo of merged ? [merged] : parts) {
+      const mesh = new Mesh(geo, this.solid)
+      mesh.castShadow = true
+      // Les bâtiments hérités recevaient les ombres (avant-toits, arches,
+      // nuages) quand ils étaient des meshes séparés : le mesh fusionné doit
+      // continuer, sinon leurs murs sous corniche s'éclaircissent.
+      mesh.receiveShadow = true
+      this.group.add(mesh)
+      this.statics.push(mesh)
+    }
   }
 
   update(dt: number, t: number, daylight = 1): void {

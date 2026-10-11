@@ -110,6 +110,21 @@ function hexNormal(k: number): [number, number] {
   const a = (Math.PI / 3) * k + Math.PI / 6
   return [Math.cos(a), Math.sin(a)]
 }
+/** Hexagone plat, posé juste sous la nappe : renvoie l'indice de son premier
+ *  sommet (les six suivent, dans l'ordre des coins). */
+function seabedHex(
+  vert: (x: number, y: number, z: number, nx: number, ny: number, nz: number, s: number) => number,
+  x: number,
+  z: number,
+  s: number,
+): number {
+  const t0 = vert(x + HEX_R, -0.01, z, 0, 1, 0, s)
+  for (let c = 1; c < 6; c++) {
+    const [vx, vz] = hexVertex(c)
+    vert(x + vx, -0.01, z + vz, 0, 1, 0, s)
+  }
+  return t0
+}
 /** Centre monde d'une cellule axiale. */
 function hexCenter(q: number, r: number): [number, number] {
   return [HEX_DX * q, HEX_DZ * (r + q / 2)]
@@ -233,6 +248,45 @@ export interface LandPlot {
   r: number
 }
 
+/** Ce qui fait reconnaître une parcelle de loin, avant même son décor : le
+ *  relief et la teinte du sol. `center: null` laisse le centre à l'eau. */
+interface PlotLook {
+  ring: number
+  center: number | null
+  beach: boolean
+  ground: Color
+  /** Teinte du centre, s'il diffère de l'anneau (la mare d'une roselière). */
+  core?: Color
+}
+const PLOT_LOOK: Record<string, PlotLook> = {
+  // Sous-bois : une herbe plus sombre que la prairie, le centre en butte.
+  foret: { ring: STEP * 2, center: STEP * 3, beach: false, ground: new Color('#4a8a3e') },
+  // Plate et claire : c'est l'herbe haute, les fleurs font le reste.
+  prairie: { ring: STEP * 2, center: STEP * 2, beach: false, ground: new Color('#86c95a') },
+  // Une fosse : le centre creusé d'un palier sous l'anneau de pierre.
+  carriere: { ring: STEP * 2, center: STEP, beach: false, ground: new Color('#a19a8c') },
+  // Basse et humide, une mare au centre à peine sortie de l'eau.
+  roseliere: {
+    ring: STEP,
+    center: 0.2,
+    beach: false,
+    ground: new Color('#7d9a52'),
+    core: new Color('#4d8f8c'),
+  },
+  crique: { ring: STEP, center: null, beach: true, ground: PALETTE.sand },
+  // Une butte de roche rouillée, deux paliers au-dessus de l'anneau.
+  affleurement: { ring: STEP * 2, center: STEP * 4, beach: false, ground: new Color('#b98a5a') },
+}
+/** Le hasard propre à une parcelle : la graine de l'île mêlée à sa position.
+ *  Poser une terre ne consomme rien du tirage de l'île de base — la forêt
+ *  d'origine ne se rebat pas. */
+function plotRandom(seed: number, p: LandPlot, salt: number): () => number {
+  return mulberry32((seed ^ Math.imul(key(p.q, p.r) + 1, 0x9e3779b1) ^ salt) >>> 0)
+}
+function plotLook(kind: string): PlotLook {
+  return PLOT_LOOK[kind] ?? PLOT_LOOK.foret!
+}
+
 /** Rayon de cadrage : la caméra s'en sert pour tenir l'île entière à l'écran.
  *  Mesuré sur la grille, pas majoré. La somme des amplitudes des trois lobes
  *  n'est jamais atteinte au même angle, et aucune tuile ne tombe sur ce maximum
@@ -274,9 +328,28 @@ export interface Cell {
   trod: boolean
   /** Type de la parcelle gagnée sur la mer, si la cellule en vient. */
   plot?: string
+  /** Centre de sa parcelle : c'est là que le décor se ramasse (mare, butte). */
+  plotCenter?: boolean
+  /** La parcelle qui l'a posée : son décor tire avec le hasard de celle-ci. */
+  plotOf?: LandPlot
 }
 
 export type NodeKind = 'wood' | 'stone' | 'food'
+
+/** Un lot de décor à disperser, avec le hasard qui le place. */
+interface Scatter {
+  cells: Cell[]
+  rnd: () => number
+  scale?: number
+  /** Posé à plat, sans bascule : un bloc taillé, pas un rocher roulé. */
+  block?: boolean
+  tones?: readonly Color[]
+}
+
+/** Plafond de la pinède de l'île de base. */
+const TREE_MAX = 46
+/** Roche rouillée d'un affleurement : cuivre et fer à fleur de sol. */
+const ORE_TONES = [new Color('#b4733f'), new Color('#8e5a3a'), new Color('#c08a52')]
 
 export class Island {
   readonly group = new Group()
@@ -322,12 +395,16 @@ export class Island {
   readonly land: readonly LandPlot[]
   private readonly growth = BASE_GROWTH
 
-  constructor(
-    private readonly seed = DEFAULT_SEED,
-    /** L'époque : la friche recule à mesure que le village s'étend. */
-    private readonly age = 0,
-    land: readonly LandPlot[] = [],
-  ) {
+  private readonly seed: number
+  /** L'époque : la friche recule à mesure que le village s'étend. */
+  private readonly age: number
+
+  // Champs déclarés à la main plutôt qu'en propriétés de paramètre : Node
+  // retire les types sans transpiler, et le test des parcelles construit
+  // l'île hors navigateur.
+  constructor(seed = DEFAULT_SEED, age = 0, land: readonly LandPlot[] = []) {
+    this.seed = seed
+    this.age = age
     this.land = land
     const rnd = mulberry32(seed)
     const half = GRID / 2
@@ -397,6 +474,7 @@ export class Island {
     // Les terres gagnées sur la mer : des cellules AJOUTÉES après l'île de
     // base, jamais un masque élargi — l'île d'origine ne bouge pas d'un pouce.
     for (const p of land) this.addPlot(p)
+    this.fillPockets()
 
     this.bakeOcclusion()
     this.bakeFootprint()
@@ -533,15 +611,21 @@ export class Island {
 
   // ── Saisons ───────────────────────────────────────────────────────────────
   private leavesMesh: InstancedMesh | null = null
-  private trunksMesh: InstancedMesh | null = null
   /** Arbres abattus (index d'instance) : ils ne sont plus des nœuds de récolte. */
   private readonly felledTrees = new Set<number>()
+  /** Les premières instances de la pinède sont celles de l'île de base. */
+  private baseTrees = 0
   private leafBase: Float32Array | null = null
   private bushMesh: InstancedMesh | null = null
   private bushBase: Float32Array | null = null
   private terrainMat: MeshLambertMaterial | null = null
-  private terrainMesh: InstancedMesh | null = null
+  private terrainMesh: Mesh | null = null
+  /** Teinte de base par emplacement (socle, herbe, décor), et l'emplacement
+   *  de chaque sommet du terrain. */
   private terrainBase: Float32Array | null = null
+  private terrainSlots: Uint32Array | null = null
+  /** Part de saison que prend chaque emplacement de décor. */
+  private terrainDecorSnow: Float32Array | null = null
   private seasonId = -1
   private seasonRamp = -1
 
@@ -603,7 +687,8 @@ export class Island {
   private paintGround(id: number, ramp: number): void {
     const mesh = this.terrainMesh
     const base = this.terrainBase
-    if (!mesh?.instanceColor || !base) return
+    const slots = this.terrainSlots
+    if (!mesh || !base || !slots) return
     const target =
       id === 0
         ? new Color('#a9dc72')
@@ -613,80 +698,132 @@ export class Island {
             ? new Color('#c08a3c')
             : new Color('#eef5fa')
     const mix = (id === 0 ? 0.2 : id === 1 ? 0.16 : id === 2 ? 0.34 : 0.72) * ramp
-    const arr = mesh.instanceColor.array as Float32Array
+    const paint = new Float32Array(base.length)
     const c = new Color()
-    this.cells.forEach((cell, i) => {
-      const j = (i * 2 + 1) * 3
+    const put = (j: number, k: number): void => {
       c.setRGB(base[j]!, base[j + 1]!, base[j + 2]!)
+      c.lerp(target, k)
+      paint[j] = c.r
+      paint[j + 1] = c.g
+      paint[j + 2] = c.b
+    }
+    this.cells.forEach((cell, i) => {
       // La neige tient mal sur le sable mouillé : la plage n'en prend qu'un
       // tiers, et le trait de côte survit à l'hiver.
-      c.lerp(target, mix * (cell.beach ? 0.35 : 1))
-      arr[j] = c.r
-      arr[j + 1] = c.g
-      arr[j + 2] = c.b
+      put((i * 2 + 1) * 3, mix * (cell.beach ? 0.35 : 1))
       // Le socle, lui, ne fait que refroidir ou se réchauffer : une falaise
       // enneigée sur toute sa hauteur redevient un bloc plat.
-      const k = (i * 2) * 3
-      c.setRGB(base[k]!, base[k + 1]!, base[k + 2]!)
-      c.lerp(target, mix * 0.22)
-      arr[k] = c.r
-      arr[k + 1] = c.g
-      arr[k + 2] = c.b
+      put(i * 2 * 3, mix * 0.22)
     })
-    mesh.instanceColor.needsUpdate = true
+    // Le décor des parcelles : fleurs et roseaux prennent la saison comme
+    // l'herbe, le fond d'une crique (sous l'eau) presque pas.
+    const snow = this.terrainDecorSnow
+    for (let j = this.cells.length * 2 * 3, d = 0; j < base.length; j += 3, d++) put(j, mix * (snow?.[d] ?? 1))
+    const col = mesh.geometry.getAttribute('color') as BufferAttribute
+    const arr = col.array as Float32Array
+    for (let v = 0; v < slots.length; v++) {
+      const j = slots[v]! * 3
+      arr[v * 3] = paint[j]!
+      arr[v * 3 + 1] = paint[j + 1]!
+      arr[v * 3 + 2] = paint[j + 2]!
+    }
+    col.needsUpdate = true
   }
 
+  /** LE TERRAIN, une seule géométrie fusionnée — un draw call, comme l'ancien
+   *  `InstancedMesh` de deux prismes par cellule (socle de terre, couche
+   *  d'herbe), mais sans ses faces que rien ne peut montrer : le dessous de
+   *  chaque prisme, le dessus du socle sous l'herbe, et les flancs adossés à
+   *  un voisin aussi haut. Un hexagone se ferme en quatre triangles, pas six.
+   *  Mesuré sur la partie neuve : 28 000 triangles par passe, la moitié du
+   *  budget de l'image une fois l'ombre comptée. Le rendu ne change pas :
+   *  mêmes sommets, mêmes normales (lissées en flanc, comme le cylindre à six
+   *  segments d'avant), mêmes teintes — portées par les sommets, puisqu'il n'y
+   *  a plus d'instances. Pour l'ombre, rien ne manque : le moteur dessine les
+   *  faces arrière, et un rayon qui sort de la terre traverse toujours un
+   *  flanc exposé, qui est gardé. */
   private buildTerrain(): void {
-    // Prisme hexagonal : CylinderGeometry à 6 segments, tourné pour que le
-    // sommet 0 tombe en (R, 0) — l'ordre des arêtes du réseau.
-    const geo = new CylinderGeometry(HEX_R, HEX_R, 1, 6, 1, false, Math.PI / 2)
-    const mat = new MeshLambertMaterial()
+    const mat = new MeshLambertMaterial({ vertexColors: true })
     this.terrainMat = mat
     const rims = this.cells.filter((c) => c.rim)
-    // Deux boîtes par cellule : socle de terre, couche d'herbe.
-    const mesh = new InstancedMesh(geo, mat, this.cells.length * 2)
-    mesh.castShadow = true
-    mesh.receiveShadow = true
 
-    // L'ourlet de rive est peint sans lumière : le liseré doit tenir sur la face
-    // à l'ombre comme sur celle au soleil, et l'eau ne fait pas de clair-obscur
-    // sur ce qu'elle noie. Éclairé, il s'éteignait sur la moitié du pourtour —
-    // exactement la moitié où les falaises viraient au noir.
-    const contactMat = new MeshBasicMaterial()
-    this.unlit.push(contactMat)
-    // Une bande mouillée émergée par cellule du pourtour. La fondation
-    // immergée, elle, vit dans `buildFoundation` : une géométrie fusionnée
-    // sous la nappe, avec l'alpha par sommet que l'instanciation ne sait pas
-    // porter.
-    const contact = new InstancedMesh(geo, contactMat, rims.length)
+    const pos: number[] = []
+    const nor: number[] = []
+    const slot: number[] = []
+    const index: number[] = []
+    const vert = (x: number, y: number, z: number, nx: number, ny: number, nz: number, s: number): number => {
+      pos.push(x, y, z)
+      nor.push(nx, ny, nz)
+      slot.push(s)
+      return slot.length - 1
+    }
+    /** Triangle tourné vers `n` : l'ordre des sommets se décide au produit
+     *  vectoriel plutôt qu'à la main. */
+    const tri = (a: number, b: number, c: number, nx: number, ny: number, nz: number): void => {
+      const ux = pos[b * 3]! - pos[a * 3]!
+      const uy = pos[b * 3 + 1]! - pos[a * 3 + 1]!
+      const uz = pos[b * 3 + 2]! - pos[a * 3 + 2]!
+      const vx = pos[c * 3]! - pos[a * 3]!
+      const vy = pos[c * 3 + 1]! - pos[a * 3 + 1]!
+      const vz = pos[c * 3 + 2]! - pos[a * 3 + 2]!
+      const d = (uy * vz - uz * vy) * nx + (uz * vx - ux * vz) * ny + (ux * vy - uy * vx) * nz
+      if (d >= 0) index.push(a, b, c)
+      else index.push(a, c, b)
+    }
+    const corners = Array.from({ length: 6 }, (_, k) => hexVertex(k))
+    const top = (c: Cell): number => {
+      const capBottom = Math.max(0.06, c.height - CAP)
+      return capBottom + Math.max(0.06, c.height - capBottom)
+    }
+    /** Flanc de l'arête k entre y0 et y1 : normales radiales aux coins, comme
+     *  le cylindre — l'arête du prisme reste adoucie à l'éclairage. */
+    const side = (c: Cell, k: number, y0: number, y1: number, s: number): void => {
+      if (y1 - y0 < 1e-4) return
+      const [ax, az] = corners[k]!
+      const [bx, bz] = corners[(k + 1) % 6]!
+      const a0 = vert(c.x + ax, y0, c.z + az, ax / HEX_R, 0, az / HEX_R, s)
+      const a1 = vert(c.x + ax, y1, c.z + az, ax / HEX_R, 0, az / HEX_R, s)
+      const b0 = vert(c.x + bx, y0, c.z + bz, bx / HEX_R, 0, bz / HEX_R, s)
+      const b1 = vert(c.x + bx, y1, c.z + bz, bx / HEX_R, 0, bz / HEX_R, s)
+      const [nx, nz] = hexNormal(k)
+      tri(a0, b0, b1, nx, 0, nz)
+      tri(a0, b1, a1, nx, 0, nz)
+    }
 
-    const dummy = new Object3D()
+    this.cells.forEach((c, i) => {
+      const capBottom = Math.max(0.06, c.height - CAP)
+      const y = top(c)
+      const t0 = pos.length / 3
+      for (const [vx, vz] of corners) vert(c.x + vx, y, c.z + vz, 0, 1, 0, i * 2 + 1)
+      for (let k = 1; k < 5; k++) tri(t0, t0 + k, t0 + k + 1, 0, 1, 0)
+      for (let k = 0; k < 6; k++) {
+        const n = this.byKey.get(key(c.gx + NB[k]![0], c.gz + NB[k]![1]))
+        const lo = n ? top(n) : 0
+        if (lo >= y) continue
+        if (lo < capBottom) side(c, k, lo, capBottom, i * 2)
+        side(c, k, Math.max(lo, capBottom), y, i * 2 + 1)
+      }
+    })
+    const decor = this.plotGroundDecor(vert, tri)
+
+    // Teintes de base par emplacement : socle (2i), herbe (2i+1), puis le
+    // décor des parcelles.
+    const base = new Float32Array((this.cells.length * 2 + decor.length) * 3)
     const capColor = new Color()
     const socleColor = new Color()
-    const wetColor = new Color()
     const grassRamp = [
       [0, PALETTE.grassDark],
       [0.55, PALETTE.grass],
       [1, PALETTE.grassLight],
     ] as const
-
     this.cells.forEach((c, i) => {
-      const capBottom = Math.max(0.06, c.height - CAP)
-
-      dummy.position.set(c.x, capBottom / 2, c.z)
-      dummy.scale.set(1, capBottom, 1)
-      dummy.updateMatrix()
-      mesh.setMatrixAt(i * 2, dummy.matrix)
-
-      dummy.position.set(c.x, (c.height + capBottom) / 2, c.z)
-      dummy.scale.set(1, Math.max(0.06, c.height - capBottom), 1)
-      dummy.updateMatrix()
-      mesh.setMatrixAt(i * 2 + 1, dummy.matrix)
-
       if (c.trod) {
         // Plus on approche du feu, plus la terre est tassée et sombre.
         const packed = smoothstep(TROD.r, 0.6, Math.hypot(c.x - TROD.x, c.z - TROD.z))
         capColor.copy(PALETTE.dirt).lerp(PALETTE.dirtDark, packed * 0.75)
+      } else if (c.plot) {
+        const look = plotLook(c.plot)
+        capColor.copy(c.plotCenter && look.core ? look.core : look.ground)
       } else if (c.beach) capColor.copy(PALETTE.sand)
       else ramp(grassRamp, smoothstep(0.5, 2.6, c.height), capColor)
       // Marbrure basse fréquence en plus du bruit par tuile : un aplat de
@@ -702,15 +839,51 @@ export class Island {
       // sans ça, la face à l'ombre tombe dans un brun quasi noir alors qu'elle
       // devrait tirer vers le bleu de ce qui la mouille.
       if (c.rim) socleColor.lerp(PALETTE.water, 0.14)
-
-      mesh.setColorAt(i * 2, socleColor)
-      mesh.setColorAt(i * 2 + 1, capColor)
+      socleColor.toArray(base, i * 2 * 3)
+      capColor.toArray(base, (i * 2 + 1) * 3)
     })
+    decor.forEach((d, j) => d.color.toArray(base, (this.cells.length * 2 + j) * 3))
+    this.terrainDecorSnow = Float32Array.from(decor, (d) => d.snow)
+
+    const slots = new Uint32Array(slot)
+    const col = new Float32Array(slots.length * 3)
+    for (let v = 0; v < slots.length; v++) {
+      const j = slots[v]! * 3
+      col[v * 3] = base[j]!
+      col[v * 3 + 1] = base[j + 1]!
+      col[v * 3 + 2] = base[j + 2]!
+    }
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geo.setAttribute('normal', new BufferAttribute(new Float32Array(nor), 3))
+    geo.setAttribute('color', new BufferAttribute(col, 3))
+    geo.setIndex(index)
+    geo.computeBoundingSphere()
+    const mesh = new Mesh(geo, mat)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
     // Le terrain garde sa teinte de base : les saisons le repeignent par-dessus
     // (neige, roux, herbe neuve) au lieu de le multiplier globalement — un
     // étalonnage de matériau ne se VOIT pas, une île blanche se voit.
     this.terrainMesh = mesh
-    this.terrainBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
+    this.terrainBase = base
+    this.terrainSlots = slots
+
+    // L'ourlet de rive est peint sans lumière : le liseré doit tenir sur la face
+    // à l'ombre comme sur celle au soleil, et l'eau ne fait pas de clair-obscur
+    // sur ce qu'elle noie. Éclairé, il s'éteignait sur la moitié du pourtour —
+    // exactement la moitié où les falaises viraient au noir.
+    const contactMat = new MeshBasicMaterial()
+    this.unlit.push(contactMat)
+    // Une bande mouillée émergée par cellule du pourtour, sans fond ni
+    // couvercle : son dessus tombe dans la falaise, son dessous dans l'eau. La
+    // fondation immergée, elle, vit dans `buildFoundation` : une géométrie
+    // fusionnée sous la nappe, avec l'alpha par sommet que l'instanciation ne
+    // sait pas porter.
+    const bandGeo = new CylinderGeometry(HEX_R, HEX_R, 1, 6, 1, true, Math.PI / 2)
+    const contact = new InstancedMesh(bandGeo, contactMat, rims.length)
+    const dummy = new Object3D()
+    const wetColor = new Color()
 
     // La bande de flottaison sombre, sur le pourtour émergé. Le contact se
     // densifie à l'ombre : l'eau y reprend le pied. Face au soleil il reste
@@ -734,11 +907,100 @@ export class Island {
     })
     contact.count = ci
 
-    mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     contact.instanceMatrix.needsUpdate = true
     if (contact.instanceColor) contact.instanceColor.needsUpdate = true
     this.group.add(mesh, contact)
+  }
+
+  /** Le décor au ras du sol des parcelles, cousu dans la géométrie du
+   *  terrain : fleurs de la prairie, roseaux de la roselière, fond de sable
+   *  d'une crique. Pas un draw call de plus, et chaque parcelle tire avec SON
+   *  hasard — la pose d'une terre ne rebat rien de ce qui existe. Renvoie la
+   *  teinte de chaque emplacement de décor, dans l'ordre, et la part de
+   *  saison qu'il prend. */
+  private plotGroundDecor(
+    vert: (x: number, y: number, z: number, nx: number, ny: number, nz: number, s: number) => number,
+    tri: (a: number, b: number, c: number, nx: number, ny: number, nz: number) => void,
+  ): { color: Color; snow: number }[] {
+    const colors: { color: Color; snow: number }[] = []
+    const first = this.cells.length * 2
+    /** Pointe à trois pans, normales plates : une touffe, une fleur, un roseau. */
+    const spike = (x: number, y: number, z: number, r: number, h: number, yaw: number, color: Color): void => {
+      const s = first + colors.length
+      colors.push({ color, snow: 1 })
+      const apex: [number, number, number] = [x, y + h, z]
+      for (let k = 0; k < 3; k++) {
+        const a0 = yaw + (k * Math.PI * 2) / 3
+        const a1 = yaw + ((k + 1) * Math.PI * 2) / 3
+        const p0: [number, number, number] = [x + Math.cos(a0) * r, y, z + Math.sin(a0) * r]
+        const p1: [number, number, number] = [x + Math.cos(a1) * r, y, z + Math.sin(a1) * r]
+        // Normale du pan : sortante, penchée selon l'élancement.
+        const am = (a0 + a1) / 2
+        const nl = Math.hypot(h, r * 0.5)
+        const nx = (Math.cos(am) * h) / nl
+        const ny = (r * 0.5) / nl
+        const nz = (Math.sin(am) * h) / nl
+        const i0 = vert(p0[0], p0[1], p0[2], nx, ny, nz, s)
+        const i1 = vert(p1[0], p1[1], p1[2], nx, ny, nz, s)
+        const i2 = vert(apex[0], apex[1], apex[2], nx, ny, nz, s)
+        tri(i0, i1, i2, nx, ny, nz)
+      }
+    }
+    const FLOWERS = [new Color('#fbf7ea'), new Color('#f7d54a'), new Color('#f29abb'), new Color('#b99cf0')]
+    const REEDS = [new Color('#b8a25c'), new Color('#8f9a4b'), new Color('#a58a4e')]
+    // Le fond d'une crique : du sable clair juste sous la nappe, au centre.
+    // Vu à travers l'eau translucide de la berge, c'est ce haut-fond qui dit
+    // « crique » — sans lui, le croissant de sable se lisait comme une plage
+    // festonnée. La passe, elle, reste au bleu du large : un fond clair posé
+    // là dépassait en mer comme un hexagone isolé.
+    const floor = PALETTE.sand.clone().lerp(PALETTE.waterShallow, 0.3)
+    for (const p of this.land) {
+      if (plotLook(p.kind).center !== null || this.byKey.has(key(p.q, p.r))) continue
+      const s = first + colors.length
+      colors.push({ color: floor, snow: 0.1 })
+      const [x, z] = hexCenter(p.q, p.r)
+      const t0 = seabedHex(vert, x, z, s)
+      for (let c = 1; c < 5; c++) tri(t0, t0 + c, t0 + c + 1, 0, 1, 0)
+    }
+    for (const p of this.land) {
+      if (p.kind !== 'prairie' && p.kind !== 'roseliere') continue
+      const rnd = plotRandom(this.seed, p, 0x51ed)
+      for (const c of this.cells) {
+        if (c.plotOf !== p) continue
+        if (p.kind === 'prairie') {
+          // Une prairie en fleurs : des points de couleur semés dans l'herbe.
+          // À plat, face au ciel — une pointe à trois pans tombait à l'ombre
+          // sur deux faces sur trois et virait au brun.
+          for (let n = 0; n < 9; n++) {
+            const a = rnd() * Math.PI * 2
+            const d = Math.sqrt(rnd()) * HEX_R * 0.82
+            const color = FLOWERS[Math.floor(rnd() * FLOWERS.length)]!
+            const x = c.x + Math.cos(a) * d
+            const z = c.z + Math.sin(a) * d
+            const y = c.height + 0.03
+            const yaw = rnd() * Math.PI
+            const r = 0.1 + rnd() * 0.04
+            const s = first + colors.length
+            colors.push({ color, snow: 1 })
+            const i0 = vert(x + Math.cos(yaw) * r, y, z + Math.sin(yaw) * r, 0, 1, 0, s)
+            const i1 = vert(x + Math.cos(yaw + 2.09) * r, y, z + Math.sin(yaw + 2.09) * r, 0, 1, 0, s)
+            const i2 = vert(x + Math.cos(yaw + 4.19) * r, y, z + Math.sin(yaw + 4.19) * r, 0, 1, 0, s)
+            tri(i0, i1, i2, 0, 1, 0)
+          }
+        } else if (!c.plotCenter) {
+          // Les roseaux se serrent du côté de la mare.
+          const [px, pz] = hexCenter(p.q, p.r)
+          for (let n = 0; n < 7; n++) {
+            const t = 0.15 + rnd() * 0.55
+            const x = c.x + (px - c.x) * t + (rnd() - 0.5) * 0.7
+            const z = c.z + (pz - c.z) * t + (rnd() - 0.5) * 0.7
+            const color = REEDS[Math.floor(rnd() * REEDS.length)]!
+            spike(x, c.height, z, 0.05, 0.75 + rnd() * 0.5, rnd() * 2, color)
+          }
+        }
+      }
+    }
+    return colors
   }
 
   /** La CONTINUATION de la fondation sous la flottaison — pas un reflet.
@@ -875,11 +1137,15 @@ export class Island {
     geo.setIndex(index)
     // `DoubleSide` : l'ordre des coins s'enroule dans un sens ou l'autre selon
     // la face du pourtour — un quad doit se dessiner quel que soit son côté.
+    // Une seule passe : transparent et double face, three dessine sinon le
+    // mesh deux fois (dos puis face), un draw call de plus par image pour un
+    // ordre de mélange que l'enroulement mêlé rendait déjà arbitraire.
     const mat = new MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
       depthWrite: false,
       side: DoubleSide,
+      forceSinglePass: true,
     })
     this.unlit.push(mat)
     const mesh = new Mesh(geo, mat)
@@ -952,13 +1218,11 @@ export class Island {
     geo.setAttribute('position', new BufferAttribute(verts, 3))
     geo.setAttribute('color', new BufferAttribute(colors, 4))
     geo.setIndex(new BufferAttribute(index, 1))
-    // Une seule passe : `DoubleSide` sur un matériau transparent fait dessiner
-    // l'anneau deux fois, et sa face utile est toujours celle du dessus.
-    const rippleMat = new MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
-    this.unlit.push(rippleMat)
-    const mesh = new Mesh(geo, rippleMat)
-    this.group.add(mesh)
+    // L'anneau se dessine avec le trait de flottaison (`buildWaterline`) :
+    // même matériau, un draw call pour les deux.
+    this.rippleGeo = geo
   }
+  private rippleGeo: BufferGeometry | null = null
 
   /** Le trait de flottaison : une ligne claire d'une FINESSE de trait (~2 px à
    *  l'écran), collée à la découpe réelle en escalier des tuiles du pourtour —
@@ -1042,15 +1306,23 @@ export class Island {
     geo.setAttribute('color', new BufferAttribute(new Float32Array(colors), 4))
     geo.setIndex(index)
     // `DoubleSide` : l'ordre des sommets s'inverse d'une face du pourtour à
-    // l'autre, et un quad ne se dessine qu'une fois quel que soit son côté.
+    // l'autre, et un quad ne se dessine qu'une fois quel que soit son côté —
+    // en une seule passe : le trait est à plat, aucun quad n'en recouvre un
+    // autre, la passe « dos » de three ne coûtait qu'un draw call. La 2e ride
+    // (`buildRipple`) voyage dans le même mesh : à plat, vue d'en haut, une
+    // seule de ses faces peut jamais regarder la caméra.
     const mat = new MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
       depthWrite: false,
       side: DoubleSide,
+      forceSinglePass: true,
     })
     this.unlit.push(mat)
-    this.group.add(new Mesh(geo, mat))
+    const both = this.rippleGeo ? mergeGeometries([this.rippleGeo, geo]) : null
+    this.rippleGeo?.dispose()
+    this.rippleGeo = null
+    this.group.add(new Mesh(both ?? geo, mat))
   }
 
   /** Deux fois la même nappe, à deux centièmes d'unité l'une de l'autre : une
@@ -1500,38 +1772,79 @@ export class Island {
     // borde l'île). Plancher à 45 % : il faut toujours des nœuds à taper.
     const wild = Math.max(0.45, 1 - this.age * 0.062)
     const wood = Math.max(0.6, 1 - this.age * 0.03)
-    this.addTrees(
-      take(Math.round(34 * wood * this.growth * this.growth), clustered(wooded, 5.2), () => true),
-      rnd,
-    )
+    const decor = this.plotDecor()
+    // La pinède ne suit plus la surface de l'île : à 1,45 de croissance dès le
+    // départ, elle passait de 34 à 71 sapins — 9 000 triangles, ombre
+    // comprise, pour une forêt qui masquait le bourg. Plafond à 46.
+    const pines = take(Math.min(TREE_MAX, Math.round(34 * wood * this.growth * this.growth)), clustered(wooded, 5.2), () => true)
+    this.baseTrees = pines.length
+    this.addTrees([{ cells: pines, rnd }, ...decor.trees])
     // Pierres et buissons, eux, ont le droit de border la clairière : ce sont
     // eux qui l'encadrent une fois les sapins reculés.
     // Même diagnostic que pour la pinède : les rochers encombraient la
     // clairière que le village doit occuper. Ils reculent d'un demi-rayon de
     // dégagement (moins que les sapins — ce sont eux qui BORDENT la
     // clairière) et leur nombre baisse d'un tiers.
-    this.addRocks(
-      take(
-        Math.round(16 * wild * this.growth * this.growth),
-        clustered(free, 9),
-        (c) =>
-          c.height > 1.2 &&
-          Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.62,
-      ),
-      rnd,
-    )
+    this.addRocks([
+      {
+        cells: take(
+          Math.round(16 * wild * this.growth * this.growth),
+          clustered(free, 9),
+          (c) =>
+            c.height > 1.2 &&
+            Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.62,
+        ),
+        rnd,
+      },
+      ...decor.rocks,
+    ])
     // Les buissons sont aussi les nœuds de NOURRITURE : les raréfier allonge
     // les trajets du colon. On les réduit donc moins que les rochers, et on
     // les tient à distance plus courte encore — ce sont eux qui bordent la
     // clairière de plus près, une fois sapins et blocs écartés.
-    this.addBushes(
-      take(
-        Math.round(24 * wild * this.growth * this.growth),
-        clustered(free, 6),
-        (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.5,
-      ),
-      rnd,
-    )
+    this.addBushes([
+      {
+        cells: take(
+          Math.round(24 * wild * this.growth * this.growth),
+          clustered(free, 6),
+          (c) => Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.5,
+        ),
+        rnd,
+      },
+      ...decor.bushes,
+    ])
+  }
+
+  /** Le décor de chaque parcelle, tiré avec SON hasard (graine de l'île mêlée
+   *  à la position de la parcelle) : il vient APRÈS celui de l'île de base,
+   *  dans les mêmes trois maillages instanciés. Les instances de l'île de
+   *  base gardent donc leur rang, leur position et leur teinte quand une terre
+   *  se pose. Forêt : des sapins serrés. Carrière : des blocs taillés autour
+   *  de la fosse. Affleurement : de la roche rouillée sur la butte. Prairie :
+   *  des buissons parmi les fleurs (cousues dans le terrain, comme les
+   *  roseaux). Crique : deux galets sur le sable. */
+  private plotDecor(): { trees: Scatter[]; rocks: Scatter[]; bushes: Scatter[] } {
+    const out = { trees: [] as Scatter[], rocks: [] as Scatter[], bushes: [] as Scatter[] }
+    for (const p of this.land) {
+      const rnd = plotRandom(this.seed, p, 0x7ee5)
+      const mine = this.cells.filter((c) => c.plotOf === p)
+      const ring = mine.filter((c) => !c.plotCenter)
+      const center = mine.filter((c) => c.plotCenter)
+      const some = (cells: Cell[], n: number): Cell[] =>
+        cells
+          .map((c) => ({ c, k: rnd() }))
+          .sort((a, b) => a.k - b.k)
+          .slice(0, n)
+          .map((e) => e.c)
+      if (p.kind === 'foret') out.trees.push({ cells: some(mine, 6), rnd })
+      else if (p.kind === 'carriere')
+        out.rocks.push({ cells: some(ring, 4), rnd, scale: 1.25, block: true, tones: [PALETTE.rock, PALETTE.rockDark] })
+      else if (p.kind === 'affleurement')
+        out.rocks.push({ cells: [...center, ...center, ...some(ring, 3)], rnd, scale: 1.2, tones: ORE_TONES })
+      else if (p.kind === 'prairie') out.bushes.push({ cells: some(ring, 2), rnd })
+      else if (p.kind === 'crique') out.rocks.push({ cells: some(ring, 2), rnd, scale: 0.6, tones: [PALETTE.rock] })
+    }
+    return out
   }
 
   // Audit échelles 2026-08, round 2 : à ~5 u de moyenne les cimes rasaient
@@ -1545,10 +1858,8 @@ export class Island {
   private static readonly TREE_H = 4.0
   private static readonly TREE_R = 1.55
 
-  private addTrees(cells: Cell[], rnd: () => number): void {
-    const trunkGeo = new CylinderGeometry(0.11, 0.16, 0.9, 6)
-    const trunkMat = new MeshToonMaterial({ color: PALETTE.trunk })
-    const trunks = new InstancedMesh(trunkGeo, trunkMat, cells.length)
+  private addTrees(groups: Scatter[]): void {
+    const cells = groups.flatMap((g) => g.cells)
 
     // Houppier étagé : trois couronnes qui se chevauchent, légèrement
     // désaxées, plus sombres vers le bas. Un cône unique à cette hauteur
@@ -1578,23 +1889,45 @@ export class Island {
         col[i * 3 + 2] = k
       }
       g.setAttribute('color', new BufferAttribute(col, 3))
+      g.setAttribute('leafMask', new BufferAttribute(new Float32Array(n).fill(1), 1))
       return g
     }
+    // Le tronc vit dans la MÊME instance que son houppier : un draw call (et
+    // un de plus pour l'ombre) au lieu de deux. Il se place 1,2 unité locale
+    // sous le houppier — exactement l'écart des deux matrices d'avant, qui
+    // partageaient rotation et échelle. Sa couleur est portée par ses sommets
+    // et `leafMask = 0` le soustrait à la teinte par instance : la saison
+    // roussit les aiguilles, jamais l'écorce.
+    const trunk = new CylinderGeometry(0.11, 0.16, 0.9, 6).translate(0, -1.2, 0)
+    const tn = trunk.attributes.position!.count
+    const bark = new Float32Array(tn * 3)
+    for (let k = 0; k < tn; k++) PALETTE.trunk.toArray(bark, k * 3)
+    trunk.setAttribute('color', new BufferAttribute(bark, 3))
+    trunk.setAttribute('leafMask', new BufferAttribute(new Float32Array(tn), 1))
     const leafGeo =
       mergeGeometries([
+        trunk,
         tier(0.52, 0.85, 7, 0.025, -0.33, -0.015, 0.78),
         tier(0.4, 0.78, 7, -0.02, 0.1, 0.015, 0.9),
         tier(0.27, 0.72, 6, 0.01, 0.53, 0.02, 1.0),
       ]) ?? new ConeGeometry(0.52, 1.5, 7)
     const leafMat = new MeshToonMaterial({ vertexColors: true })
+    leafMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float leafMask;')
+        .replace(
+          '#include <color_vertex>',
+          ['#include <color_vertex>', '#ifdef USE_INSTANCING_COLOR', 'vColor.rgb = color.rgb * mix(vec3(1.0), instanceColor.rgb, leafMask);', '#endif'].join('\n'),
+        )
+    }
     const leaves = new InstancedMesh(leafGeo, leafMat, cells.length)
     leaves.castShadow = true
-    trunks.castShadow = true
 
     const d = new Object3D()
     const leafColors = [PALETTE.leafA, PALETTE.leafB, PALETTE.leafC]
     const { TREE_H, TREE_R } = Island
-    cells.forEach((c, i) => {
+    let i = 0
+    for (const { cells: list, rnd } of groups) for (const c of list) {
       // Variance élargie (0,72–1,27) : à cette échelle, un semis uniforme se
       // lirait comme une plantation. Même nombre d'appels à rnd() qu'avant
       // pour garder les positions (jitter, faune, treeDist) stables.
@@ -1605,48 +1938,49 @@ export class Island {
       const s = 0.72 + rnd() * 0.4
       const jx = (rnd() - 0.5) * 0.5
       const jz = (rnd() - 0.5) * 0.5
-      d.position.set(c.x + jx, c.height + 0.45 * s * TREE_H, c.z + jz)
+      d.position.set(c.x + jx, c.height + 1.65 * s * TREE_H, c.z + jz)
       d.rotation.set(0, rnd() * Math.PI, 0)
       d.scale.set(s * TREE_R, s * TREE_H, s * TREE_R)
-      d.updateMatrix()
-      trunks.setMatrixAt(i, d.matrix)
-      d.position.y = c.height + 1.65 * s * TREE_H
       d.updateMatrix()
       leaves.setMatrixAt(i, d.matrix)
       const leaf = tint(leafColors[i % 3]!, i, 0.08)
       leaves.setColorAt(i, leaf.clone().multiplyScalar(0.9 + c.ao * 0.1))
-    })
-    trunks.instanceMatrix.needsUpdate = true
+      i++
+    }
     leaves.instanceMatrix.needsUpdate = true
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
-    this.group.add(trunks, leaves)
+    this.group.add(leaves)
     this.registerPickable(leaves, 'wood')
     // Les saisons repeignent le feuillage : garder la teinte de base.
     this.leavesMesh = leaves
-    this.trunksMesh = trunks
     this.leafBase = leaves.instanceColor ? new Float32Array(leaves.instanceColor.array) : null
   }
 
-  private addRocks(cells: Cell[], rnd: () => number): void {
+  private addRocks(groups: Scatter[]): void {
     const geo = new DodecahedronGeometry(0.42, 0)
     const mat = new MeshToonMaterial()
-    const mesh = new InstancedMesh(geo, mat, cells.length)
+    const mesh = new InstancedMesh(geo, mat, groups.reduce((n, g) => n + g.cells.length, 0))
     mesh.castShadow = true
     mesh.receiveShadow = true
 
     const d = new Object3D()
-    cells.forEach((c, i) => {
+    let i = 0
+    for (const { cells, rnd, scale = 1, block = false, tones } of groups) for (const c of cells) {
       // Amplitude resserrée (0,5–0,95 au lieu de 0,55–1,25) : les plus gros
       // blocs atteignaient la taille d'une hutte et mangeaient le sol autour
       // d'eux. Même tirage aléatoire, seule l'échelle change.
-      const s = 0.5 + rnd() * 0.45
+      const s = (0.5 + rnd() * 0.45) * scale
       d.position.set(c.x + (rnd() - 0.5) * 0.6, c.height + 0.2 * s, c.z + (rnd() - 0.5) * 0.6)
       d.rotation.set(rnd() * 0.5, rnd() * Math.PI, rnd() * 0.5)
-      d.scale.set(s, s * 0.75, s)
+      // Un bloc de carrière est taillé : posé à plat, plus large que haut.
+      if (block) d.rotation.set(0, d.rotation.y, 0)
+      d.scale.set(s, s * (block ? 0.6 : 0.75), s)
       d.updateMatrix()
       mesh.setMatrixAt(i, d.matrix)
-      mesh.setColorAt(i, tint(i % 3 === 0 ? PALETTE.rockDark : PALETTE.rock, i, 0.07))
-    })
+      const tone = tones ? tones[i % tones.length]! : i % 3 === 0 ? PALETTE.rockDark : PALETTE.rock
+      mesh.setColorAt(i, tint(tone, i, 0.07))
+      i++
+    }
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     this.group.add(mesh)
@@ -1655,15 +1989,16 @@ export class Island {
     this.registerPickable(mesh, 'stone')
   }
 
-  private addBushes(cells: Cell[], rnd: () => number): void {
+  private addBushes(groups: Scatter[]): void {
     const geo = new IcosahedronGeometry(0.34, 0)
     const mat = new MeshToonMaterial()
-    const mesh = new InstancedMesh(geo, mat, cells.length)
+    const mesh = new InstancedMesh(geo, mat, groups.reduce((n, g) => n + g.cells.length, 0))
     mesh.castShadow = true
 
     const d = new Object3D()
     const berry = new Color('#4a7340')
-    cells.forEach((c, i) => {
+    let i = 0
+    for (const { cells, rnd } of groups) for (const c of cells) {
       // Audit échelles : ×1,5 pour viser ~1 m réel (le colon = 1,5 u ≙ 1,75 m).
       // Amplitude resserrée par le haut (0,7–1,05 au lieu de 0,7–1,2) : les
       // plus gros buissons montaient à 1,44 unité, soit la hauteur d'un
@@ -1675,7 +2010,8 @@ export class Island {
       d.updateMatrix()
       mesh.setMatrixAt(i, d.matrix)
       mesh.setColorAt(i, tint(berry, i * 7, 0.1))
-    })
+      i++
+    }
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     this.group.add(mesh)
@@ -1691,17 +2027,16 @@ export class Island {
    *  à un millième — invisible, mais sa position reste lisible pour tout ce
    *  qui l'interroge. `felledTrees` l'exclut des nœuds de récolte : un tronc
    *  qu'on ne voit pas ne doit pas rester un lieu où le colon va bûcheronner. */
-  clearCorridor(pts: { x: number; z: number }[], radius: number): void {
+  clearCorridor(pts: { x: number; z: number }[], radius: number, upTo = Infinity): void {
     const leaves = this.leavesMesh
-    const trunks = this.trunksMesh
-    if (!leaves || !trunks || pts.length === 0) return
+    if (!leaves || pts.length === 0) return
     const m = new Matrix4()
     const p = new Vector3()
     const q = new Quaternion()
     const s = new Vector3()
     const r2 = radius * radius
     let cut = 0
-    for (let i = 0; i < leaves.count; i++) {
+    for (let i = 0; i < Math.min(leaves.count, upTo); i++) {
       if (this.felledTrees.has(i)) continue
       leaves.getMatrixAt(i, m)
       m.decompose(p, q, s)
@@ -1715,15 +2050,11 @@ export class Island {
       if (!hit) continue
       this.felledTrees.add(i)
       cut++
-      for (const mesh of [leaves, trunks]) {
-        mesh.getMatrixAt(i, m)
-        m.decompose(p, q, s)
-        mesh.setMatrixAt(i, m.compose(p, q, s.setScalar(1e-3)))
-      }
+      // Le tronc est dans l'instance du houppier : il part avec lui.
+      leaves.setMatrixAt(i, m.compose(p, q, s.setScalar(1e-3)))
     }
     if (cut === 0) return
     leaves.instanceMatrix.needsUpdate = true
-    trunks.instanceMatrix.needsUpdate = true
   }
 
   /** ÉCLAIRCIR un secteur : on abat une part des arbres d'un quartier au lieu
@@ -1742,7 +2073,9 @@ export class Island {
     const q = new Quaternion()
     const sc = new Vector3()
     const doomed: { x: number; z: number }[] = []
-    for (let i = 0; i < leaves.count; i++) {
+    // Les sapins d'une parcelle de forêt restent : c'est elle que le joueur a
+    // choisie, et elle borde la côte, loin du bourg qu'il faut dégager.
+    for (let i = 0; i < this.baseTrees; i++) {
       if (this.felledTrees.has(i)) continue
       leaves.getMatrixAt(i, m)
       m.decompose(p, q, sc)
@@ -1753,7 +2086,7 @@ export class Island {
       if (h - Math.floor(h) > fraction) continue
       doomed.push({ x: p.x, z: p.z })
     }
-    if (doomed.length > 0) this.clearCorridor(doomed, 0.4)
+    if (doomed.length > 0) this.clearCorridor(doomed, 0.4, this.baseTrees)
   }
 
   /** Un arbre abattu n'est plus un nœud de bois : main.ts l'écarte du relevé. */
@@ -1801,12 +2134,35 @@ export class Island {
     return this.byKey.get(key(rq, rr)) ?? null
   }
 
-  /** Pose les sept cellules d'une parcelle. Une cellule déjà en terre est
-   *  laissée telle quelle. Hauteurs fixées à la main (la courbe de rivage ne
-   *  les connaît pas) : l'anneau au niveau d'une côte de falaise, le centre
-   *  un palier au-dessus. */
+  /** Cellules d'eau qu'une parcelle garde vides : le centre et la passe d'une
+   *  crique. La pose suivante ne doit pas refermer la crique en lagune. */
+  private readonly reserved = new Set<number>()
+
+  /** Pose les cellules d'une parcelle. Une cellule déjà en terre est laissée
+   *  telle quelle. Hauteurs fixées à la main (la courbe de rivage ne les
+   *  connaît pas), selon le type : c'est le relief, autant que le décor, qui
+   *  distingue une carrière d'un affleurement. */
   private addPlot(p: LandPlot): void {
+    const look = plotLook(p.kind)
+    // La crique : un croissant de sable autour d'un centre d'eau, ouvert vers
+    // le large par la cellule de l'anneau la plus éloignée du centre de l'île.
+    let mouth: number | null = null
+    if (look.center === null) {
+      let far = -1
+      let m = 0
+      for (let k = 0; k < 6; k++) {
+        const [x, z] = hexCenter(p.q + NB[k]![0], p.r + NB[k]![1])
+        if (Math.hypot(x, z) > far) {
+          far = Math.hypot(x, z)
+          m = k
+        }
+      }
+      mouth = m
+      this.reserved.add(key(p.q, p.r))
+      this.reserved.add(key(p.q + NB[m]![0], p.r + NB[m]![1]))
+    }
     for (let k = -1; k < 6; k++) {
+      if (k === mouth || (k < 0 && look.center === null)) continue
       const gx = p.q + (k < 0 ? 0 : NB[k]![0])
       const gz = p.r + (k < 0 ? 0 : NB[k]![1])
       if (this.byKey.has(key(gx, gz))) continue
@@ -1816,8 +2172,8 @@ export class Island {
         gz,
         x,
         z,
-        height: k < 0 ? STEP * 3 : STEP * 2,
-        beach: false,
+        height: k < 0 ? look.center! : look.ring,
+        beach: look.beach,
         inland: k < 0 ? 2 : 1,
         ao: 1,
         rim: false,
@@ -1825,9 +2181,72 @@ export class Island {
         outz: 0,
         trod: false,
         plot: p.kind,
+        plotCenter: k < 0,
+        plotOf: p,
       }
       this.cells.push(cell)
       this.byKey.set(key(gx, gz), cell)
+    }
+  }
+
+  /** Raccord avec l'ancienne côte : une parcelle posée contre la terre laisse
+   *  parfois une ou deux cellules d'eau enclavées — un trou, vu d'en haut. On
+   *  les comble au palier de l'anneau voisin. Les eaux d'une crique, elles,
+   *  restent de l'eau. */
+  private fillPockets(): void {
+    if (this.land.length === 0) return
+    let q0 = Infinity
+    let q1 = -Infinity
+    let r0 = Infinity
+    let r1 = -Infinity
+    for (const c of this.cells) {
+      q0 = Math.min(q0, c.gx - 1)
+      q1 = Math.max(q1, c.gx + 1)
+      r0 = Math.min(r0, c.gz - 1)
+      r1 = Math.max(r1, c.gz + 1)
+    }
+    // Remplissage depuis le bord de la boîte : l'eau qu'on n'atteint pas est
+    // enclavée.
+    const sea = new Set<number>()
+    const stack: [number, number][] = []
+    for (let q = q0; q <= q1; q++)
+      for (let r = r0; r <= r1; r++) if (q === q0 || q === q1 || r === r0 || r === r1) stack.push([q, r])
+    while (stack.length > 0) {
+      const [q, r] = stack.pop()!
+      if (q < q0 || q > q1 || r < r0 || r > r1) continue
+      const k = key(q, r)
+      if (sea.has(k) || this.byKey.has(k)) continue
+      sea.add(k)
+      for (const [dq, dr] of NB) stack.push([q + dq, r + dr])
+    }
+    for (let q = q0; q <= q1; q++) {
+      for (let r = r0; r <= r1; r++) {
+        const k = key(q, r)
+        if (sea.has(k) || this.byKey.has(k) || this.reserved.has(k)) continue
+        // Seules les parcelles creusent ces flaques : la cellule comblée prend
+        // le type d'une parcelle voisine.
+        const from = NB.map(([dq, dr]) => this.byKey.get(key(q + dq, r + dr))).find((n) => n?.plot)
+        if (!from?.plot) continue
+        const [x, z] = hexCenter(q, r)
+        const cell: Cell = {
+          gx: q,
+          gz: r,
+          x,
+          z,
+          height: plotLook(from.plot).ring,
+          beach: from.beach,
+          inland: 1,
+          ao: 1,
+          rim: false,
+          outx: 0,
+          outz: 0,
+          trod: false,
+          plot: from.plot,
+          plotOf: from.plotOf,
+        }
+        this.cells.push(cell)
+        this.byKey.set(k, cell)
+      }
     }
   }
 
@@ -1866,7 +2285,7 @@ export class Island {
         for (let k = -1; k < 6 && free; k++) {
           const gx = q + (k < 0 ? 0 : NB[k]![0])
           const gz = r + (k < 0 ? 0 : NB[k]![1])
-          if (this.byKey.has(key(gx, gz))) free = false
+          if (this.byKey.has(key(gx, gz)) || this.reserved.has(key(gx, gz))) free = false
           else if (NB.some(([dq, dr]) => this.byKey.has(key(gx + dq, gz + dr)))) touching++
         }
         if (!free || touching < 2) continue
