@@ -106,9 +106,15 @@ flowchart TD
 - **Zéro asset externe.** Toutes les géométries sont procédurales, les icônes sont
   inline, aucune police distante. Le jeu entier tient en ~145 kB gzip, premier
   dessin sous la seconde en 4G simulée.
-- **Instanciation systématique.** Terrain, arbres, rochers, buissons : quatre
-  `InstancedMesh` pour toute la carte. Le budget est un plafond dur (≤ 60 draw
-  calls, ≤ 120 000 triangles), vérifié à chaque round par `tools/shoot.mjs`.
+- **Instanciation systématique.** Arbres (tronc et houppier dans la même
+  instance), rochers, buissons : trois `InstancedMesh` pour toute la carte,
+  parcelles comprises. Le terrain est une seule géométrie fusionnée qui ne garde
+  que les faces visibles. Le budget est un plafond dur (≤ 60 draw calls,
+  ≤ 120 000 triangles), vérifié à chaque round par `tools/shoot.mjs`. Mesuré en
+  3.50.0 : partie neuve 53 calls / 50 k triangles ; Ère des limites avec
+  21 parcelles 78 calls / 95 k. Les calls ne tiennent le plafond qu'en début de
+  partie : le colon articulé (une pièce et son contour par membre) et les
+  mécanismes animés du village (train, moulin, voiture…) restent un mesh chacun.
 - **DPR bridé sur mobile.** `Math.min(devicePixelRatio, 1.75)` sur pointeur
   grossier : c'est la différence entre 60 fps et 25 fps sur un Android milieu de gamme.
 - **Contrôles maison plutôt qu'`OrbitControls`.** Un doigt oriente, deux doigts

@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.50.0',
+    title: 'Chaque terre a son visage',
+    items: [
+      "Les terres gagnées sur la mer se ressemblaient toutes : sept hexagones d'herbe, quel que soit le choix. Chacune se reconnaît désormais de loin. La forêt pousse ses sapins serrés sur un sous-bois sombre ; la carrière se creuse en fosse, bordée de blocs taillés ; la prairie s'éclaircit et se sème de fleurs ; la roselière reste basse et humide, ses roseaux penchés sur une mare ; la crique ouvre un croissant de sable sur un haut-fond clair qui donne sur le large ; l'affleurement lève une butte de roche rouillée, là où le cuivre et le fer viennent à fleur de sol.",
+      "Poser une terre ne rebat plus rien : chaque parcelle tire son décor avec son propre hasard, et la forêt d'origine reste à sa place, arbre pour arbre. Les flaques qui restaient coincées entre une terre neuve et l'ancienne côte sont comblées, et le ponton comme le phare restent sur l'île de départ.",
+      "L'île se dessine avec deux fois moins de triangles. Le sol ne trace plus les faces que rien ne montre — le dessous des colonnes, les flancs adossés à un voisin — et la pinède de départ ne grossit plus avec la surface de l'île : 46 sapins au plus, de quoi voir le village entre les troncs. Une partie neuve passe de 102 000 à 50 000 triangles ; une île de l'Ère des limites avec 21 terres, de 153 000 à 95 000, et de 87 à 78 appels de dessin.",
+    ],
+  },
+  {
     version: '3.49.0',
     title: 'La mer recule',
     items: [
