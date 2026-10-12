@@ -151,12 +151,23 @@ function buildWorld(): void {
   // v3 : l'île plate et la règle « deux bâtiments ne se touchent jamais ».
   // Un plan v2 pouvait coller deux toits : il est retracé une fois.
   const plan = game.save.layoutV === 3 ? game.save.layout : []
-  village.adoptLayout(plan.every((p) => island.isLand(p.x, p.z)) ? plan : [])
+  const kept = plan.every((p) => island.isLand(p.x, p.z))
+  village.adoptLayout(kept ? plan : [])
+  // Le quai du marchand est repris AVANT tout ce qui se pose ensuite : la
+  // Merveille, le musée et les nouveaux ateliers le contournent. Un plan
+  // retracé repart sans lui.
+  village.adoptGoods(kept && game.save.layoutV === 3 ? game.save.goods : null)
   game.save.layoutV = 3
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
-  fauna = new Fauna(island, village.obstaclePoints)
+  // Le quai du marchand compte large pour la faune : l'enclos (rayon 3,1)
+  // se pose autour d'une seule cellule à 1 u des obstacles, et sa palissade
+  // passait au travers des caisses.
+  fauna = new Fauna(
+    island,
+    village.obstaclePoints.concat(village.blockers.map((b) => ({ ...b, r: b.r + 2.6 }))),
+  )
   fauna.onFishJump = () => ambience.plop()
   // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
   // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
@@ -193,8 +204,6 @@ function buildWorld(): void {
   // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
   game.save.layout = village.layout
   village.setRelics(game.save.relics)
-  // Ce que le marchand a laissé se voit au campement, dès le chargement.
-  village.setTools(game.save.tools)
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
   // La barque mouille au bout du ponton : la flotte se voit sans partir.
@@ -215,6 +224,9 @@ function buildWorld(): void {
     }
     nodeSpots.set(kind, spots)
   }
+  // Ce que le marchand a laissé se voit dès le chargement — APRÈS le relevé
+  // des nœuds, que le quai écrème.
+  placeGoods()
 }
 
 buildWorld()
@@ -258,6 +270,25 @@ function openWonderCard(): void {
   )
 }
 
+
+/** Pose ce que le marchand a laissé, garde le quai dans la sauvegarde et le
+ *  fait contourner par le colon. Les nœuds de ressource qui tomberaient sur
+ *  le quai (une île d'un autre âge a d'autres buissons) sont retirés : le
+ *  colon n'a jamais à y aller. */
+function placeGoods(): void {
+  // Un quai tiré en cours de partie évite l'enclos déjà dressé.
+  const pen = fauna?.pen
+  village.goodsAvoid = pen ? [pen] : []
+  village.setTools(game.save.tools)
+  game.save.goods = village.goodsAt
+  const zones = village.blockers
+  settler.setBlockers(zones)
+  for (const [kind, spots] of nodeSpots)
+    nodeSpots.set(
+      kind,
+      spots.filter((s) => !zones.some((b) => Math.hypot(s.x - b.x, s.z - b.z) < b.r + 0.6)),
+    )
+}
 
 function spotFor(resource: ResourceId): Vector3 {
   const key = resource === 'food' ? 'food' : resource === 'wood' ? 'wood' : 'stone'
@@ -481,8 +512,8 @@ game.on((e) => {
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
         .join('  ')
       hud.toast(`Le marchand ouvre sa cale : ${e.def.icon}\u202F${e.def.name.toLowerCase()} · ${price}`)
-      // L'objet débarque au campement sous les yeux du joueur.
-      village.setTools(game.save.tools)
+      // L'objet débarque au campement — ou sur le quai — sous les yeux du joueur.
+      placeGoods()
       // Un objet acheté pendant l'absence se lit dans l'Atelier : on n'ouvre
       // pas une fiche par-dessus le rattrapage de huit heures de jeu.
       if (!e.silent)

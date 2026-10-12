@@ -61,6 +61,10 @@ export interface SaveV1 {
    *  un plan tracé selon les anciennes ne peut pas être conservé — le village
    *  serait un semis au milieu d'un réseau de rues. Il est retracé une fois. */
   layoutV: number
+  /** Le quai du marchand, où attendent les outils achetés (l'étain excepté,
+   *  posé au camp). Choisi une fois, à la première marchandise, et gardé :
+   *  comme le plan, il dépend de l'île et ne doit plus bouger. */
+  goods: { x: number; z: number } | null
   /** Le nom du village. Indépendant de l'identité de voisinage : nommer son
    *  village ne doit pas publier la tribu sur le serveur (paraître est
    *  opt-in, regarder ne l'est pas). Quand la tribu EST publiée, les deux
@@ -122,6 +126,7 @@ export function emptySave(now: number): SaveV1 {
     wonders: [],
     layout: [],
     layoutV: 3,
+    goods: null,
     village: '',
     legacy: 0,
     tribe: null,
@@ -202,6 +207,12 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
     // coordonnées entières et bornées, sinon la parcelle est ignorée.
     save.land = cleanLand(save.land)
     save.landPending = cleanPending(save.landPending)
+    // Le quai relu est deux nombres finis, ou rien : il sera alors retiré.
+    const g = save.goods as { x?: unknown; z?: unknown } | null | undefined
+    save.goods =
+      g && typeof g.x === 'number' && typeof g.z === 'number' && Number.isFinite(g.x) && Number.isFinite(g.z)
+        ? { x: g.x, z: g.z }
+        : null
     save.landN = Number.isInteger(save.landN) && save.landN >= 0 && save.landN <= 999 ? save.landN : 0
     return { save, offlineSeconds: elapsed }
   } catch {

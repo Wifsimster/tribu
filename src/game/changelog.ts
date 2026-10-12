@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.55.0',
+    title: 'Le musée au complet, le quai du marchand',
+    items: [
+      "Au musée, les quatorze reliques ont désormais leur vrai visage. Après l'amphore et le disque de Nebra viennent la Dame de Brassempouy, l'Homme-lion, la flûte en os, l'ambre poli, la tablette d'Uruk, la pièce d'électrum, la machine d'Anticythère, l'astrolabe, la boussole, le sextant, le daguerréotype et le transistor. Chacune est mise à la taille de sa vitrine (une pièce large reste plus basse) et ne déborde jamais sur le socle voisin.",
+      "Les huit objets suivants du marchand se voient aussi sur l'île, sur un quai à eux, à l'écart des rues, du rivage et de l'enclos : le pain de sel, le rouleau de papyrus, le gouvernail, le réal d'argent, la balle de caoutchouc, le roulement à billes, le conteneur et le fût de terres rares. Chaque objet a toujours la même place, dans l'ordre du catalogue, et le colon contourne le quai comme les abris du camp. Le lingot d'étain reste au campement.",
+      "Le quai s'installe au premier objet qui n'est pas de l'étain, puis il ne bouge plus. Les bâtiments déjà construits ne bougent pas. Sur une île très chargée, s'il n'y a vraiment aucune place, ces objets restent dans la cale du marchand plutôt que d'encombrer le feu.",
+      "Ces vingt objets ont été modelés pour Tribu. Seuls ceux que ta tribu possède sont téléchargés, juste après le reste de l'île.",
+    ],
+  },
+  {
     version: '3.54.0',
     title: 'Les Merveilles prennent forme',
     items: [

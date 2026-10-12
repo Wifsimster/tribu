@@ -28,7 +28,7 @@ import type { DataTexture } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, rampTexture, smoothstep, tint } from './palette'
 import { GROUND_Y, type Island } from './island'
-import { WONDER_BY_AGE } from '../game/content'
+import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
 
@@ -223,6 +223,18 @@ function bakeFirelight(geo: BufferGeometry): void {
     col.setXYZ(i, c.r, c.g, c.b)
   }
   col.needsUpdate = true
+}
+
+/** Demi-étendue d'un maillage centré, en x puis en z. */
+function halfX(geo: BufferGeometry): number {
+  geo.computeBoundingBox()
+  const b = geo.boundingBox!
+  return Math.max(-b.min.x, b.max.x)
+}
+function halfZ(geo: BufferGeometry): number {
+  geo.computeBoundingBox()
+  const b = geo.boundingBox!
+  return Math.max(-b.min.z, b.max.z)
 }
 
 /** Grain de matière. Une valeur légèrement différente par sommet, tirée de sa
@@ -2510,9 +2522,17 @@ export class Village {
 
   /** Les contraintes communes à toutes les parcelles : sur la terre, hors du
    *  camp, hors de la voie ferrée, sans voisin à moins d'une ruelle. */
-  private fits(slot: Vector3, r: number, footprint: number, spacing: number, trees: boolean): boolean {
+  private fits(
+    slot: Vector3,
+    r: number,
+    footprint: number,
+    spacing: number,
+    trees: boolean,
+    accept?: (x: number, z: number) => boolean,
+  ): boolean {
     const { x, z } = slot
     if (!this.island.isLand(x, z)) return false
+    if (accept && !accept(x, z)) return false
     if (!this.clearOfLots(x, z, r, spacing)) return false
     if (CAMP_BLOCKERS.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.6 + r * 0.5)) return false
     if (trees && this.treeDist(x, z) < 1.1 + footprint * 0.35) return false
@@ -2533,12 +2553,18 @@ export class Village {
    *
    *  `r` est le rayon d'occupation mesuré (`reach`), `footprint` l'emprise
    *  au sol qui doit reposer sur la terre, `spacing` l'entraxe souhaité. */
-  private nextSlot(r: number, footprint: number, spacing: number, central = false): Vector3 {
-    const s = this.laneSlot(r, footprint, central ? spacing * 0.8 : spacing)
+  private nextSlot(
+    r: number,
+    footprint: number,
+    spacing: number,
+    central = false,
+    accept?: (x: number, z: number) => boolean,
+  ): Vector3 {
+    const s = this.laneSlot(r, footprint, central ? spacing * 0.8 : spacing, accept)
     if (s) return s
     // L'entraxe d'abord : c'est du confort, pas la règle de contact.
     this.cramped++
-    const tight = this.laneSlot(r, footprint, 0)
+    const tight = this.laneSlot(r, footprint, 0, accept)
     if (tight) return tight
     // Plus de parcelle le long des rues : on cherche sur toute l'île, en
     // partant du feu. Avant, on relâchait l'emprise puis l'écart — et deux
@@ -2549,7 +2575,7 @@ export class Village {
     )
     for (const c of cells) {
       const slot = new Vector3(c.x, GROUND_Y, c.z)
-      if (!this.fits(slot, r, footprint, 0, false)) continue
+      if (!this.fits(slot, r, footprint, 0, false, accept)) continue
       this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
       this.lots.push({ x: c.x, z: c.z, r })
       return slot
@@ -2561,7 +2587,12 @@ export class Village {
     return new Vector3(HEARTH.x, GROUND_Y, HEARTH.z)
   }
 
-  private laneSlot(r: number, footprint: number, spacing: number): Vector3 | null {
+  private laneSlot(
+    r: number,
+    footprint: number,
+    spacing: number,
+    accept?: (x: number, z: number) => boolean,
+  ): Vector3 | null {
     this.buildLanes()
     const lanes = this.lanes!
     const maxStep = Math.max(...lanes.map((l) => l.pts.length))
@@ -2585,7 +2616,7 @@ export class Village {
           // chaussée. La façade recule d'au moins son emprise plus une voie.
           const row = Math.max(baseRow, footprint + 1.25)
           const slot = new Vector3(a.x + nx * side * row, GROUND_Y, a.z + nz * side * row)
-          if (!this.fits(slot, r, footprint, spacing, true)) continue
+          if (!this.fits(slot, r, footprint, spacing, true, accept)) continue
           // La façade regarde la rue : elle est du côté opposé à la normale.
           this.slotRot = Math.atan2(-nx * side, -nz * side)
           this.lots.push({ x: slot.x, z: slot.z, r })
@@ -4381,11 +4412,15 @@ export class Village {
    *  suit l'emprise réelle du bâtiment : depuis les remises à l'échelle, un
    *  rayon uniforme laissait les moutons traverser l'aqueduc. */
   get obstaclePoints(): { x: number; z: number; r: number }[] {
-    return this.propPlacements.map((p) => ({
-      x: p.x,
-      z: p.z,
-      r: Math.max(0.9, (Village.FOOTPRINT[p.id] ?? 0.5) + 0.45),
-    }))
+    return [
+      ...this.propPlacements.map((p) => ({
+        x: p.x,
+        z: p.z,
+        r: Math.max(0.9, (Village.FOOTPRINT[p.id] ?? 0.5) + 0.45),
+      })),
+      // Le quai du marchand : la faune ne broute pas entre les caisses.
+      ...this.blockers,
+    ]
   }
 
   /** Quel savoir vit ici ? Le plus proche du point touché, feu compris. */
@@ -4467,10 +4502,21 @@ export class Village {
   private museumPos: { x: number; y: number; z: number } | null = null
   private relicIds: readonly string[] = []
 
-  /** Les reliques modelées dans Blender, et la hauteur qu'elles prennent sur
-   *  leur socle : celle d'une pièce de vitrine, pas de l'objet réel. Le disque
-   *  est un peu plus bas que l'amphore, sinon sa largeur déborde du socle. */
-  private static readonly RELIC_MODELS: Record<string, number> = { amphore: 0.42, disquenebra: 0.34 }
+  /** Une relique sur son socle : la taille d'une pièce de vitrine, pas celle
+   *  de l'objet réel. Les fichiers arrivent de 0,67 à 1,5 de haut, support
+   *  compris, et de 0,6 à 1 de large : une seule échelle aurait fait d'un
+   *  astrolabe un monument et d'une plaque photographique une miette. Chaque
+   *  pièce est donc ramenée à la même hauteur de vitrine, SAUF si sa largeur
+   *  la ferait déborder sur le socle voisin (entraxe 0,68) : c'est alors la
+   *  largeur qui commande. L'amphore et le disque de Nebra retombent sur les
+   *  tailles réglées à l'œil en v3.52 (0,42 et ~0,35 de haut). */
+  static readonly RELIC_H = 0.42
+  static readonly RELIC_W = 0.38
+  static relicScale(geo: BufferGeometry): number {
+    const h = Math.max(0.01, heightOf(geo))
+    const w = Math.max(0.01, halfSpanOf(geo) * 2)
+    return Math.min(Village.RELIC_H / h, Village.RELIC_W / w)
+  }
 
   setRelics(ids: readonly string[]): void {
     this.relicIds = [...ids]
@@ -4505,9 +4551,9 @@ export class Village {
       // La vraie pièce quand elle est arrivée, la primitive sinon : le musée
       // ne reste jamais avec un socle vide le temps d'un téléchargement.
       const id = ids[i]!
-      const model = id in Village.RELIC_MODELS ? modelGeometry(id) : null
+      const model = modelGeometry(id)
       if (model) {
-        const k = Village.RELIC_MODELS[id]! / Math.max(0.01, heightOf(model))
+        const k = Village.relicScale(model)
         // Posée sur le plateau du socle (0,63), face tournée vers l'allée.
         p.push(model.scale(k, k, k).translate(px, 0.63, pz))
       } else p.push(part(tops[i % tops.length]!(), tint(hues[i % hues.length]!, i * 13, 0.05), px, 0.72, pz))
@@ -4531,21 +4577,160 @@ export class Village {
     })
   }
 
-  // ── Ce que le marchand a laissé au campement ─────────────────────────────
+  // ── Ce que le marchand a laissé ───────────────────────────────────────────
   // Le lot d'étain est posé entre le foyer et le paravent, du côté du camp
   // que le colon ne traverse jamais : simulé sur 1 440 allers-retours vers
   // tout le pourtour de l'île, son chemin passe au plus près à 0,45 du
   // centre du lot — qui en fait 0,36 de demi-largeur à cette échelle.
+  //
+  // Les huit lots suivants n'ont PAS leur place au camp. La même simulation,
+  // refaite pour eux (v3.55), le dit sans appel : hors des emprises de la
+  // tente, de l'appentis, du séchoir, du bois, du cadre, du paravent et du
+  // feu, il ne reste dans le rayon du camp aucun carré de 1 × 1 que le colon
+  // ne traverse pas — et au-delà commencent les rues et les parcelles. Neuf
+  // lots autour de l'étain, c'était marcher dessus à chaque tournée.
+  //
+  // Ils vont donc sur un QUAI DU MARCHAND, une parcelle à eux tirée comme
+  // celle du musée (règle de la ruelle comprise), à l'écart des nœuds de
+  // ressource, du rivage de pêche et des rues : le colon n'a aucune raison
+  // d'y aller, et il en contourne l'emprise comme celles du camp. Chaque
+  // outil y a sa case FIXE, dans l'ordre du catalogue et non de l'achat : le
+  // sel est toujours en tête, les terres rares toujours au bout. La parcelle
+  // est choisie une fois, à la première marchandise, puis gardée dans la
+  // sauvegarde (`goods`) et reprise AVANT tout nouveau bâtiment : elle ne
+  // bouge plus, et les bâtiments déjà posés non plus.
 
   private goodsGeo: BufferGeometry | null = null
   private toolIds: readonly string[] = []
   /** Coordonnées locales au foyer, comme CAMP, et échelle propre au lot. */
   private static readonly TIN_SPOT = { x: -1.3, z: -2.02, scale: 0.85 }
+  /** Les lots du quai, dans l'ordre du catalogue : la case ne dépend que de
+   *  l'outil. */
+  static readonly CARGO: readonly string[] = TOOLS.map((t) => t.id).filter((id) => id !== 'etain')
+  /** Entraxe des cases : 1,15 en largeur laisse au moins 0,13 entre deux lots
+   *  voisins (le gouvernail fait 0,98, le conteneur couché 1,17) ; 1,05 en
+   *  profondeur, pour les deux rangées. */
+  private static readonly CARGO_DX = 1.15
+  private static readonly CARGO_DZ = 1.05
+  /** La terre battue du quai, et le rayon qui la couvre (demi-diagonale). */
+  private static readonly QUAY = { w: 4.7, d: 1.95 }
+  static readonly GOODS_R = Math.hypot(Village.QUAY.w / 2, Village.QUAY.d / 2) + 0.05
+  /** Même échelle que l'étain : les lots sont modelés à l'échelle brute
+   *  d'etain.glb, et se lisent ensemble comme une même cargaison. */
+  private static readonly CARGO_K = 0.85 * SCALE
+  private goodsPos: { x: number; z: number; rot: number } | null = null
+  /** Emprise de chaque lot posé, en monde : un rectangle orienté. Lu par les
+   *  tests (chemin du colon, chevauchements). */
+  goodsLots: { id: string; x: number; z: number; yaw: number; hx: number; hz: number }[] = []
+
+  /** Où sont les marchandises du quai — à écrire dans la sauvegarde. */
+  get goodsAt(): { x: number; z: number } | null {
+    return this.goodsPos ? { x: this.goodsPos.x, z: this.goodsPos.z } : null
+  }
+
+  /** Ce que le colon contourne en plus du camp : le quai, s'il existe. */
+  get blockers(): { x: number; z: number; r: number }[] {
+    return this.goodsPos ? [{ x: this.goodsPos.x, z: this.goodsPos.z, r: Village.GOODS_R }] : []
+  }
+
+  /** Reprend le quai de la sauvegarde. À appeler juste après `adoptLayout`,
+   *  AVANT la Merveille, le musée et les nouveaux bâtiments : ils le
+   *  contournent comme n'importe quelle parcelle. Un quai qui ne tiendrait
+   *  plus (île retracée) est oublié : il sera retiré au sort au prochain
+   *  `setTools`. */
+  adoptGoods(saved: { x: number; z: number } | null | undefined): void {
+    if (!saved || this.goodsPos) return
+    const r = Village.GOODS_R
+    if (!this.island.isLand(saved.x, saved.z) || !this.clearOfLots(saved.x, saved.z, r)) return
+    this.goodsPos = { x: saved.x, z: saved.z, rot: Math.atan2(HEARTH.x - saved.x, HEARTH.z - saved.z) }
+    this.lots.push({ x: saved.x, z: saved.z, r })
+  }
+
+  /** Rien de ce qui attire le colon ne doit tomber sur le quai : ni arbre,
+   *  ni bloc, ni buisson, ni plage de pêche, ni rue. Sinon il irait
+   *  chercher sa ressource au milieu des caisses. */
+  private goodsClear(x: number, z: number, strict = true, gap = 1.0): boolean {
+    const r = Village.GOODS_R + 0.3
+    if (strict && !this.nodeXZ) {
+      this.nodeXZ = []
+      // Les sapins ne comptent pas : le quai les abat comme une parcelle
+      // (`clearCorridor`), et un arbre abattu n'est plus un nœud de bois.
+      // Blocs et buissons, eux, ne s'abattent pas — un buisson au milieu des
+      // caisses enverrait le colon cueillir sur le quai.
+      for (const m of this.island.pickables) {
+        if (this.island.kindFor(m) === 'wood') continue
+        for (let i = 0; i < m.count; i++) {
+          const p = this.island.instancePosition(m, i)
+          this.nodeXZ.push(p.x, p.z)
+        }
+      }
+    }
+    if (strict)
+      for (let i = 0; i < this.nodeXZ!.length; i += 2)
+        if (Math.hypot(this.nodeXZ![i]! - x, this.nodeXZ![i + 1]! - z) < r) return false
+    for (const c of this.island.cells) if (c.beach && Math.hypot(c.x - x, c.z - z) < r) return false
+    for (const a of this.goodsAvoid) if (Math.hypot(a.x - x, a.z - z) < Village.GOODS_R + a.r) return false
+    this.buildLanes()
+    for (const lane of this.lanes!)
+      for (const q of lane.pts) if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
+    for (const q of [...this.roadPath, ...this.railPath])
+      if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
+    return true
+  }
+  private nodeXZ: number[] | null = null
+  /** Zones que le quai ne doit pas couvrir, hors du village : l'enclos à
+   *  moutons de la faune, tiré au hasard à chaque chargement. */
+  goodsAvoid: readonly { x: number; z: number; r: number }[] = []
+
+  /** La parcelle du quai : d'abord le long des rues, comme un bâtiment,
+   *  sinon n'importe où sur l'île en partant du feu. Jamais de repli SUR le
+   *  feu, contrairement aux bâtiments : faute de place, les marchandises
+   *  restent dans la cale plutôt que de couvrir le foyer. */
+  private goodsSlot(): { x: number; z: number; rot: number } | null {
+    const r = Village.GOODS_R
+    // 2,4 et non la demi-largeur du quai : la parcelle recule alors de la rue
+    // de 2,4 + 1,25 (voir `laneSlot`), juste au-delà des 3,6 qu'exige
+    // `goodsClear` — sinon aucune parcelle de rue ne passait jamais.
+    const fp = 2.4
+    const cells = [...this.island.cells].sort(
+      (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
+    )
+    let s: { x: number; z: number } | null = null
+    // Deux passes. D'abord une parcelle sans bloc ni buisson. Sur six îles
+    // témoins sur quinze il n'y en a aucune : on tolère alors blocs et
+    // buissons — `placeGoods` (main.ts) les retire des cibles du colon, qui
+    // n'a donc toujours aucune raison d'aller sur le quai. Rivage et rues
+    // restent interdits dans les deux passes.
+    // Troisième passe, pour les îles les plus serrées (4 sur 15) : le quai
+    // peut border une rue à 0,5 près au lieu de 1 — la chaussée reste libre,
+    // le colon passe à côté sans le traverser — et son emprise ne réserve
+    // plus de marge de parcelle (empreinte 1,6 au lieu de 2,4).
+    for (const [strict, gap, foot] of [
+      [true, 1.0, fp],
+      [false, 1.0, fp],
+      [false, 0.5, 1.6],
+    ] as const) {
+      const accept = (x: number, z: number): boolean => this.goodsClear(x, z, strict, gap)
+      s = this.laneSlot(r, foot, 0, accept)
+      if (s) break
+      for (const c of cells) {
+        if (!this.fits(new Vector3(c.x, GROUND_Y, c.z), r, foot, 0, false, accept)) continue
+        this.lots.push({ x: c.x, z: c.z, r })
+        s = { x: c.x, z: c.z }
+        break
+      }
+      if (s) break
+    }
+    // Les lots regardent le feu : le village voit ce que le marchand a laissé.
+    return s ? { x: s.x, z: s.z, rot: Math.atan2(HEARTH.x - s.x, HEARTH.z - s.z) } : null
+  }
 
   setTools(ids: readonly string[]): void {
     this.toolIds = [...ids]
     this.goodsGeo?.dispose()
     this.goodsGeo = null
+    this.goodsLots = []
+    const parts: BufferGeometry[] = []
     if (ids.includes('etain')) {
       const tin = modelGeometry('etain')
       if (tin) {
@@ -4556,20 +4741,91 @@ export class Village {
         // pâle, et le lot disparaissait dans la terre battue déjà blanchie par
         // le halo (mesuré : luminance 200 contre 237 pour le sol). L'étain doit
         // rester froid pour se lire comme du métal.
-        tin.scale(scale, scale, scale).rotateY(facingFire(x, z)).translate(x, 0, z)
+        // Mesuré AVANT la mise à l'échelle : three recalcule la boîte en place.
+        const hx = halfX(tin) * scale * SCALE
+        const hz = halfZ(tin) * scale * SCALE
+        const yaw = facingFire(x, z)
+        tin.scale(scale, scale, scale).rotateY(yaw).translate(x, 0, z)
         grain(tin, 0.07)
         const wx = HEARTH.x + x * SCALE
         const wz = HEARTH.z + z * SCALE
         tin.translate(-x, 0, -z).scale(SCALE, SCALE, SCALE)
         tin.translate(wx, GROUND_Y, wz)
-        this.goodsGeo = tin
+        parts.push(tin)
+        this.goodsLots.push({ id: 'etain', x: wx, z: wz, yaw, hx, hz })
       }
-      this.fetchModels(['etain'], () => this.setTools(this.toolIds))
     }
+    const cargo = Village.CARGO.filter((id) => ids.includes(id))
+    if (cargo.length > 0) {
+      if (!this.goodsPos) this.goodsPos = this.goodsSlot()
+      if (this.goodsPos) {
+        parts.push(this.quay(cargo, this.goodsPos))
+        // Un sapin qui a poussé depuis (l'île grandit d'âge en âge) ne
+        // traverse pas les caisses.
+        this.island.clearCorridor([this.goodsPos], Village.GOODS_R + 0.6)
+      }
+    }
+    this.goodsGeo = parts.length === 0 ? null : parts.length === 1 ? parts[0]! : mergeGeometries(parts)
     this.restack()
+    // Seuls les outils possédés se téléchargent ; déjà là, rien ne part.
+    this.fetchModels(ids, () => this.setTools(this.toolIds))
   }
 
-  /** Ateliers, Merveille, musée et lot d'étain sont immobiles et partagent le
+  /** Le quai : une aire de terre battue bordée, et chaque lot sur sa case.
+   *  Pas de lueur du feu ici non plus — le quai est loin du foyer, et le
+   *  laiton, le fer et l'argent doivent garder leur froid de métal. */
+  private quay(cargo: readonly string[], at: { x: number; z: number; rot: number }): BufferGeometry {
+    const { w, d } = Village.QUAY
+    const p: BufferGeometry[] = [
+      part(new BoxGeometry(w + 0.2, 0.03, d + 0.2), C.soilDark, 0, 0.015, 0),
+      part(new BoxGeometry(w, 0.05, d), C.soil, 0, 0.025, 0),
+    ]
+    const k = Village.CARGO_K
+    const local: { id: string; x: number; z: number; yaw: number; hx: number; hz: number }[] = []
+    for (const id of cargo) {
+      const i = Village.CARGO.indexOf(id)
+      const lx = ((i % 4) - 1.5) * Village.CARGO_DX
+      // Première rangée côté feu (+z local) : les quatre premiers venus.
+      const lz = (0.5 - Math.floor(i / 4)) * Village.CARGO_DZ
+      // Le conteneur, long de 1,15, est couché en travers : debout dans le
+      // sens de la profondeur, il mordait sur la rangée de devant.
+      const yaw = id === 'conteneur' ? Math.PI / 2 : 0
+      const g = modelGeometry(id)
+      let hx: number
+      let hz: number
+      if (g) {
+        const ex = halfX(g) * k
+        const ez = halfZ(g) * k
+        hx = yaw ? ez : ex
+        hz = yaw ? ex : ez
+        g.scale(k, k, k).rotateY(yaw).translate(lx, 0.05, lz)
+        grain(g, 0.06)
+        p.push(g)
+      } else {
+        // Le temps du téléchargement : une caisse, pas une case vide.
+        hx = 0.3
+        hz = 0.25
+        p.push(part(new BoxGeometry(0.6, 0.4, 0.5), tint(C.wood, i * 11, 0.06), lx, 0.25, lz))
+      }
+      local.push({ id, x: lx, z: lz, yaw, hx, hz })
+    }
+    const geo = mergeGeometries(p) ?? new BufferGeometry()
+    geo.rotateY(at.rot)
+    geo.translate(at.x, GROUND_Y, at.z)
+    const c = Math.cos(at.rot)
+    const sn = Math.sin(at.rot)
+    for (const l of local)
+      this.goodsLots.push({
+        ...l,
+        // rotateY(θ) : x' = x cos θ + z sin θ, z' = −x sin θ + z cos θ.
+        x: at.x + l.x * c + l.z * sn,
+        z: at.z - l.x * sn + l.z * c,
+        yaw: l.yaw + at.rot,
+      })
+    return geo
+  }
+
+  /** Ateliers, Merveille, musée et marchandises sont immobiles et partagent le
    *  même matériau : UN mesh pour tous, refait quand l'un d'eux change. Trois
    *  meshes, c'étaient six draw calls par image, ombre comprise. Si la fusion
    *  échoue (attributs qui divergent), chacun garde le sien — rien ne
