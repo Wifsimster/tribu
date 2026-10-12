@@ -190,7 +190,9 @@ function buildWorld(): void {
   village.sync(livingBuildings(game.buildings, game.save.age))
   // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
   game.save.layout = village.layout
-  village.setRelics(game.save.relics.length)
+  village.setRelics(game.save.relics)
+  // Ce que le marchand a laissé se voit au campement, dès le chargement.
+  village.setTools(game.save.tools)
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
   // La barque mouille au bout du ponton : la flotte se voit sans partir.
@@ -434,7 +436,7 @@ game.on((e) => {
       if (e.relic) {
         // La relique passe du sac du colon aux vitrines : le musée pousse (ou
         // s'agrandit) sous les yeux du joueur.
-        village.setRelics(game.save.relics.length)
+        village.setRelics(game.save.relics)
   {
     // La Merveille : le chantier en cours, sinon la dernière achevée.
     const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
@@ -477,6 +479,8 @@ game.on((e) => {
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
         .join('  ')
       hud.toast(`Le marchand ouvre sa cale : ${e.def.icon}\u202F${e.def.name.toLowerCase()} · ${price}`)
+      // L'objet débarque au campement sous les yeux du joueur.
+      village.setTools(game.save.tools)
       // Un objet acheté pendant l'absence se lit dans l'Atelier : on n'ouvre
       // pas une fiche par-dessus le rattrapage de huit heures de jeu.
       if (!e.silent)
@@ -567,7 +571,7 @@ game.on((e) => {
     case 'mail': {
       hud.toast(e.text)
       notify(e.text)
-      if (e.relic) village.setRelics(game.save.relics.length)
+      if (e.relic) village.setRelics(game.save.relics)
       break
     }
     case 'outpostTribute': {
@@ -1212,7 +1216,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
       const def = game.giveRelic(giftWhat.value, to.name)
       if (!def) return
       void sendGift(t.id, t.secret, to.id, def.id)
-      village.setRelics(game.save.relics.length)
+      village.setRelics(game.save.relics)
       hud.toast(`${def.name} part pour ${to.name}`)
       render()
     })

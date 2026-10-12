@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.52.0',
+    title: 'Les vraies pièces du musée',
+    items: [
+      "Au musée, chaque relique n'était qu'une forme générique sur son socle : une boule, un cône, un cube. Deux d'entre elles ont désormais leur vrai visage. L'amphore remontée de l'épave porte sa croûte de sel, et le disque de Nebra se dresse sur sa tranche, bleu-vert, avec son soleil, son croissant et ses étoiles d'or.",
+      "Le lingot d'étain acheté au marchand ne restait que dans l'Atelier. Il se voit maintenant au campement, entre le foyer et le paravent : deux lingots en peau de bœuf et trois galettes posés sur une natte, là où le colon ne marche pas. Il débarque dès l'achat, et une tribu qui l'avait déjà le retrouve au chargement.",
+      "Ces trois objets ont été modelés pour Tribu. Ils arrivent juste après le reste de l'île : si la connexion traîne, les anciennes formes tiennent la place quelques instants, et une tribu qui ne possède aucun d'eux ne les télécharge pas.",
+    ],
+  },
+  {
     version: '3.51.0',
     title: 'La terre où tu la veux',
     items: [

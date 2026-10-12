@@ -17,9 +17,11 @@ export default defineConfig({
       output: {
         // Les passes de post-traitement ne servent qu'au mode photo : laissées
         // hors du chunk three, elles suivent son import dynamique et le premier
-        // chargement n'en paie rien.
+        // chargement n'en paie rien. Même chose pour le chargeur glTF, importé
+        // à la demande quand la tribu possède un objet modelé.
         manualChunks: (id) =>
-          id.includes('node_modules/three') && !/examples\/jsm\/(postprocessing|shaders)\//.test(id)
+          id.includes('node_modules/three') &&
+          !/examples\/jsm\/(postprocessing|shaders|loaders)\//.test(id)
             ? 'three'
             : undefined,
       },

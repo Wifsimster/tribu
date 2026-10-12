@@ -28,6 +28,8 @@ import type { DataTexture } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, rampTexture, smoothstep, tint } from './palette'
 import type { Island } from './island'
+import { heightOf } from './model-geo'
+import { loadModels, modelGeometry } from './models'
 
 /** Le foyer est posé à côté du point de dépôt, pas dessus, et perpendiculairement
  *  à l'axe de la caméra par défaut: sinon le colon rentre dans les flammes et sa
@@ -4323,16 +4325,23 @@ export class Village {
 
   private museumGeo: BufferGeometry | null = null
   private museumPos: { x: number; y: number; z: number } | null = null
+  private relicIds: readonly string[] = []
 
-  setRelics(count: number): void {
+  /** Les reliques modelées dans Blender, et la hauteur qu'elles prennent sur
+   *  leur socle : celle d'une pièce de vitrine, pas de l'objet réel. Le disque
+   *  est un peu plus bas que l'amphore, sinon sa largeur déborde du socle. */
+  private static readonly RELIC_MODELS: Record<string, number> = { amphore: 0.42, disquenebra: 0.34 }
+
+  setRelics(ids: readonly string[]): void {
+    this.relicIds = [...ids]
     this.museumGeo?.dispose()
     this.museumGeo = null
-    if (count <= 0) return this.restack()
+    if (ids.length <= 0) return this.restack()
     if (!this.museumPos) {
       const slot = this.nextSlot(2.4, 1.4, false)
       this.museumPos = { x: slot.x, y: slot.y, z: slot.z }
     }
-    const n = Math.min(count, 14)
+    const n = Math.min(ids.length, 14)
     const p: BufferGeometry[] = []
     // L'esplanade : un dallage clair qui dit « ici, on garde ».
     p.push(part(new BoxGeometry(3.6, 0.22, 2.4), C.stoneLight, 0, 0.11, 0))
@@ -4353,7 +4362,15 @@ export class Village {
       const px = -1.35 + (i % 5) * 0.68
       const pz = 0.62 - Math.floor(i / 5) * 0.72
       p.push(part(new CylinderGeometry(0.13, 0.17, 0.42, 6), tint(C.stone, i * 7, 0.06), px, 0.42, pz))
-      p.push(part(tops[i % tops.length]!(), tint(hues[i % hues.length]!, i * 13, 0.05), px, 0.72, pz))
+      // La vraie pièce quand elle est arrivée, la primitive sinon : le musée
+      // ne reste jamais avec un socle vide le temps d'un téléchargement.
+      const id = ids[i]!
+      const model = id in Village.RELIC_MODELS ? modelGeometry(id) : null
+      if (model) {
+        const k = Village.RELIC_MODELS[id]! / Math.max(0.01, heightOf(model))
+        // Posée sur le plateau du socle (0,63), face tournée vers l'allée.
+        p.push(model.scale(k, k, k).translate(px, 0.63, pz))
+      } else p.push(part(tops[i % tops.length]!(), tint(hues[i % hues.length]!, i * 13, 0.05), px, 0.72, pz))
     }
     const geo = mergeGeometries(p) ?? new BufferGeometry()
     grain(geo, 0.07)
@@ -4362,22 +4379,70 @@ export class Village {
     geo.translate(this.museumPos.x, this.museumPos.y, this.museumPos.z)
     this.museumGeo = geo
     this.restack()
+    this.fetchModels(ids, () => this.setRelics(this.relicIds))
   }
 
-  /** Ateliers, Merveille et musée sont immobiles et partagent le même
-   *  matériau : UN mesh pour les trois, refait quand l'un d'eux change. Trois
+  /** Va chercher les modèles manquants puis redessine — une seule fois, et
+   *  seulement si ce village est encore à l'écran : une île reconstruite
+   *  entre-temps a déjà son propre village. */
+  private fetchModels(ids: readonly string[], redraw: () => void): void {
+    void loadModels(ids).then((fresh) => {
+      if (fresh && this.group.parent) redraw()
+    })
+  }
+
+  // ── Ce que le marchand a laissé au campement ─────────────────────────────
+  // Le lot d'étain est posé entre le foyer et le paravent, du côté du camp
+  // que le colon ne traverse jamais : simulé sur 1 440 allers-retours vers
+  // tout le pourtour de l'île, son chemin passe au plus près à 0,45 du
+  // centre du lot — qui en fait 0,36 de demi-largeur à cette échelle.
+
+  private goodsGeo: BufferGeometry | null = null
+  private toolIds: readonly string[] = []
+  /** Coordonnées locales au foyer, comme CAMP, et échelle propre au lot. */
+  private static readonly TIN_SPOT = { x: -1.3, z: -2.02, scale: 0.85 }
+
+  setTools(ids: readonly string[]): void {
+    this.toolIds = [...ids]
+    this.goodsGeo?.dispose()
+    this.goodsGeo = null
+    if (ids.includes('etain')) {
+      const tin = modelGeometry('etain')
+      if (tin) {
+        const { x, z, scale } = Village.TIN_SPOT
+        // Construit dans le repère du campement (orienté vers le feu), puis
+        // porté en monde. PAS de lueur du feu peinte dessus, contrairement aux
+        // peaux voisines : à 2,9 u du foyer, elle virait le métal gris en jaune
+        // pâle, et le lot disparaissait dans la terre battue déjà blanchie par
+        // le halo (mesuré : luminance 200 contre 237 pour le sol). L'étain doit
+        // rester froid pour se lire comme du métal.
+        tin.scale(scale, scale, scale).rotateY(facingFire(x, z)).translate(x, 0, z)
+        grain(tin, 0.07)
+        const wx = HEARTH.x + x * SCALE
+        const wz = HEARTH.z + z * SCALE
+        tin.translate(-x, 0, -z).scale(SCALE, SCALE, SCALE)
+        tin.translate(wx, this.island.heightAt(wx, wz), wz)
+        this.goodsGeo = tin
+      }
+      this.fetchModels(['etain'], () => this.setTools(this.toolIds))
+    }
+    this.restack()
+  }
+
+  /** Ateliers, Merveille, musée et lot d'étain sont immobiles et partagent le
+   *  même matériau : UN mesh pour tous, refait quand l'un d'eux change. Trois
    *  meshes, c'étaient six draw calls par image, ombre comprise. Si la fusion
    *  échoue (attributs qui divergent), chacun garde le sien — rien ne
    *  disparaît. */
   private restack(): void {
+    const sources = [this.propsGeo, this.wonderGeo, this.museumGeo, this.goodsGeo]
     for (const m of this.statics) {
       this.group.remove(m)
       // La géométrie fusionnée est une copie : les sources restent à nous.
-      if (m.geometry !== this.propsGeo && m.geometry !== this.wonderGeo && m.geometry !== this.museumGeo)
-        m.geometry.dispose()
+      if (!sources.includes(m.geometry)) m.geometry.dispose()
     }
     this.statics = []
-    const parts = [this.propsGeo, this.wonderGeo, this.museumGeo].filter((g): g is BufferGeometry => !!g)
+    const parts = sources.filter((g): g is BufferGeometry => !!g)
     if (parts.length === 0) return
     const merged = parts.length === 1 ? null : mergeGeometries(parts)
     for (const geo of merged ? [merged] : parts) {
