@@ -4,6 +4,28 @@ import type { BufferGeometry, Mesh } from 'three'
 import amphoreUrl from '../assets/models/amphore.glb?url'
 import nebraUrl from '../assets/models/nebra.glb?url'
 import etainUrl from '../assets/models/etain.glb?url'
+// Les douze autres reliques du musée et les huit autres lots du marchand :
+// même format que l'amphore et l'étain (un maillage, couleurs aux sommets).
+import venusUrl from '../assets/models/venus.glb?url'
+import lionmanUrl from '../assets/models/lionman.glb?url'
+import fluteUrl from '../assets/models/flute.glb?url'
+import ambreUrl from '../assets/models/ambre.glb?url'
+import tabletteUrl from '../assets/models/tablette.glb?url'
+import monnaieUrl from '../assets/models/monnaie.glb?url'
+import anticythereUrl from '../assets/models/anticythere.glb?url'
+import astrolabeUrl from '../assets/models/astrolabe.glb?url'
+import boussoleUrl from '../assets/models/boussole.glb?url'
+import sextantUrl from '../assets/models/sextant.glb?url'
+import daguerreotypeUrl from '../assets/models/daguerreotype.glb?url'
+import transistorUrl from '../assets/models/transistor.glb?url'
+import selUrl from '../assets/models/sel.glb?url'
+import papyrusUrl from '../assets/models/papyrus.glb?url'
+import gouvernailUrl from '../assets/models/gouvernail.glb?url'
+import realUrl from '../assets/models/real.glb?url'
+import caoutchoucUrl from '../assets/models/caoutchouc.glb?url'
+import roulementUrl from '../assets/models/roulement.glb?url'
+import conteneurUrl from '../assets/models/conteneur.glb?url'
+import terresraresUrl from '../assets/models/terresrares.glb?url'
 // Les onze Merveilles, une par âge. Chacune porte ses cinq stades de chantier
 // dans un seul fichier (attribut `_STAGE`, voir model-geo.ts).
 import menhirsUrl from '../assets/models/menhirs.glb?url'
@@ -25,6 +47,26 @@ const URLS: Record<string, string> = {
   amphore: amphoreUrl,
   disquenebra: nebraUrl,
   etain: etainUrl,
+  venus: venusUrl,
+  lionman: lionmanUrl,
+  flute: fluteUrl,
+  ambre: ambreUrl,
+  tablette: tabletteUrl,
+  monnaie: monnaieUrl,
+  anticythere: anticythereUrl,
+  astrolabe: astrolabeUrl,
+  boussole: boussoleUrl,
+  sextant: sextantUrl,
+  daguerreotype: daguerreotypeUrl,
+  transistor: transistorUrl,
+  sel: selUrl,
+  papyrus: papyrusUrl,
+  gouvernail: gouvernailUrl,
+  real: realUrl,
+  caoutchouc: caoutchoucUrl,
+  roulement: roulementUrl,
+  conteneur: conteneurUrl,
+  terresrares: terresraresUrl,
   menhirs: menhirsUrl,
   dolmen: dolmenUrl,
   ziggurat: ziggouratUrl,
