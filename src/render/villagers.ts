@@ -16,7 +16,7 @@ import {
   SphereGeometry,
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import type { Island } from './island'
+import { GROUND_Y, type Island } from './island'
 import { PALETTE } from './palette'
 import { CAMP_HOME } from './village'
 
@@ -247,7 +247,7 @@ export class Villagers {
 
       const bob = s.walking ? Math.abs(Math.sin(s.phase)) * 0.045 : Math.sin(time * 1.7 + i * 3) * 0.012
       const hidden = s.home
-      this.dummy.position.set(s.x, this.island.heightAt(s.x, s.z) + bob, s.z)
+      this.dummy.position.set(s.x, GROUND_Y + bob, s.z)
       this.dummy.rotation.set(0, s.heading, s.walking ? Math.sin(s.phase) * 0.06 : 0)
       this.dummy.scale.setScalar(hidden ? 0.001 : s.scale)
       this.dummy.updateMatrix()

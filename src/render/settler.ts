@@ -22,7 +22,7 @@ import {
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE, CAMP_HOME } from './village'
-import type { Island } from './island'
+import { GROUND_Y, type Island } from './island'
 
 type Phase = 'walkOut' | 'work' | 'walkHome' | 'deposit'
 type Trip = 'none' | 'leaving' | 'away' | 'returning'
@@ -148,7 +148,7 @@ export class Settler {
   private pack!: Mesh
   private tool: Mesh | null = null
 
-  constructor(private island: Island) {
+  constructor(island: Island) {
     this.body = this.limb(this.torsoGeometry(), 0, HIP_Y, 0)
     this.head = this.limb(this.headGeometry(), 0, HEAD_Y, 0)
     this.armL = this.limb(this.armGeometry(false), -0.4, SHOULDER_Y, 0)
@@ -168,8 +168,8 @@ export class Settler {
     // taille d'un téléphone, la justesse d'échelle perd contre la lisibilité.
     this.rig.scale.setScalar(1.32)
     this.group.add(this.rig, this.chips)
-    this.group.position.set(2.5, island.heightAt(2.5, 2.5), 2.5)
-    this.home.set(CAMP_HOME.x, island.heightAt(CAMP_HOME.x, CAMP_HOME.z), CAMP_HOME.z)
+    this.group.position.set(2.5, GROUND_Y, 2.5)
+    this.home.set(CAMP_HOME.x, GROUND_Y, CAMP_HOME.z)
 
     // La hotte d'expédition, accrochée au dos : un cône tressé et deux jarres
     // débordantes. Invisible au camp — c'est l'attribut du voyage.
@@ -183,7 +183,7 @@ export class Settler {
       const d = (c.x - CAMP_HOME.x) ** 2 + (c.z - CAMP_HOME.z) ** 2
       if (d < best) {
         best = d
-        this.shore.set(c.x, c.height, c.z)
+        this.shore.set(c.x, GROUND_Y, c.z)
       }
     }
   }
@@ -420,7 +420,7 @@ export class Settler {
    *  lui, rentre au campement: c'est sa marche qui doit désigner le foyer comme
    *  le lieu où l'on vit, pas une case vide au milieu du terrain. */
   setHome(_p: Vector3): void {
-    this.home.set(CAMP_HOME.x, this.island.heightAt(CAMP_HOME.x, CAMP_HOME.z), CAMP_HOME.z)
+    this.home.set(CAMP_HOME.x, GROUND_Y, CAMP_HOME.z)
   }
 
   /** Sent by a tap on a resource node, or by the focus buttons. */
@@ -502,8 +502,7 @@ export class Settler {
     this.skirtCamp()
     this.takeFirelight(dt)
 
-    const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
-    this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+    this.group.position.y += (GROUND_Y - this.group.position.y) * Math.min(1, dt * 8)
   }
 
   /** Un seul uniforme par image, pas une lumière de plus: la scène en compte
@@ -540,8 +539,7 @@ export class Settler {
         while (d < -Math.PI) d += TAU
         this.group.rotation.y += d * Math.min(1, dt * 9)
         this.skirtCamp()
-        const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
-        this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+        this.group.position.y += (GROUND_Y - this.group.position.y) * Math.min(1, dt * 8)
         return true
       }
       this.sleeping = true
@@ -574,8 +572,7 @@ export class Settler {
     if (this.sleeping && !this.wantSleep) this.sleeping = false
 
     this.takeFirelight(0)
-    const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
-    this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+    this.group.position.y += (GROUND_Y - this.group.position.y) * Math.min(1, dt * 8)
     return true
   }
 
@@ -614,8 +611,7 @@ export class Settler {
     this.group.rotation.y += d * Math.min(1, dt * 9)
 
     this.skirtCamp()
-    const ground = this.island.heightAt(this.group.position.x, this.group.position.z)
-    this.group.position.y += (ground - this.group.position.y) * Math.min(1, dt * 8)
+    this.group.position.y += (GROUND_Y - this.group.position.y) * Math.min(1, dt * 8)
   }
 
   /** Repoussé hors des abris à chaque pas plutôt que guidé par un chemin: il

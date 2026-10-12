@@ -121,7 +121,7 @@ export function emptySave(now: number): SaveV1 {
     wonder: null,
     wonders: [],
     layout: [],
-    layoutV: 2,
+    layoutV: 3,
     village: '',
     legacy: 0,
     tribe: null,

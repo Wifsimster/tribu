@@ -19,7 +19,7 @@ import {
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { tint } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE } from './village'
-import type { Island } from './island'
+import { GROUND_Y, type Island } from './island'
 
 /** Une pièce teintée puis posée — même recette que le village : tout un animal
  *  finit fondu en une seule géométrie, une espèce entière en un seul call. */
@@ -410,8 +410,8 @@ export class Fauna {
   private readonly horseMesh: InstancedMesh
   private readonly gullMesh: InstancedMesh
   /** Centre de l'enclos et du poulailler, déduits des zones d'habitat. */
-  private penCenter: { x: number; z: number; h: number } | null = null
-  private coopAt: { x: number; z: number; h: number } | null = null
+  private penCenter: { x: number; z: number } | null = null
+  private coopAt: { x: number; z: number } | null = null
   /** Décor fixe des zones : la clôture du pré et la cabane à poules. La faune
    *  bouge, ses lieux non — un seul mesh fusionné pour les deux. */
   private pens: Mesh | null = null
@@ -498,19 +498,6 @@ export class Fauna {
     }
 
     const land = island.cells.filter((c) => !c.beach && !inCamp(c.x, c.z, 0.3))
-    /** Altitude du sol au point le plus proche : les clôtures se posent dessus. */
-    const heightAt = (x: number, z: number): number => {
-      let best = Infinity
-      let h = 0
-      for (const c of island.cells) {
-        const d = (c.x - x) ** 2 + (c.z - z) ** 2
-        if (d < best) {
-          best = d
-          h = c.height
-        }
-      }
-      return h
-    }
     /** Rayon de l'île : les habitats se raisonnent en PART du rayon, pas en
      *  unités monde — l'île double de taille entre l'âge 0 et l'âge 9. */
     const R = Math.max(6, island.radius)
@@ -570,12 +557,12 @@ export class Fauna {
     const anchor = this.sheepSpots[(Math.random() * this.sheepSpots.length) | 0]!
     const nearAnchor = this.sheepSpots.filter((s) => Math.hypot(s.x - anchor.x, s.z - anchor.z) < 2.6)
     if (nearAnchor.length >= 3) this.sheepSpots = nearAnchor
-    this.penCenter = { x: anchor.x, z: anchor.z, h: heightAt(anchor.x, anchor.z) }
+    this.penCenter = { x: anchor.x, z: anchor.z }
     const coop = this.henSpots.reduce(
       (a, s) => ({ x: a.x + s.x / this.henSpots.length, z: a.z + s.z / this.henSpots.length }),
       { x: 0, z: 0 },
     )
-    this.coopAt = { x: coop.x, z: coop.z, h: heightAt(coop.x, coop.z) }
+    this.coopAt = { x: coop.x, z: coop.z }
 
     const build = (geo: BufferGeometry, n: number, spread: number): InstancedMesh => {
       const mesh = new InstancedMesh(geo, this.skin, n)
@@ -635,7 +622,8 @@ export class Fauna {
     const plaster = new Color('#efe3cc')
 
     if (this.penCenter) {
-      const { x, z, h } = this.penCenter
+      const { x, z } = this.penCenter
+      const h = GROUND_Y
       const R = 3.1
       const N = 12
       const gate = 3
@@ -665,7 +653,8 @@ export class Fauna {
     }
 
     if (this.coopAt) {
-      const { x, z, h } = this.coopAt
+      const { x, z } = this.coopAt
+      const h = GROUND_Y
       p.push(part(new BoxGeometry(0.95, 0.6, 0.8), plaster, x, h + 0.3, z))
       p.push(part(new BoxGeometry(1.15, 0.16, 1.0).rotateZ(0.13), roof, x, h + 0.68, z))
       p.push(part(new BoxGeometry(0.5, 0.05, 0.24).rotateZ(-0.22), wood, x + 0.66, h + 0.16, z))
@@ -886,7 +875,7 @@ export class Fauna {
       const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp : 0
       dummy.position.set(
         b.x,
-        this.island.heightAt(b.x, b.z) + bob - (b.pitch + b.sleep) * cfg.sink,
+        GROUND_Y + bob - (b.pitch + b.sleep) * cfg.sink,
         b.z,
       )
       dummy.rotation.set(b.pitch, b.heading, moving ? Math.sin(b.phase) * 0.05 : 0)

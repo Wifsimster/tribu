@@ -149,11 +149,17 @@ function key(q: number, r: number): number {
 const tmpTint = new Color()
 
 /** Épaisseur de la couche d'herbe : le reste de la colonne est de la terre,
- *  c'est elle qui dessine les contre-marches des terrasses. */
+ *  c'est elle qui fait lire la tranche de la côte au-dessus de la flottaison. */
 const CAP = 0.3
-/** Les hauteurs sont quantifiées : des paliers nets se lisent de loin, une
- *  pente continue devient une bouillie. */
-const STEP = 0.44
+/** LA hauteur du sol, partout sur l'île. Retour de Damien : « retirer les
+ *  différences de niveau sur les tiles […] un rendu propre au même niveau
+ *  partout ». Les terrasses coinçaient un bâtiment sur deux entre deux
+ *  paliers et chaque objet posé devait interroger le relief sous lui. 0,88 est
+ *  la hauteur qu'avaient les falaises du pourtour : la côte garde la même
+ *  tranche au-dessus de l'eau (bande mouillée de 0,34, terre, puis herbe),
+ *  sans le gâteau qu'aurait fait une île entière à la hauteur de l'ancienne
+ *  place (1,76). La plage se lit au sable, plus à un palier bas. */
+export const GROUND_Y = 0.88
 /** Le plan d'eau est y=0. La coque ne s'y arrête plus : l'île a un DESSOUS. */
 const BED_Y = -0.02
 /** Bande de flottaison sombre retenue au-dessus de l'arête, sur tout le
@@ -258,34 +264,34 @@ export interface LandPlot {
   r: number
 }
 
-/** Ce qui fait reconnaître une parcelle de loin, avant même son décor : le
- *  relief et la teinte du sol. `center: null` laisse le centre à l'eau. */
+/** Ce qui fait reconnaître une parcelle de loin, avant même son décor : la
+ *  teinte du sol. Plus le relief — l'île est à un seul niveau ; la fosse de la
+ *  carrière et la butte de l'affleurement se lisent à leur roche et à leurs
+ *  blocs. `cove` laisse le centre à l'eau (la crique). */
 interface PlotLook {
-  ring: number
-  center: number | null
+  cove: boolean
   beach: boolean
   ground: Color
   /** Teinte du centre, s'il diffère de l'anneau (la mare d'une roselière). */
   core?: Color
 }
 const PLOT_LOOK: Record<string, PlotLook> = {
-  // Sous-bois : une herbe plus sombre que la prairie, le centre en butte.
-  foret: { ring: STEP * 2, center: STEP * 3, beach: false, ground: new Color('#4a8a3e') },
-  // Plate et claire : c'est l'herbe haute, les fleurs font le reste.
-  prairie: { ring: STEP * 2, center: STEP * 2, beach: false, ground: new Color('#86c95a') },
-  // Une fosse : le centre creusé d'un palier sous l'anneau de pierre.
-  carriere: { ring: STEP * 2, center: STEP, beach: false, ground: new Color('#a19a8c') },
-  // Basse et humide, une mare au centre à peine sortie de l'eau.
+  // Sous-bois : une herbe plus sombre que la prairie.
+  foret: { cove: false, beach: false, ground: new Color('#4a8a3e') },
+  // Claire : c'est l'herbe haute, les fleurs font le reste.
+  prairie: { cove: false, beach: false, ground: new Color('#86c95a') },
+  // La pierre grise et les blocs taillés disent la carrière.
+  carriere: { cove: false, beach: false, ground: new Color('#a19a8c') },
+  // Humide : une mare au centre, peinte, cernée de roseaux.
   roseliere: {
-    ring: STEP,
-    center: 0.2,
+    cove: false,
     beach: false,
     ground: new Color('#7d9a52'),
     core: new Color('#4d8f8c'),
   },
-  crique: { ring: STEP, center: null, beach: true, ground: PALETTE.sand },
-  // Une butte de roche rouillée, deux paliers au-dessus de l'anneau.
-  affleurement: { ring: STEP * 2, center: STEP * 4, beach: false, ground: new Color('#b98a5a') },
+  crique: { cove: true, beach: true, ground: PALETTE.sand },
+  // Une roche rouillée à fleur de sol, semée de minerai.
+  affleurement: { cove: false, beach: false, ground: new Color('#b98a5a') },
 }
 /** Part de la neige d'hiver que prend le sol d'une parcelle (1 sur l'île de
  *  base) : assez pour lire la saison, pas assez pour effacer le type. */
@@ -329,12 +335,13 @@ export interface Cell {
   gz: number
   x: number
   z: number
-  height: number
   beach: boolean
   /** Distance au rivage, en cellules. */
   inland: number
-  /** Occlusion cuite par cellule : les creux et les pieds de falaise foncent. */
-  ao: number
+  /** Le modelé que dessinait le relief, gardé pour la COULEUR : l'herbe
+   *  s'éclaircit sur les anciennes crêtes, les rochers s'y posent. Sans lui,
+   *  l'île plate redevenait une nappe verte uniforme. */
+  relief: number
   /** Cellule du pourtour : c'est elle qui porte l'ourlet de rive. */
   rim: boolean
   /** Normale sortante du pourtour (somme des voisins d'eau) : c'est contre elle
@@ -425,7 +432,6 @@ export class Island {
     this.land = land
     const rnd = mulberry32(seed)
     const half = GRID / 2
-    const plaza = STEP * 4
 
     // Réseau axial : on balaie un losange assez large pour contenir le disque
     // de l'île, et `shoreEdge` découpe dedans exactement comme avant — les
@@ -443,42 +449,31 @@ export class Island {
         const inland = edge - r
         const hill = fbm(dx * 0.23, dz * 0.23, seed)
         const shore = Math.min(inland / 2.4, 1)
-        // Relief COMPRIMÉ (retour Damien : « l'île devrait être moins
-        // vallonnée pour un meilleur rendu des bâtiments au sol »). L'écart
-        // allait de 0,3 à 3,0 — sept paliers, et un bâtiment sur deux se
-        // retrouvait coincé entre deux terrasses. Il tient maintenant en trois
-        // paliers autour de la hauteur de la place (1,76) : les contre-marches
-        // restent lisibles, le sol redevient constructible.
-        const raw = 0.3 + shore * (0.9 + hill * 1.1)
+        // L'ancien relief (0,3 → 2,3), qui ne sert plus qu'à moduler la teinte
+        // de l'herbe et à choisir où rouler les rochers : le sol, lui, est à
+        // GROUND_Y partout.
+        const relief = 0.3 + shore * (0.9 + hill * 1.1)
         const x = wx
         const z = wz
-        let height = Math.max(STEP, Math.round(raw / STEP) * STEP)
         // Un liseré de sable tout autour donnerait un gâteau. Suivant l'angle,
-        // la côte est soit une plage, soit une petite falaise dans l'eau.
+        // la côte est soit une plage (sable), soit une petite falaise (terre).
         const sandy = valueNoise(Math.cos(theta) * 3.1 + 20, Math.sin(theta) * 3.1 + 20, seed) > 0.44
         const beach = inland < 1.05 && sandy
-        if (inland < 1.05) height = sandy ? STEP : STEP * 2
-        else if (inland < 2.2) height = Math.min(height, STEP * 3)
-        // La place centrale est plate : le village a besoin d'un socle lisible.
-        if (Math.hypot(x, z) < PLAZA_RADIUS) height = plaza
         // Bord bruité : un disque de terre parfait ressemble à un décalque, pas
-        // à un sol usé par les allées et venues.
+        // à un sol usé par les allées et venues. La clairière ne s'enfonce plus
+        // d'un cheveu : sa bordure se lit à la couleur, pas à une marche.
         const trod =
           Math.hypot(x, z) < PLAZA_RADIUS &&
           Math.hypot(x - TROD.x, z - TROD.z) <
             TROD.r * (0.78 + valueNoise(x * 0.62, z * 0.62, seed + 31) * 0.42)
-        // Le sol tassé s'enfonce d'un cheveu : le liseré d'herbe qui reste sur
-        // le pourtour donne à la clairière une bordure au lieu d'un aplat.
-        if (trod) height = plaza - 0.09
         const cell: Cell = {
           gx,
           gz,
           x,
           z,
-          height,
           beach,
           inland,
-          ao: 1,
+          relief,
           rim: false,
           outx: 0,
           outz: 0,
@@ -493,7 +488,7 @@ export class Island {
     for (const p of land) this.addPlot(p)
     this.fillPockets()
 
-    this.bakeOcclusion()
+    this.bakeRim()
     this.bakeFootprint()
     this.buildTerrain()
     this.buildFoundation()
@@ -599,30 +594,19 @@ export class Island {
     return this.hull[i % HULL_BINS]! * (1 - k) + this.hull[(i + 1) % HULL_BINS]! * k
   }
 
-  /** Une cellule cernée de voisins plus hauts reçoit moins de ciel. Sans ça les
-   *  terrasses s'aplatissent et l'île redevient une nappe verte uniforme. */
-  private bakeOcclusion(): void {
+  /** Le pourtour : une cellule dont un voisin manque borde l'eau. Elle porte
+   *  l'ourlet de rive, et sa normale sortante dose le liseré face au soleil.
+   *  (L'occlusion des terrasses, cuite ici jadis, n'a plus de creux à foncer
+   *  sur une île à un seul niveau.) */
+  private bakeRim(): void {
     for (const c of this.cells) {
-      let occ = 0
       for (let k = 0; k < 6; k++) {
-        const n = this.byKey.get(key(c.gx + NB[k]![0], c.gz + NB[k]![1]))
-        if (!n) {
-          // Un voisin absent, c'est de l'eau : la cellule est du pourtour et
-          // garde tout son ciel de ce côté — sinon la silhouette s'assombrit
-          // là où elle doit trancher.
-          c.rim = true
-          const [nx, nz] = hexNormal(k)
-          c.outx += nx
-          c.outz += nz
-          continue
-        }
-        const d = n.height - c.height
-        if (d > 0.05) occ += Math.min(d / 0.75, 1)
+        if (this.byKey.has(key(c.gx + NB[k]![0], c.gz + NB[k]![1]))) continue
+        c.rim = true
+        const [nx, nz] = hexNormal(k)
+        c.outx += nx
+        c.outz += nz
       }
-      // Six voisins au lieu de huit pondérés : le facteur compense pour que
-      // les terrasses gardent exactement le même creux qu'en grille carrée.
-      occ *= 1.13
-      c.ao = Math.max(0.42, 1 - occ * 0.215)
     }
   }
 
@@ -791,10 +775,10 @@ export class Island {
       else index.push(a, c, b)
     }
     const corners = Array.from({ length: 6 }, (_, k) => hexVertex(k))
-    const top = (c: Cell): number => {
-      const capBottom = Math.max(0.06, c.height - CAP)
-      return capBottom + Math.max(0.06, c.height - capBottom)
-    }
+    // Un seul niveau : entre deux cellules de terre il n'y a plus de
+    // contre-marche à dresser, seules les arêtes qui donnent sur l'eau ont un
+    // flanc — la terre en bas, la couche d'herbe (ou de sable) au-dessus.
+    const capBottom = GROUND_Y - CAP
     /** Flanc de l'arête k entre y0 et y1 : normales radiales aux coins, comme
      *  le cylindre — l'arête du prisme reste adoucie à l'éclairage. */
     const side = (c: Cell, k: number, y0: number, y1: number, s: number): void => {
@@ -811,17 +795,14 @@ export class Island {
     }
 
     this.cells.forEach((c, i) => {
-      const capBottom = Math.max(0.06, c.height - CAP)
-      const y = top(c)
       const t0 = pos.length / 3
-      for (const [vx, vz] of corners) vert(c.x + vx, y, c.z + vz, 0, 1, 0, i * 2 + 1)
+      for (const [vx, vz] of corners) vert(c.x + vx, GROUND_Y, c.z + vz, 0, 1, 0, i * 2 + 1)
       for (let k = 1; k < 5; k++) tri(t0, t0 + k, t0 + k + 1, 0, 1, 0)
+      if (!c.rim) return
       for (let k = 0; k < 6; k++) {
-        const n = this.byKey.get(key(c.gx + NB[k]![0], c.gz + NB[k]![1]))
-        const lo = n ? top(n) : 0
-        if (lo >= y) continue
-        if (lo < capBottom) side(c, k, lo, capBottom, i * 2)
-        side(c, k, Math.max(lo, capBottom), y, i * 2 + 1)
+        if (this.byKey.has(key(c.gx + NB[k]![0], c.gz + NB[k]![1]))) continue
+        side(c, k, 0, capBottom, i * 2)
+        side(c, k, capBottom, GROUND_Y, i * 2 + 1)
       }
     })
     const decor = this.plotGroundDecor(vert, tri)
@@ -845,16 +826,20 @@ export class Island {
         const look = plotLook(c.plot)
         capColor.copy(c.plotCenter && look.core ? look.core : look.ground)
       } else if (c.beach) capColor.copy(PALETTE.sand)
-      else ramp(grassRamp, smoothstep(0.5, 2.6, c.height), capColor)
+      // L'herbe s'éclaircit là où montait le relief : c'est ce modelé de
+      // couleur, et non plus des paliers, qui garde l'île vivante vue de haut.
+      else ramp(grassRamp, smoothstep(0.5, 2.6, c.relief), capColor)
       // Marbrure basse fréquence en plus du bruit par tuile : un aplat de
-      // couleur unique sur toute une terrasse fait carton découpé.
+      // couleur unique sur toute l'île ferait carton découpé.
       const mottle = 0.93 + fbm((c.x / TILE) * 0.55, (c.z / TILE) * 0.55, 7) * 0.14
-      capColor.copy(tint(capColor, c.gx * 31 + c.gz * 7 + 512, 0.06)).multiplyScalar(c.ao * mottle)
+      capColor.copy(tint(capColor, c.gx * 31 + c.gz * 7 + 512, 0.06)).multiplyScalar(mottle)
 
+      // La tranche d'une plage est du sable mouillé, pas de la terre : à
+      // hauteur égale, c'est elle qui sépare la plage de la petite falaise.
       socleColor
-        .copy(PALETTE.earth)
-        .lerp(PALETTE.earthDark, 0.68 - smoothstep(0.4, 1.8, c.height) * 0.3)
-        .multiplyScalar(c.ao * 0.88)
+        .copy(c.beach ? PALETTE.sand : PALETTE.earth)
+        .lerp(PALETTE.earthDark, c.beach ? 0.3 : 0.5)
+        .multiplyScalar(0.88)
       // Le pied des falaises du pourtour prend un rien de l'eau qui le baigne :
       // sans ça, la face à l'ombre tombe dans un brun quasi noir alors qu'elle
       // devrait tirer vers le bleu de ce qui la mouille.
@@ -975,7 +960,7 @@ export class Island {
     // là dépassait en mer comme un hexagone isolé.
     const floor = PALETTE.sand.clone().lerp(PALETTE.waterShallow, 0.3)
     for (const p of this.land) {
-      if (plotLook(p.kind).center !== null || this.byKey.has(key(p.q, p.r))) continue
+      if (!plotLook(p.kind).cove || this.byKey.has(key(p.q, p.r))) continue
       const s = first + colors.length
       colors.push({ color: floor, snow: 0.1 })
       const [x, z] = hexCenter(p.q, p.r)
@@ -997,7 +982,7 @@ export class Island {
             const color = FLOWERS[Math.floor(rnd() * FLOWERS.length)]!
             const x = c.x + Math.cos(a) * d
             const z = c.z + Math.sin(a) * d
-            const y = c.height + 0.03
+            const y = GROUND_Y + 0.03
             const yaw = rnd() * Math.PI
             const r = 0.1 + rnd() * 0.04
             const s = first + colors.length
@@ -1015,7 +1000,7 @@ export class Island {
             const x = c.x + (px - c.x) * t + (rnd() - 0.5) * 0.7
             const z = c.z + (pz - c.z) * t + (rnd() - 0.5) * 0.7
             const color = REEDS[Math.floor(rnd() * REEDS.length)]!
-            spike(x, c.height, z, 0.05, 0.75 + rnd() * 0.5, rnd() * 2, color)
+            spike(x, GROUND_Y, z, 0.05, 0.75 + rnd() * 0.5, rnd() * 2, color)
           }
         }
       }
@@ -1744,7 +1729,7 @@ export class Island {
     const near = solid
       .filter((c) => Math.hypot(c.x, c.z) <= PLAZA_RADIUS + 1.2)
       .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))
-    for (const c of near) this.buildSlots.push(new Vector3(c.x, c.height, c.z))
+    for (const c of near) this.buildSlots.push(new Vector3(c.x, GROUND_Y, c.z))
 
     // Le rivage reste nu : c'est lui qui donne sa découpe à la silhouette.
     const open = solid.filter((c) => !c.trod && c.inland > 1.7)
@@ -1811,7 +1796,7 @@ export class Island {
           Math.round(16 * wild * this.growth * this.growth),
           clustered(free, 9),
           (c) =>
-            c.height > 1.2 &&
+            c.relief > 1.2 &&
             Math.hypot(c.x - TROD.x, c.z - TROD.z) > clearRadius(c.x, c.z, spreadForAge(this.age)) * 0.62,
         ),
         rnd,
@@ -1958,13 +1943,13 @@ export class Island {
       const s = 0.72 + rnd() * 0.4
       const jx = (rnd() - 0.5) * 0.5
       const jz = (rnd() - 0.5) * 0.5
-      d.position.set(c.x + jx, c.height + 1.65 * s * TREE_H, c.z + jz)
+      d.position.set(c.x + jx, GROUND_Y + 1.65 * s * TREE_H, c.z + jz)
       d.rotation.set(0, rnd() * Math.PI, 0)
       d.scale.set(s * TREE_R, s * TREE_H, s * TREE_R)
       d.updateMatrix()
       leaves.setMatrixAt(i, d.matrix)
       const leaf = tint(leafColors[i % 3]!, i, 0.08)
-      leaves.setColorAt(i, leaf.clone().multiplyScalar(0.9 + c.ao * 0.1))
+      leaves.setColorAt(i, leaf.clone())
       i++
     }
     leaves.instanceMatrix.needsUpdate = true
@@ -1990,7 +1975,7 @@ export class Island {
       // blocs atteignaient la taille d'une hutte et mangeaient le sol autour
       // d'eux. Même tirage aléatoire, seule l'échelle change.
       const s = (0.5 + rnd() * 0.45) * scale
-      d.position.set(c.x + (rnd() - 0.5) * 0.6, c.height + 0.2 * s, c.z + (rnd() - 0.5) * 0.6)
+      d.position.set(c.x + (rnd() - 0.5) * 0.6, GROUND_Y + 0.2 * s, c.z + (rnd() - 0.5) * 0.6)
       d.rotation.set(rnd() * 0.5, rnd() * Math.PI, rnd() * 0.5)
       // Un bloc de carrière est taillé : posé à plat, plus large que haut.
       if (block) d.rotation.set(0, d.rotation.y, 0)
@@ -2024,7 +2009,7 @@ export class Island {
       // plus gros buissons montaient à 1,44 unité, soit la hauteur d'un
       // villageois assis — ils encombraient le sol de la clairière.
       const s = (0.7 + rnd() * 0.35) * 1.5
-      d.position.set(c.x + (rnd() - 0.5) * 0.7, c.height + 0.22 * s, c.z + (rnd() - 0.5) * 0.7)
+      d.position.set(c.x + (rnd() - 0.5) * 0.7, GROUND_Y + 0.22 * s, c.z + (rnd() - 0.5) * 0.7)
       d.rotation.set(0, rnd() * Math.PI, 0)
       d.scale.set(s, s * 0.8, s)
       d.updateMatrix()
@@ -2134,7 +2119,6 @@ export class Island {
     return p
   }
 
-  /** Ground height under a world position, for anything that walks. */
   /** La cellule sous un point du monde, ou `null` si c'est de l'eau.
    *  Inverse exacte de `hexCenter` suivie de l'arrondi cubique : en O(1), là
    *  où l'ancien `heightAt` balayait les six cents cellules à chaque appel —
@@ -2159,15 +2143,14 @@ export class Island {
   private readonly reserved = new Set<number>()
 
   /** Pose les cellules d'une parcelle. Une cellule déjà en terre est laissée
-   *  telle quelle. Hauteurs fixées à la main (la courbe de rivage ne les
-   *  connaît pas), selon le type : c'est le relief, autant que le décor, qui
-   *  distingue une carrière d'un affleurement. */
+   *  telle quelle. Toutes au niveau du reste de l'île : c'est la teinte du sol
+   *  et le décor qui distinguent une carrière d'un affleurement. */
   private addPlot(p: LandPlot): void {
     const look = plotLook(p.kind)
     // La crique : un croissant de sable autour d'un centre d'eau, ouvert vers
     // le large par la cellule de l'anneau la plus éloignée du centre de l'île.
     let mouth: number | null = null
-    if (look.center === null) {
+    if (look.cove) {
       let far = -1
       let m = 0
       for (let k = 0; k < 6; k++) {
@@ -2182,7 +2165,7 @@ export class Island {
       this.reserved.add(key(p.q + NB[m]![0], p.r + NB[m]![1]))
     }
     for (let k = -1; k < 6; k++) {
-      if (k === mouth || (k < 0 && look.center === null)) continue
+      if (k === mouth || (k < 0 && look.cove)) continue
       const gx = p.q + (k < 0 ? 0 : NB[k]![0])
       const gz = p.r + (k < 0 ? 0 : NB[k]![1])
       if (this.byKey.has(key(gx, gz))) continue
@@ -2192,10 +2175,9 @@ export class Island {
         gz,
         x,
         z,
-        height: k < 0 ? look.center! : look.ring,
         beach: look.beach,
         inland: k < 0 ? 2 : 1,
-        ao: 1,
+        relief: 1,
         rim: false,
         outx: 0,
         outz: 0,
@@ -2211,8 +2193,8 @@ export class Island {
 
   /** Raccord avec l'ancienne côte : une parcelle posée contre la terre laisse
    *  parfois une ou deux cellules d'eau enclavées — un trou, vu d'en haut. On
-   *  les comble au palier de l'anneau voisin. Les eaux d'une crique, elles,
-   *  restent de l'eau. */
+   *  les comble avec la terre de la parcelle voisine. Les eaux d'une crique,
+   *  elles, restent de l'eau. */
   private fillPockets(): void {
     if (this.land.length === 0) return
     let q0 = Infinity
@@ -2253,10 +2235,9 @@ export class Island {
           gz: r,
           x,
           z,
-          height: plotLook(from.plot).ring,
           beach: from.beach,
           inland: 1,
-          ao: 1,
+          relief: 1,
           rim: false,
           outx: 0,
           outz: 0,
@@ -2393,22 +2374,5 @@ export class Island {
    *  cheval sur le bord de l'île. */
   isLand(x: number, z: number): boolean {
     return this.cellAt(x, z) !== null
-  }
-
-  heightAt(x: number, z: number): number {
-    const c = this.cellAt(x, z)
-    if (c) return c.height
-    // Hors de l'île : on retombe sur la cellule la plus proche, pour que les
-    // bêtes et les props posés en bordure ne tombent pas à zéro d'un coup.
-    let best = 0
-    let bestD = Infinity
-    for (const o of this.cells) {
-      const d = (o.x - x) ** 2 + (o.z - z) ** 2
-      if (d < bestD) {
-        bestD = d
-        best = o.height
-      }
-    }
-    return best
   }
 }

@@ -13,4 +13,17 @@ registerHooks({
       return next(`${specifier}.ts`, context)
     }
   },
+  // `import x from './a.glb?url'` : chez Vite, l'URL hachée du fichier. Ici,
+  // l'URL du fichier lui-même — le village s'importe ainsi sous Node pour le
+  // test de son plan, sans que rien ne charge le modèle.
+  load(url, context, next) {
+    if (url.endsWith('?url')) {
+      return {
+        format: 'module',
+        source: `export default ${JSON.stringify(url.slice(0, -'?url'.length))}`,
+        shortCircuit: true,
+      }
+    }
+    return next(url, context)
+  },
 })
