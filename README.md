@@ -161,6 +161,15 @@ ffmpeg -y -i docs/screenshot.png -vf "scale=1600:-1:flags=lanczos" docs/screensh
 
 ## Déploiement
 
+Chaque **release GitHub publiée** part en production : le workflow
+`.github/workflows/deploy.yml` tourne sur le runner auto-hébergé de l'hôte
+Docker, construit `tribu:local` et `tribu-api:local` depuis le tag, recrée les
+deux conteneurs de `/opt/docker/tribu`, attend qu'ils soient sains et vérifie
+que le bundle servi porte la version du tag. Redéployer un tag existant :
+*Actions → Deploy — homelab → Run workflow* avec le tag.
+
+À la main, en secours :
+
 ```bash
 cd /opt/docker/tribu
 sudo docker compose up -d --build
