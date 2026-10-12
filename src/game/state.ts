@@ -54,8 +54,8 @@ export interface SaveV1 {
   /** Le PLAN du village : où chaque bâtiment s'est posé, une fois pour toutes.
    *  Persisté parce que les emplacements sont DÉRIVÉS de la taille de l'île —
    *  qui grandit à chaque âge. Recalculés à chaque chargement, ils faisaient
-   *  sauter tout le village d'une session à l'autre. La hauteur, elle, n'est
-   *  pas gardée : le terrain change, elle est relue sous chaque bâtiment. */
+   *  sauter tout le village d'une session à l'autre. La hauteur n'est pas
+   *  gardée : l'île n'a qu'un niveau (GROUND_Y), tout s'y pose. */
   layout: { id: string; x: number; z: number; rot: number }[]
   /** Version du PLAN. Quand les règles d'urbanisme changent (v2 : les rues),
    *  un plan tracé selon les anciennes ne peut pas être conservé — le village

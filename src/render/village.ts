@@ -2581,9 +2581,9 @@ export class Village {
 
   /** Adopte le plan sauvegardé AVANT toute nouvelle pose : un bâtiment déjà
    *  posé ne bouge plus jamais. L'île n'a qu'un niveau : tout se pose à
-   *  GROUND_Y, rien à relire. C'est la réponse à « les bâtiments changent de place à chaque
-   *  rafraîchissement » : le plan était recalculé de zéro, et il dépend de la
-   *  taille de l'île. */
+   *  GROUND_Y, rien à relire. C'est la réponse à « les bâtiments changent de
+   *  place à chaque rafraîchissement » : le plan était recalculé de zéro, et
+   *  il dépend de la taille de l'île. */
   adoptLayout(saved: { id: string; x: number; z: number; rot: number }[]): void {
     for (const s of saved) {
       if (this.placed.has(s.id)) continue
