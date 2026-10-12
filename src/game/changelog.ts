@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.53.0',
+    title: "L'île de plain-pied",
+    items: [
+      "L'île n'a plus de marches. Les paliers d'herbe, la fosse de la carrière et la butte de l'affleurement montaient et descendaient d'une case à l'autre : toute la terre est désormais au même niveau, bien au-dessus de la mer. La plage se reconnaît à son sable, la carrière et l'affleurement à leur couleur et à leurs blocs, et l'herbe s'éclaircit encore là où passaient les anciennes crêtes : l'île reste vivante vue d'en haut.",
+      "Deux bâtiments ne se touchent plus jamais. La place de chacun se mesure sur ce qu'il occupe vraiment, ailes du moulin, arches de l'aqueduc et attelage du labour compris, et une ruelle les sépare toujours. Quand les rues sont pleines, le bâtiment cherche plus loin sur l'île au lieu de se coller à son voisin. La gare, la Merveille et le musée obéissent à la même règle.",
+      "Au chargement, le village est retracé une fois selon cette règle : certains bâtiments changent de place, puis ne bougent plus.",
+    ],
+  },
+  {
     version: '3.52.0',
     title: 'Les vraies pièces du musée',
     items: [

@@ -44,7 +44,7 @@ import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
-import { Island } from './render/island'
+import { GROUND_Y, Island } from './render/island'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
 import { Fauna } from './render/fauna'
@@ -148,9 +148,11 @@ function buildWorld(): void {
   // Un plan tracé sur une île plus grande que celle d'aujourd'hui (avant les
   // parcelles, l'île grandissait à chaque âge) est retracé une fois : un
   // bâtiment ne se pose pas dans l'eau.
-  const plan = game.save.layoutV === 2 ? game.save.layout : []
+  // v3 : l'île plate et la règle « deux bâtiments ne se touchent jamais ».
+  // Un plan v2 pouvait coller deux toits : il est retracé une fois.
+  const plan = game.save.layoutV === 3 ? game.save.layout : []
   village.adoptLayout(plan.every((p) => island.isLand(p.x, p.z)) ? plan : [])
-  game.save.layoutV = 2
+  game.save.layoutV = 3
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
@@ -811,7 +813,6 @@ attachControls(stage, canvas, (x, y) => {
       if (r > island.radius * 0.5 && r < island.radius + 10) {
         let bx = 0
         let bz = 0
-        let by = 0
         let bestD = Infinity
         for (const c of island.cells) {
           if (!c.beach) continue
@@ -820,14 +821,13 @@ attachControls(stage, canvas, (x, y) => {
             bestD = d
             bx = c.x
             bz = c.z
-            by = c.height
           }
         }
         if (bestD < Infinity) {
           fishing = true
           ambience.knock()
           game.setFocus('food')
-          settler.sendTo(new Vector3(bx, by, bz))
+          settler.sendTo(new Vector3(bx, GROUND_Y, bz))
           fauna.setFishing(bx, bz)
           hud.toast('Le colon part pêcher au rivage')
           return

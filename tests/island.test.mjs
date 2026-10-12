@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-const { Island } = await import('../src/render/island.ts')
+const { Island, GROUND_Y } = await import('../src/render/island.ts')
 
 const SEED = 1_337_042
 const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
@@ -113,8 +113,28 @@ test('21 parcelles : ni trou, ni cellule détachée, et la crique reste ouverte 
       const k = key(q, r)
       if (!cells.has(k) && !sea.has(k)) assert.fail(`eau enclavée en ${k}`)
     }
-  // Aucune cellule ne flotte : toutes partent du fond.
-  for (const c of island.cells) assert.ok(c.height > 0.05, `hauteur ${c.height}`)
+  // Aucune cellule ne flotte et l'île n'a qu'un niveau : le maillage des
+  // cellules part du fond (y = 0) et tout dessus d'hexagone est à GROUND_Y.
+  // Les emplacements 2i/2i+1 sont ceux des cellules ; au-delà, c'est le décor
+  // des parcelles (mare, touffes), qui a ses propres creux et reliefs.
+  const geo = island.terrainMesh.geometry
+  const pos = geo.getAttribute('position')
+  const nor = geo.getAttribute('normal')
+  const slots = island.terrainSlots
+  let tops = 0
+  let minY = Infinity
+  for (let i = 0; i < pos.count; i++) {
+    if (slots[i] >= island.cells.length * 2) continue
+    const y = pos.getY(i)
+    assert.ok(y >= -1e-6 && y <= GROUND_Y + 1e-6, `sommet hors de [0, sol] : ${y}`)
+    minY = Math.min(minY, y)
+    if (nor.getY(i) > 0.99) {
+      tops++
+      assert.ok(Math.abs(y - GROUND_Y) < 1e-6, `dessus de cellule à ${y}, sol à ${GROUND_Y}`)
+    }
+  }
+  assert.ok(Math.abs(minY) < 1e-6, 'les flancs descendent jusqu’au fond')
+  assert.ok(tops >= island.cells.length * 6, 'chaque cellule a son dessus')
 })
 
 // ── Incrément 3 : les ancres proposées au joueur ────────────────────────────

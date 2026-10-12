@@ -27,7 +27,7 @@ import {
 import type { DataTexture } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, rampTexture, smoothstep, tint } from './palette'
-import type { Island } from './island'
+import { GROUND_Y, type Island } from './island'
 import { heightOf } from './model-geo'
 import { loadModels, modelGeometry } from './models'
 
@@ -1278,11 +1278,12 @@ export class Village {
   readonly group = new Group()
   private readonly solid = new MeshToonMaterial({ vertexColors: true })
   private readonly placed = new Set<string>()
-  private readonly taken: Vector3[] = []
-  /** Emprise de chaque parcelle prise : l'écart minimal entre deux bâtiments
-   *  dépend de LEUR TAILLE, pas d'une constante. Un aqueduc de 2,2 d'emprise
-   *  posé à 3,4 d'une hutte lui rentre dedans. */
-  private readonly takenFp: number[] = []
+  /** Tout ce qui occupe le sol du bourg, en disques : bâtiments, Merveille,
+   *  musée, gare, pied du ponton. Le rayon est MESURÉ sur la géométrie
+   *  (`reach`), pas tiré d'une table d'emprises : la table sous-estimait
+   *  l'aqueduc (2,2 pour 3,9 réels) ou la villa (1,6 pour 2,9), d'où des
+   *  toits qui se touchaient. */
+  private readonly lots: { x: number; z: number; r: number }[] = []
   private readonly dummy = new Object3D()
   private readonly scratch = new Color()
   private flame!: Mesh
@@ -1304,13 +1305,20 @@ export class Village {
    *  foyer reste l'ancre visuelle et lumineuse du village à toutes les époques.
    *  Tipis aux âges primitifs, maison ensuite ; feu ouvert, puis brasero à
    *  l'antiquité, puis lampadaire dès que l'électricité est un savoir. */
-  constructor(
-    private island: Island,
-    private readonly age = 0,
-    private readonly electric = false,
-    /** Le temps des cadeaux : des paquets attendent autour du feu. */
-    private readonly yule = false,
-  ) {
+  private readonly island: Island
+  private readonly age: number
+  private readonly electric: boolean
+  /** Le temps des cadeaux : des paquets attendent autour du feu. */
+  private readonly yule: boolean
+
+  // Champs déclarés à la main plutôt qu'en propriétés de paramètre, comme
+  // l'île : Node retire les types sans transpiler, et le test du plan du
+  // village construit le bourg hors navigateur.
+  constructor(island: Island, age = 0, electric = false, yule = false) {
+    this.island = island
+    this.age = age
+    this.electric = electric
+    this.yule = yule
     this.buildCampfire()
     this.buildShore()
     // Les reflets miroir des loges ont vécu ici jusqu'au round 8 : une image
@@ -1327,7 +1335,6 @@ export class Village {
 
   private buildCampfire(): void {
     const fire = new Group()
-    const fireY = this.island.heightAt(HEARTH.x, HEARTH.z)
     const p: BufferGeometry[] = []
     const mode = this.fireMode
     if (mode === 'open') {
@@ -1512,10 +1519,10 @@ export class Village {
       this.halo,
       this.haloCore,
     )
-    this.addDecals(fire, fireY)
+    this.addDecals(fire)
     // Le colon rentre "au feu", c'est-à-dire au point (0,0,0) que lui fixe la
     // boucle: si le foyer y était aussi, il passerait sa vie dans les flammes.
-    fire.position.set(HEARTH.x, fireY, HEARTH.z)
+    fire.position.set(HEARTH.x, GROUND_Y, HEARTH.z)
     fire.scale.setScalar(SCALE)
     this.group.add(fire)
   }
@@ -1523,12 +1530,11 @@ export class Village {
   /** Deux nappes posées au sol: la flaque de lumière du feu, qui déborde sur
    *  deux tuiles et bat avec la flamme, et les ombres de contact qui posent les
    *  abris sur la terre. Sans elles, tout le campement lévite. */
-  private addDecals(fire: Group, fireY: number): void {
-    // Les nappes vivent dans le repère du campement, qui est agrandi: la
-    // hauteur du terrain doit être ramenée dans ce repère, sinon elles
-    // s'enfoncent d'un cinquième de palier.
-    const at = (x: number, z: number): number =>
-      (this.island.heightAt(HEARTH.x + x * SCALE, HEARTH.z + z * SCALE) - fireY) / SCALE + 0.03
+  private addDecals(fire: Group): void {
+    // Les nappes vivent dans le repère du campement, posé au sol : l'île
+    // étant à un seul niveau, elles flottent toutes d'un même cheveu au-dessus
+    // de la terre — plus besoin de relire le relief sous chacune.
+    const lift = 0.03
 
     // Nappe additive et non peinte: elle éclaircit et sature ce qu'elle
     // recouvre au lieu de le repeindre, donc la terre battue reste de la terre.
@@ -1540,9 +1546,9 @@ export class Village {
       ? (['#b98a3a', '#ddb057', '#ffe19a'] as const)
       : (['#d4621d', '#ef8a3a', '#ffb45c'] as const)
     const glow = [
-      glowDisc(7.4, new Color(pool[0]), 0.34, 26).translate(0, at(0, 0), 0),
-      glowDisc(3.4, new Color(pool[1]), 0.5, 22).translate(0, at(0, 0) + 0.004, 0),
-      glowDisc(1.5, new Color(pool[2]), 0.46, 16).translate(0, at(0, 0) + 0.008, 0),
+      glowDisc(7.4, new Color(pool[0]), 0.34, 26).translate(0, lift, 0),
+      glowDisc(3.4, new Color(pool[1]), 0.5, 22).translate(0, lift + 0.004, 0),
+      glowDisc(1.5, new Color(pool[2]), 0.46, 16).translate(0, lift + 0.008, 0),
     ]
     // Braises visibles par la porte de la tente: quelqu'un est rentré. La
     // maison des âges suivants a une porte pleine — pas de lueur par le seuil.
@@ -1553,7 +1559,7 @@ export class Village {
           .rotateY(TENT_YAW)
           .translate(
             CAMP.tent.x + Math.sin(TENT_YAW) * 1.68,
-            at(CAMP.tent.x, CAMP.tent.z) + 0.6,
+            lift + 0.6,
             CAMP.tent.z + Math.cos(TENT_YAW) * 1.68,
           ),
       )
@@ -1565,12 +1571,12 @@ export class Village {
       [CAMP.tent.x + 1.72, CAMP.tent.z + 1.02],
       [CAMP.frame.x - 0.95, CAMP.frame.z + 0.5],
     ] as const) {
-      glow.push(glowDisc(1.4, lamp, 0.5, 14).translate(x, at(x, z) + 0.002, z))
+      glow.push(glowDisc(1.4, lamp, 0.5, 14).translate(x, lift + 0.002, z))
       glow.push(
         glowDisc(0.62, new Color('#ffc275'), 0.72, 10)
           .rotateX(Math.PI / 2 - 0.55)
           .rotateY(CAMERA_YAW)
-          .translate(x, at(x, z) + 0.34, z),
+          .translate(x, lift + 0.34, z),
       )
     }
 
@@ -1587,7 +1593,7 @@ export class Village {
       [CAMP.screen.x, CAMP.screen.z, 1.3, 0.26],
     ]
     const contact = shade.map(([x, z, r, a]) =>
-      glowDisc(r, dark, a, 14).translate(x, at(x, z) - 0.005, z),
+      glowDisc(r, dark, a, 14).translate(x, lift - 0.005, z),
     )
 
     this.glowMat = new MeshBasicMaterial({
@@ -1639,8 +1645,7 @@ export class Village {
   }
 
   /** La chaussée romaine : du ponton jusqu'au seuil de la maison, en dalles
-   *  posées à même le relief — elle monte les paliers de l'île en escalier,
-   *  comme une vraie voie taillée dans la pente. Elle contourne les sapins
+   *  posées à même le sol. Elle contourne les sapins
    *  déjà plantés : une voie qui traverse un tronc ne lit pas comme une voie.
    *  Fondue dans le mesh du rivage : aucun appel de rendu de plus. */
   private road(p: BufferGeometry[]): void {
@@ -1680,10 +1685,9 @@ export class Village {
     this.island.thinWedge(0.785, 0.75, 0.55, 5)
   }
 
-  /** Une voie posée à même le relief : dallée quand la tribu sait paver, en
-   *  terre battue sinon. Elle monte les paliers de l'île en escalier, comme
-   *  une vraie voie taillée dans la pente. Fondue dans le mesh du rivage :
-   *  aucun appel de rendu de plus. */
+  /** Une voie posée à même le sol : dallée quand la tribu sait paver, en
+   *  terre battue sinon. Fondue dans le mesh du rivage : aucun appel de rendu
+   *  de plus. */
   private track(p: BufferGeometry[], pts: { x: number; z: number }[], paved: boolean): void {
     // Un hachage stable sur le rang du pavé : la voie est irrégulière, mais
     // elle l'est TOUJOURS DE LA MÊME FAÇON d'un chargement à l'autre.
@@ -1703,15 +1707,9 @@ export class Village {
       const yaw = Math.atan2(b.x - a.x, b.z - a.z)
       const cy = Math.cos(yaw)
       const sy = Math.sin(yaw)
-      // Le PLUS HAUT des trois points, et non la hauteur au milieu : le terrain
-      // monte par paliers d'hexagones, et une dalle calée sur le palier bas est
-      // avalée par le suivant — la voie ne ressortait que par bouts.
-      const y =
-        Math.max(
-          this.island.heightAt(a.x, a.z),
-          this.island.heightAt(mx, mz),
-          this.island.heightAt(b.x, b.z),
-        ) + 0.04
+      // Posée à même le sol, partout au même niveau : plus de palier qui
+      // avale une dalle.
+      const y = GROUND_Y + 0.04
       /** Pose une pièce en coordonnées de la VOIE : u en travers, v le long. */
       const lay = (
         geo: BufferGeometry,
@@ -1836,12 +1834,7 @@ export class Village {
       const yaw = Math.atan2(b.x - a.x, b.z - a.z)
       const cy = Math.cos(yaw)
       const sy = Math.sin(yaw)
-      const y =
-        Math.max(
-          this.island.heightAt(a.x, a.z),
-          this.island.heightAt(mx, mz),
-          this.island.heightAt(b.x, b.z),
-        ) + 0.05
+      const y = GROUND_Y + 0.05
       p.push(part(new BoxGeometry(1.15, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
       // Traverses : trois par segment, c'est ce qui fait lire « voie ».
       for (const t of [-0.3, 0, 0.3])
@@ -1866,7 +1859,7 @@ export class Village {
         )
     }
     for (const end of [pts[0]!, pts[pts.length - 1]!]) {
-      const y = this.island.heightAt(end.x, end.z) + 0.12
+      const y = GROUND_Y + 0.12
       p.push(part(new BoxGeometry(1.2, 0.36, 0.34), tint(C.woodDark, 3, 0.06), end.x, y + 0.18, end.z))
       p.push(part(new BoxGeometry(1.26, 0.12, 0.4), new Color('#a8302a'), end.x, y + 0.42, end.z))
     }
@@ -1880,12 +1873,23 @@ export class Village {
   private station(p: BufferGeometry[]): void {
     const pts = this.railPath
     if (pts.length < 4) return
+    // Une gare déjà réservée (refonte du rivage) garde sa place ; sinon on
+    // prend le point de voie le plus proche du foyer dont le quai ne touche
+    // aucun bâtiment — la voie est tracée après le bourg, elle ne peut pas
+    // toujours s'arrêter pile au centre.
+    const prior = this.stationAt
+    if (prior) {
+      const k = this.lots.findIndex((l) => l.x === prior.x && l.z === prior.z)
+      if (k >= 0) this.lots.splice(k, 1)
+    }
     let best = 1
     let bestD = Infinity
     for (let i = 1; i < pts.length - 1; i++) {
       const d = Math.hypot(pts[i]!.x - HEARTH.x, pts[i]!.z - HEARTH.z)
-      if (d < bestD) {
-        bestD = d
+      const free = this.clearOfLots(pts[i]!.x, pts[i]!.z, Village.STATION_R)
+      const score = free ? d : d + 1000
+      if (score < bestD) {
+        bestD = score
         best = i
       }
     }
@@ -1893,15 +1897,14 @@ export class Village {
     this.stationAt = { x: pts[best]!.x, z: pts[best]!.z }
     // La gare n'est pas un bâtiment du plan : sans réservation, un atelier
     // pouvait se poser sur son quai. Même traitement que le phare.
-    this.taken.push(new Vector3(pts[best]!.x, 0, pts[best]!.z))
-    this.takenFp.push(2.2)
+    this.lots.push({ x: pts[best]!.x, z: pts[best]!.z, r: Village.STATION_R })
     const a = pts[best - 1]!
     const b = pts[best + 1]!
     const yaw = Math.atan2(b.x - a.x, b.z - a.z)
     const cy = Math.cos(yaw)
     const sy = Math.sin(yaw)
     const c = pts[best]!
-    const y = this.island.heightAt(c.x, c.z)
+    const y = GROUND_Y
     // Le quai est du côté du foyer : on descend du train face au village.
     const side = (HEARTH.x - c.x) * cy - (HEARTH.z - c.z) * sy > 0 ? 1 : -1
     const at = (u: number, h: number, v: number): [number, number, number] => [
@@ -2008,7 +2011,7 @@ export class Village {
     const t = Math.min(1, Math.max(0, (d - this.railCum[i - 1]!) / segLen))
     const x = a.x + (b.x - a.x) * t
     const z = a.z + (b.z - a.z) * t
-    pivot.position.set(x, this.island.heightAt(x, z) + 0.06, z)
+    pivot.position.set(x, GROUND_Y + 0.06, z)
     const yaw = Math.atan2(b.x - a.x, b.z - a.z)
     pivot.rotation.y = fwd ? yaw : yaw + Math.PI
   }
@@ -2048,15 +2051,17 @@ export class Village {
         // un socle de trois unités de rayon déborde dans le vide.
         const ix = c.x - dx * 1.5
         const iz = c.z - dz * 1.5
-        const slot = new Vector3(ix, this.island.heightAt(ix, iz), iz)
-        // Un phare à cheval sur une marche de terrasse a un pied dans le vide :
-        // même exigence de sol plat que pour les bâtiments du village.
-        if (!this.flatEnough(slot, 2.6)) continue
+        const slot = new Vector3(ix, GROUND_Y, iz)
+        // Un phare dont le socle déborde sur l'eau a un pied dans le vide :
+        // même exigence de terre ferme que pour les bâtiments du village.
+        if (!this.onLand(slot, 2.6)) continue
+        if (!this.clearOfLots(ix, iz, this.reach('lighthouse'))) continue
         bestK = k
         best = slot
       }
     }
-    return best ?? this.nextSlot(3, 2.6, false)
+    if (best) this.lots.push({ x: best.x, z: best.z, r: this.reach('lighthouse') })
+    return best ?? this.nextSlot(this.reach('lighthouse'), 2.6, 3)
   }
 
   /** Bout du ponton : c'est là que la barque vient s'amarrer au repos. */
@@ -2067,7 +2072,7 @@ export class Village {
     // fait face est celle dont la direction s'en approche le plus.
     const camX = Math.sin(0.785)
     const camZ = Math.cos(0.785)
-    let best: { x: number; z: number; h: number } | null = null
+    let best: { x: number; z: number } | null = null
     let bestK = -Infinity
     for (const c of this.island.cells) {
       // Le sable d'une crique n'attire pas le ponton : il resterait à sa
@@ -2091,7 +2096,7 @@ export class Village {
       const k = (c.x * camX + c.z * camZ) / r + r * 0.03
       if (k > bestK) {
         bestK = k
-        best = { x: c.x, z: c.z, h: c.height }
+        best = { x: c.x, z: c.z }
       }
     }
     if (!best) return
@@ -2101,12 +2106,11 @@ export class Village {
     // Tête de ponton côté terre : c'est là que la chaussée romaine se raccorde.
     this.jettyHead = { x: best.x - dx * 0.75, z: best.z - dz * 0.75 }
     // Deux hauteurs : le tablier repose sur la plage côté terre, puis descend
-    // au niveau de l'eau. Sans cette rampe, le ponton flottait à dix-huit
-    // centièmes SOUS la terrasse — et depuis le passage aux hexagones, il
-    // démarrait carrément au large : sa première planche était posée à 0,5 du
-    // CENTRE de la cellule, quand le bord d'un hexagone est à 0,78.
-    const yLand = best.h + 0.05
-    const ySea = Math.max(0.16, best.h - 0.18)
+    // vers l'eau. La première planche MORD sur la plage : posée à 0,5 du
+    // centre de la cellule, elle démarrait au large, le bord d'un hexagone
+    // étant à 0,78.
+    const yLand = GROUND_Y + 0.05
+    const ySea = GROUND_Y - 0.18
     const y = ySea
     // Tablier : sept planches, la première MORDANT sur la plage (t négatif),
     // les suivantes gagnant le large.
@@ -2278,15 +2282,11 @@ export class Village {
     place(p, emberBowl(), 0, CAMP.frame.x - 0.95, CAMP.frame.z + 0.5)
   }
 
-  /** L'emprise est-elle posée sur un sol d'un seul tenant ? Une ferme à cheval
-   *  sur une marche de terrasse a le mur arrière noyé dans le bloc de terrain:
-   *  on échantillonne le pourtour et on refuse les slots qui enjambent un
-   *  dénivelé. */
-  /** Le sol sous une emprise doit être plat ET EXISTER. Le second point
-   *  manquait : `heightAt` renvoyant la hauteur de la cellule la plus proche,
-   *  un point au-dessus de l'eau rendait celle de la berge — donc « plat ».
-   *  Des bâtiments se posaient ainsi à cheval sur le bord de l'île. */
-  private flatEnough(slot: Vector3, footprint: number): boolean {
+  /** Le sol sous une emprise doit EXISTER : l'île est à un seul niveau, la
+   *  seule façon d'avoir un mur en l'air est d'enjamber le rivage. On
+   *  échantillonne le pourtour de l'emprise et on refuse les slots dont un
+   *  point tombe dans l'eau. */
+  private onLand(slot: Vector3, footprint: number): boolean {
     if (footprint <= 0) return true
     // Deux couronnes : le pourtour de l'emprise, et une intermédiaire — un
     // bâtiment large peut enjamber une échancrure que le seul bord manquerait.
@@ -2296,10 +2296,6 @@ export class Village {
         const px = slot.x + Math.cos(a) * footprint * k
         const pz = slot.z + Math.sin(a) * footprint * k
         if (!this.island.isLand(px, pz)) return false
-        // Tolérance ramenée sous la MARCHE d'une terrasse (~0,3) : à 0,12 un
-        // bâtiment pouvait encore chevaucher un demi-palier et présenter un
-        // mur enterré et l'autre en l'air.
-        if (Math.abs(this.island.heightAt(px, pz) - slot.y) > 0.07) return false
       }
     }
     return true
@@ -2317,12 +2313,11 @@ export class Village {
    *  cercle de pierres, pas comme un village. Ici, chaque bâtiment s'installe
    *  près d'un voisin (distance de ruelle ~3,5), un nouveau hameau s'ouvre
    *  tous les cinq bâtiments un peu plus loin, et le terrain doit être dégagé
-   *  (ni arbre, ni camp, ni pente). */
+   *  (ni arbre, ni camp, ni rivage). */
   /** Les RUES du village : trois voies qui partent du bord de la place et
    *  s'enfoncent dans l'île. Elles ne vont pas droit — à chaque pas elles
-   *  choisissent, entre trois caps, celui qui reste le plus à plat et le plus
-   *  loin des sapins. D'où un tracé organique posé sur un seul palier, et non
-   *  une étoile géométrique qui escaladerait les terrasses.
+   *  choisissent, entre cinq caps, celui qui reste le plus loin des sapins.
+   *  D'où un tracé organique, et non une étoile géométrique.
    *
    *  C'est le squelette du plan : les bâtiments prennent des parcelles LE LONG
    *  de ces rues. Avant, chaque bâtiment cherchait la meilleure cellule de
@@ -2347,9 +2342,8 @@ export class Village {
   }
 
   /** Trace une voie depuis le bord de la place : à chaque pas elle choisit,
-   *  entre cinq caps, celui qui reste le plus de plain-pied et le plus loin
-   *  des sapins. D'où un tracé organique posé sur un seul palier, et non une
-   *  étoile géométrique qui escaladerait les terrasses. */
+   *  entre cinq caps, celui qui reste le plus loin des sapins sans trop
+   *  tourner. D'où un tracé organique, et non une étoile géométrique. */
   private traceLane(start: number, steps = 30, avoidBuilt = false, margin = 2.2): Vector3[] {
     /** Assez loin du bord ? On sonde autour du point : une voie large de deux
      *  unités posée sur la dernière cellule débordait dans la mer. */
@@ -2364,7 +2358,6 @@ export class Village {
     let az = start
     let x = HEARTH.x + Math.sin(az) * LANE_R0
     let z = HEARTH.z + Math.cos(az) * LANE_R0
-    let y = this.island.heightAt(x, z)
     for (let i = 0; i < steps; i++) {
       let bestAz = az
       let bestScore = -Infinity
@@ -2373,19 +2366,15 @@ export class Village {
         const nx = x + Math.sin(a) * LANE_STEP
         const nz = z + Math.cos(a) * LANE_STEP
         if (!this.island.isLand(nx, nz)) continue
-        // Rester de plain-pied prime sur tout le reste ; venir ensuite le
-        // dégagement, puis la ligne droite.
-        let sc =
-          -Math.abs(this.island.heightAt(nx, nz) - y) * 8 +
-          Math.min(this.treeDist(nx, nz), 3) * 0.2 -
-          Math.abs(d) * 0.6
+        // Le dégagement d'abord, puis la ligne droite.
+        let sc = Math.min(this.treeDist(nx, nz), 3) * 0.2 - Math.abs(d) * 0.6
         // La voie ferrée est tracée APRÈS le bourg : c'est à elle de se
         // faufiler. Elle paie très cher tout pas qui frôle un bâtiment —
         // sinon elle traversait les maisons, ce qu'on a vu en jeu.
         if (avoidBuilt)
-          for (let t2 = 0; t2 < this.taken.length; t2++) {
-            const need = (this.takenFp[t2] ?? 0.5) + 1.5
-            const dd = Math.hypot(nx - this.taken[t2]!.x, nz - this.taken[t2]!.z)
+          for (const l of this.lots) {
+            const need = l.r + 1.0
+            const dd = Math.hypot(nx - l.x, nz - l.z)
             if (dd < need) sc -= (need - dd) * 40
           }
         if (sc > bestScore) {
@@ -2399,8 +2388,7 @@ export class Village {
       az = bestAz
       x = nx
       z = nz
-      y = this.island.heightAt(x, z)
-      pts.push(new Vector3(x, y, z))
+      pts.push(new Vector3(x, GROUND_Y, z))
     }
     return pts
   }
@@ -2410,23 +2398,85 @@ export class Village {
    *  géométrique de l'île présentait son pignon à la ruelle. */
   private slotRot = 0
   /** Bâtiments posés au repli, faute de parcelle : le harnais le surveille —
-   *  c'est le signe qu'une île est trop petite pour son village. */
+   *  c'est le signe qu'une île est trop petite pour son village. Un repli
+   *  respecte quand même la règle de contact ; il est seulement posé hors des
+   *  rues. */
   fallbacks = 0
-  /** Passes où l'emprise ou l'écart ont dû être relâchés. */
+  /** Passes où l'entraxe des façades a dû être relâché (jamais la règle de
+   *  contact). */
   cramped = 0
+
+  /** Ruelle minimale entre deux disques d'occupation. C'est LA règle que
+   *  demandait le joueur : deux bâtiments ne se touchent jamais. Elle n'est
+   *  relâchée par aucun repli — faute de place, on cherche plus loin. */
+  static readonly ALLEY = 0.6
+
+  /** Le disque `r` centré en (x, z) laisse-t-il une ruelle à tous les autres ? */
+  private clearOfLots(x: number, z: number, r: number, spacing = 0): boolean {
+    for (const l of this.lots) {
+      const need = Math.max(spacing, l.r + r + Village.ALLEY)
+      if ((l.x - x) ** 2 + (l.z - z) ** 2 < need * need) return false
+    }
+    return true
+  }
+
+  /** Les contraintes communes à toutes les parcelles : sur la terre, hors du
+   *  camp, hors de la voie ferrée, sans voisin à moins d'une ruelle. */
+  private fits(slot: Vector3, r: number, footprint: number, spacing: number, trees: boolean): boolean {
+    const { x, z } = slot
+    if (!this.island.isLand(x, z)) return false
+    if (!this.clearOfLots(x, z, r, spacing)) return false
+    if (CAMP_BLOCKERS.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.6 + r * 0.5)) return false
+    if (trees && this.treeDist(x, z) < 1.1 + footprint * 0.35) return false
+    // On ne bâtit pas SUR la voie ferrée : elle est posée avant les savoirs
+    // suivants, et rien ne l'écartait d'eux.
+    if (this.railPath.some((q) => Math.hypot(x - q.x, z - q.z) < 1.0 + r)) return false
+    // Le pied du ponton reste libre : la chaussée et la barque y arrivent.
+    const head = this.jettyHead
+    if (head && Math.hypot(x - head.x, z - head.z) < r + 1.0 + Village.ALLEY) return false
+    return this.onLand(slot, footprint)
+  }
 
   /** La prochaine parcelle libre. On balaie les rues en rond et, sur chacune,
    *  les parcelles en s'éloignant de la place, en alternant les deux côtés :
    *  le village pousse par le centre et gagne du terrain, comme un vrai
-   *  bourg. La première parcelle qui tient debout (sol plat, hors camp, hors
-   *  sapins, sans voisin trop proche) est la bonne. */
-  private nextSlot(spacing = 3.4, footprint = 0, central = false): Vector3 {
+   *  bourg. La première parcelle qui tient debout (sur la terre, hors camp,
+   *  hors sapins, sans voisin trop proche) est la bonne.
+   *
+   *  `r` est le rayon d'occupation mesuré (`reach`), `footprint` l'emprise
+   *  au sol qui doit reposer sur la terre, `spacing` l'entraxe souhaité. */
+  private nextSlot(r: number, footprint: number, spacing: number, central = false): Vector3 {
+    const s = this.laneSlot(r, footprint, central ? spacing * 0.8 : spacing)
+    if (s) return s
+    // L'entraxe d'abord : c'est du confort, pas la règle de contact.
+    this.cramped++
+    const tight = this.laneSlot(r, footprint, 0)
+    if (tight) return tight
+    // Plus de parcelle le long des rues : on cherche sur toute l'île, en
+    // partant du feu. Avant, on relâchait l'emprise puis l'écart — et deux
+    // toits finissaient l'un dans l'autre.
+    this.fallbacks++
+    const cells = [...this.island.cells].sort(
+      (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
+    )
+    for (const c of cells) {
+      const slot = new Vector3(c.x, GROUND_Y, c.z)
+      if (!this.fits(slot, r, footprint, 0, false)) continue
+      this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
+      this.lots.push({ x: c.x, z: c.z, r })
+      return slot
+    }
+    // L'île entière est pleine : on pose au feu plutôt que de ne rien montrer.
+    // Le test d'espacement échoue alors, et c'est voulu : l'île est trop petite.
+    this.slotRot = 0
+    this.lots.push({ x: HEARTH.x, z: HEARTH.z, r })
+    return new Vector3(HEARTH.x, GROUND_Y, HEARTH.z)
+  }
+
+  private laneSlot(r: number, footprint: number, spacing: number): Vector3 | null {
     this.buildLanes()
     const lanes = this.lanes!
     const maxStep = Math.max(...lanes.map((l) => l.pts.length))
-    // Les monuments veulent le cœur du bourg : on leur laisse les parcelles
-    // les plus proches de la place, et on leur passe l'exigence d'écart.
-    const gap = central ? spacing * 0.8 : spacing
     for (let step = 0; step < maxStep; step += PLOT_EVERY) {
       for (let li = 0; li < lanes.length; li++) {
         const pts = lanes[li]!.pts
@@ -2441,61 +2491,21 @@ export class Village {
         const nz = -dx / len
         // Deux rangées de chaque côté : les façades sur rue, puis un
         // arrière-plan de dépendances. Un village n'a pas qu'une épaisseur de
-        // maison — et sans cette seconde rangée, les quinze derniers savoirs
-        // ne trouvaient plus de parcelle (mesuré : 14 replis à l'ère
-        // contemporaine) et s'entassaient au centre.
+        // maison.
         for (const [side, baseRow] of PLOT_ROWS) {
-          // Un gros bâtiment est REPOUSSÉ : le recul de parcelle est fixe, mais
-          // le moulin (emprise 2,3) débordait sur la chaussée et le train
-          // passait dans ses ailes. La façade recule d'au moins son emprise
-          // plus une largeur de voie.
+          // Un gros bâtiment est REPOUSSÉ : le moulin débordait sur la
+          // chaussée. La façade recule d'au moins son emprise plus une voie.
           const row = Math.max(baseRow, footprint + 1.25)
-          const px = a.x + nx * side * row
-          const pz = a.z + nz * side * row
-          if (!this.island.isLand(px, pz)) continue
-          const slot = new Vector3(px, this.island.heightAt(px, pz), pz)
-          // Écart minimal = somme des deux emprises, plus une ruelle.
-          if (
-            this.taken.some((t, k) => {
-              const need = Math.max(gap, (this.takenFp[k] ?? 0.5) + footprint + 1.1)
-              return t.distanceToSquared(slot) < need * need
-            })
-          )
-            continue
-          if (
-            CAMP_BLOCKERS.some(
-              (c) => Math.hypot(px - c.x, pz - c.z) < c.r + 1.6 + footprint * 0.5,
-            )
-          )
-            continue
-          if (this.treeDist(px, pz) < 1.1 + footprint * 0.35) continue
-          // On ne bâtit pas SUR la voie ferrée : elle est posée avant les
-          // savoirs suivants, et rien ne l'écartait d'eux.
-          if (this.railPath.some((q) => Math.hypot(px - q.x, pz - q.z) < 1.6 + footprint))
-            continue
-          if (!this.flatEnough(slot, footprint)) continue
+          const slot = new Vector3(a.x + nx * side * row, GROUND_Y, a.z + nz * side * row)
+          if (!this.fits(slot, r, footprint, spacing, true)) continue
           // La façade regarde la rue : elle est du côté opposé à la normale.
           this.slotRot = Math.atan2(-nx * side, -nz * side)
-          this.taken.push(slot)
-          this.takenFp.push(footprint)
+          this.lots.push({ x: slot.x, z: slot.z, r })
           return slot
         }
       }
     }
-    // Plus une parcelle : on relâche l'emprise, puis l'écart — un bâtiment
-    // sans place doit exister quand même.
-    this.cramped++
-    if (footprint > 0) return this.nextSlot(spacing, 0, central)
-    if (spacing > 1.6) return this.nextSlot(spacing * 0.7, 0, central)
-    this.fallbacks++
-    const n = this.taken.length
-    const fr = 7 + Math.min(n * 0.4, 7)
-    const fallback = new Vector3(Math.cos(n * 2.4) * fr, 0, Math.sin(n * 2.4) * fr)
-    fallback.y = this.island.heightAt(fallback.x, fallback.z)
-    this.slotRot = Math.atan2(-fallback.x, -fallback.z)
-    this.taken.push(fallback)
-    this.takenFp.push(footprint)
-    return fallback
+    return null
   }
 
   /** Distance au sapin le plus proche : un bâtiment ne pousse pas dans un arbre. */
@@ -2519,6 +2529,40 @@ export class Village {
     return Math.sqrt(bestD)
   }
 
+  /** Rayon d'occupation d'un bâtiment, MESURÉ sur sa géométrie : le point
+   *  le plus éloigné de son centre, en plan, pièces animées comprises (les
+   *  ailes du moulin, l'attelage qui laboure, la voiture garée). Mis en cache :
+   *  la géométrie ne dépend que de l'identifiant. */
+  private readonly reaches = new Map<string, number>()
+  private reach(id: string): number {
+    const known = this.reaches.get(id)
+    if (known !== undefined) return known
+    let r = Village.MOVER_REACH[id] ?? 0
+    for (const g of this.propGeo(id) ?? []) {
+      const pos = g.getAttribute('position')
+      for (let i = 0; i < pos.count; i++) r = Math.max(r, Math.hypot(pos.getX(i), pos.getZ(i)))
+      g.dispose()
+    }
+    // Plancher : un objet minuscule garde une parcelle à hauteur d'homme.
+    r = Math.max(0.6, r)
+    this.reaches.set(id, r)
+    return r
+  }
+  /** Ce que les pièces animées balaient hors de la géométrie fixe, mesuré
+   *  sur leurs maillages (2026-10-12) : ailes du moulin (pivot avancé, rayon
+   *  des pales), attelage qui fait l'aller-retour sur ±1,2, halo du phare,
+   *  voiture et avion à l'arrêt. */
+  private static readonly MOVER_REACH: Record<string, number> = {
+    windmill: 3.15, plough: 2.14, lighthouse: 2.7, garage: 1.28, plane: 1.14,
+  }
+  /** La Merveille : socle de 4,6 × 4,6, demi-diagonale 3,25. */
+  private static readonly WONDER_R = 3.3
+  /** Le musée : esplanade de 3,8 × 2,6, demi-diagonale 2,3. */
+  private static readonly MUSEUM_R = 2.3
+  /** La gare, depuis son point de voie : quai et abri jusqu'à 2,25 de côté
+   *  sur 2,1 de long. */
+  private static readonly STATION_R = 3.1
+
   /** Monuments urbains: ils réclament un slot proche du centre, pas la lisière. */
   private static readonly MONUMENTS = new Set(['clock', 'windmill', 'aqueduct'])
   /** Emprise au sol des gros objets: le slot doit être plat sous toute la base.
@@ -2536,19 +2580,17 @@ export class Village {
   private static readonly LEGACY = new Set(['hut', 'field', 'granary', 'aqueduct'])
 
   /** Adopte le plan sauvegardé AVANT toute nouvelle pose : un bâtiment déjà
-   *  posé ne bouge plus jamais. Seule la hauteur est relue sous lui — l'île
-   *  grandit d'un âge à l'autre et un y figé l'enterrerait ou le ferait
-   *  léviter. C'est la réponse à « les bâtiments changent de place à chaque
-   *  rafraîchissement » : le plan était recalculé de zéro, et il dépend de la
-   *  taille de l'île. */
+   *  posé ne bouge plus jamais. L'île n'a qu'un niveau : tout se pose à
+   *  GROUND_Y, rien à relire. C'est la réponse à « les bâtiments changent de
+   *  place à chaque rafraîchissement » : le plan était recalculé de zéro, et
+   *  il dépend de la taille de l'île. */
   adoptLayout(saved: { id: string; x: number; z: number; rot: number }[]): void {
     for (const s of saved) {
       if (this.placed.has(s.id)) continue
-      const y = this.island.heightAt(s.x, s.z)
+      const y = GROUND_Y
       this.propPlacements.push({ id: s.id, x: s.x, y, z: s.z, rot: s.rot })
       this.placed.add(s.id)
-      this.taken.push(new Vector3(s.x, y, s.z))
-      this.takenFp.push(Village.FOOTPRINT[s.id] ?? 0.5)
+      this.lots.push({ x: s.x, z: s.z, r: this.reach(s.id) })
       // Les ouvrages LINÉAIRES ne sont pas dans le plan (ils n'occupent pas de
       // parcelle) : leur drapeau doit être restauré ici, sinon un village
       // rechargé perdait sa chaussée ou sa voie ferrée — le bâtiment étant
@@ -2578,11 +2620,8 @@ export class Village {
       if (buildings.has(pl.id)) continue
       this.propPlacements.splice(i, 1)
       this.placed.delete(pl.id)
-      const k = this.taken.findIndex((t) => t.x === pl.x && t.z === pl.z)
-      if (k >= 0) {
-        this.taken.splice(k, 1)
-        this.takenFp.splice(k, 1)
-      }
+      const k = this.lots.findIndex((t) => t.x === pl.x && t.z === pl.z)
+      if (k >= 0) this.lots.splice(k, 1)
       dirty = true
     }
     for (const b of buildings) {
@@ -2590,27 +2629,22 @@ export class Village {
       // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
       // villa de 4 u posée à 2 u d'une hutte lui rentrait dans le toit — et à
       // ×2.2 d'emprise elle venait encore s'accoler aux arches de l'aqueduc.
-      // Aucun bâtiment n'a une emprise nulle : sans plancher, `flatEnough`
+      // Aucun bâtiment n'a une emprise nulle : sans plancher, `onLand`
       // renvoyait vrai sans rien vérifier et le bord de l'île redevenait
       // constructible.
       const fp = Math.max(0.6, Village.FOOTPRINT[b] ?? 0.5)
+      const central = Village.MONUMENTS.has(b)
+      // Le phare réserve lui-même son disque dans `shoreSlot`.
       const s =
         b === 'lighthouse'
           ? this.shoreSlot()
           : Village.LEGACY.has(b)
-            ? this.nextSlot(3.4, Village.FOOTPRINT[b] ?? 0, Village.MONUMENTS.has(b))
-            : this.nextSlot(Math.max(2.0, fp * 2.6), fp, Village.MONUMENTS.has(b))
+            ? this.nextSlot(this.reach(b), fp, 3.4, central)
+            : this.nextSlot(this.reach(b), fp, Math.max(2.0, fp * 2.6), central)
       // La façade regarde la rue (slotRot) ; le phare, posé hors du plan,
       // continue de regarder le large.
       const rot = b === 'lighthouse' ? Math.atan2(-s.x, -s.z) : this.slotRot
       this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot })
-      // Le phare ne passe pas par `nextSlot` : personne ne l'inscrivait donc
-      // parmi les emplacements PRIS, et un atelier pouvait venir se coller
-      // contre une tour de dix unités. On l'inscrit à la main.
-      if (b === 'lighthouse') {
-        this.taken.push(s.clone())
-        this.takenFp.push(fp)
-      }
       this.placed.add(b)
       dirty = true
       // La borne milliaire n'est que la signature des voies romaines : ce que
@@ -3877,7 +3911,7 @@ export class Village {
         const x = a.x + (dz / len) * side * 1.35
         const z = a.z - (dx / len) * side * 1.35
         if (!this.island.isLand(x, z)) continue
-        posts.push({ x, y: this.island.heightAt(x, z), z })
+        posts.push({ x, y: GROUND_Y, z })
       }
     }
     for (const q of posts) {
@@ -4006,7 +4040,7 @@ export class Village {
     const t = Math.min(1, Math.max(0, (d - this.roadCum[i - 1]!) / segLen))
     const x = a.x + (b.x - a.x) * t
     const z = a.z + (b.z - a.z) * t
-    pivot.position.set(x, this.island.heightAt(x, z) + 0.1, z)
+    pivot.position.set(x, GROUND_Y + 0.1, z)
     // Elle roule sur la voie de droite, comme tout le monde ici.
     const yaw = Math.atan2(b.x - a.x, b.z - a.z)
     pivot.rotation.y = (fwd ? yaw : yaw + Math.PI) + Math.PI / 2
@@ -4303,7 +4337,7 @@ export class Village {
     this.wonderGeo = null
     if (age === null) return this.restack()
     if (!this.wonderPos) {
-      const slot = this.nextSlot(4.2, 2.4, true)
+      const slot = this.nextSlot(Village.WONDER_R, 2.4, 4.2, true)
       this.wonderPos = { x: slot.x, y: slot.y, z: slot.z }
     }
     const geo = mergeGeometries(wonderParts(age, stage)) ?? new BufferGeometry()
@@ -4338,7 +4372,7 @@ export class Village {
     this.museumGeo = null
     if (ids.length <= 0) return this.restack()
     if (!this.museumPos) {
-      const slot = this.nextSlot(2.4, 1.4, false)
+      const slot = this.nextSlot(Village.MUSEUM_R, 1.4, 2.4)
       this.museumPos = { x: slot.x, y: slot.y, z: slot.z }
     }
     const n = Math.min(ids.length, 14)
@@ -4421,7 +4455,7 @@ export class Village {
         const wx = HEARTH.x + x * SCALE
         const wz = HEARTH.z + z * SCALE
         tin.translate(-x, 0, -z).scale(SCALE, SCALE, SCALE)
-        tin.translate(wx, this.island.heightAt(wx, wz), wz)
+        tin.translate(wx, GROUND_Y, wz)
         this.goodsGeo = tin
       }
       this.fetchModels(['etain'], () => this.setTools(this.toolIds))
