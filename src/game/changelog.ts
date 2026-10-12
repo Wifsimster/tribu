@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.54.0',
+    title: 'Les Merveilles prennent forme',
+    items: [
+      "Les onze Merveilles n'étaient que des empilements de blocs et de cylindres. Chacune a désormais son vrai visage : les menhirs dressés en rangs, le dolmen sous sa dalle, la ziggourat et ses rampes, la colonne trophée et sa spirale, le grand phare, la cathédrale et sa flèche, le dôme, la tour de fer, le gratte-ciel, la fusée contre sa tour de lancement et le réacteur à fusion.",
+      "Le chantier se lit d'un coup d'œil. À chaque quart du chemin, de nouvelles pièces se posent : d'abord les fondations, puis les murs, la toiture, et la couronne quand l'œuvre est achevée. Les perches d'échafaudage montent avec l'ouvrage et tombent à la dernière pierre.",
+      "Ces Merveilles ont été modelées pour Tribu. Seule celle que montre ton île se télécharge, juste après le reste : si la connexion traîne, l'ancienne forme tient la place quelques instants. Chacune garde sa place et sa hauteur d'avant, à peu de chose près : aucun bâtiment ne bouge.",
+    ],
+  },
+  {
     version: '3.53.0',
     title: "L'île de plain-pied",
     items: [

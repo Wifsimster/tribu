@@ -28,8 +28,9 @@ import type { DataTexture } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, rampTexture, smoothstep, tint } from './palette'
 import { GROUND_Y, type Island } from './island'
-import { heightOf } from './model-geo'
-import { loadModels, modelGeometry } from './models'
+import { WONDER_BY_AGE } from '../game/content'
+import { halfSpanOf, heightOf } from './model-geo'
+import { loadModels, modelGeometry, modelGeometryReady } from './models'
 
 /** Le foyer est posé à côté du point de dépôt, pas dessus, et perpendiculairement
  *  à l'axe de la caméra par défaut: sinon le colon rentre dans les flammes et sa
@@ -1161,15 +1162,13 @@ function fenceRun(): BufferGeometry[] {
  *  Dix silhouettes distinctes, un vocabulaire commun : socle, corps, couronne.
  *  Pendant le chantier, des perches d'échafaudage cernent l'ouvrage. */
 function wonderParts(age: number, stage: number): BufferGeometry[] {
-  const p: BufferGeometry[] = []
+  const p: BufferGeometry[] = [wonderPlaza()]
   const iron = new Color('#6b7078')
   const steel = new Color('#9aa4ae')
   const brick = new Color('#b3603f')
   const put = (g: BufferGeometry, c: Color, x: number, y: number, z: number): void => {
     p.push(part(g, c, x, y, z))
   }
-  // Socle commun : l'esplanade du chantier.
-  put(new BoxGeometry(4.6, 0.3, 4.6), C.stoneDark, 0, 0.15, 0)
   const s1 = stage >= 1
   const s2 = stage >= 2
   const s3 = stage >= 3
@@ -1264,13 +1263,102 @@ function wonderParts(age: number, stage: number): BufferGeometry[] {
     }
   }
   // Échafaudages tant que l'œuvre n'est pas finie.
-  if (stage < 4) {
-    const h = 1.6 + stage * 1.2
-    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
-      put(new CylinderGeometry(0.05, 0.06, h, 5), C.wood, sx * 2.0, h / 2 + 0.3, sz * 2.0)
-      put(new BoxGeometry(0.06, 0.06, 4.0), C.woodDark, sx * 2.0, h + 0.2, 0)
-    }
+  if (stage < 4) p.push(...wonderScaffold(1.6 + stage * 1.2))
+  return p
+}
+
+/** Dessus de l'esplanade : tout ce qui se bâtit sur le chantier part de là. */
+const PLAZA_TOP = 0.3
+/** Les perches d'échafaudage, aux quatre coins, à cette distance de l'axe. Une
+ *  Merveille modelée doit tenir entre elles : c'est sa limite en plan. */
+const WONDER_POLE = 2.2
+
+/** Socle commun : l'esplanade du chantier, 4,6 × 4,6. */
+function wonderPlaza(): BufferGeometry {
+  return part(new BoxGeometry(4.6, PLAZA_TOP, 4.6), C.stoneDark, 0, PLAZA_TOP / 2, 0)
+}
+
+/** Quatre perches et leurs lisses, hautes de `h` au-dessus de l'esplanade.
+ *  Posées à 2,2 de l'axe et non plus 2,0 : les Merveilles modelées occupent
+ *  le socle jusqu'à 2,1, les perches les traversaient. Demi-diagonale des
+ *  lisses : 3,13, sous WONDER_R. */
+function wonderScaffold(h: number): BufferGeometry[] {
+  const p: BufferGeometry[] = []
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    p.push(part(new CylinderGeometry(0.05, 0.06, h, 5), C.wood, sx * WONDER_POLE, h / 2 + PLAZA_TOP, sz * WONDER_POLE))
+    p.push(part(new BoxGeometry(0.06, 0.06, WONDER_POLE * 2), C.woodDark, sx * WONDER_POLE, h + PLAZA_TOP - 0.1, 0))
   }
+  return p
+}
+
+/** Hauteur de la primitive achevée de chaque âge, esplanade comprise, MESURÉE
+ *  sur sa géométrie : c'est la silhouette que le joueur connaît, et le modèle
+ *  ne doit pas la trahir. */
+const primitiveTops = new Map<number, number>()
+function primitiveTop(age: number): number {
+  let top = primitiveTops.get(age)
+  if (top === undefined) {
+    top = 0
+    for (const g of wonderParts(age, 4)) {
+      const pos = g.getAttribute('position')
+      for (let i = 0; i < pos.count; i++) top = Math.max(top, pos.getY(i))
+      g.dispose()
+    }
+    primitiveTops.set(age, top)
+  }
+  return top
+}
+
+/** Combien le modèle peut dépasser la primitive en hauteur. 1,15 : la
+ *  silhouette reste celle qu'on connaît, un peu plus fière. La fusée a droit
+ *  à 1,3 : elle n'avait pas de primitive à elle (elle partageait la branche
+ *  par défaut, celle du réacteur, 5,7 de haut), il n'y a donc pas de
+ *  silhouette connue à respecter, et une fusée plus courte que le phare se
+ *  lisait mal. Mesuré : 7,4 de haut, sous le phare (7,4) et la cathédrale
+ *  (8,6). */
+const WONDER_HEIGHT_CAP: Record<string, number> = { fusee: 1.3 }
+
+/** Échelle d'une Merveille modelée, calculée une fois sur le modèle ACHEVÉ et
+ *  appliquée à tous les stades : une pierre posée ne change pas de taille
+ *  quand on pose la suivante. Trois plafonds, le plus serré gagne : tenir
+ *  entre les perches (2,1 de demi-côté), tenir dans WONDER_R en plan (la
+ *  parcelle réservée, ruelle non comprise), ne pas dépasser la primitive de
+ *  plus de 15 %. Le modèle remplit le socle autant que ces règles le
+ *  permettent. */
+const wonderScales = new Map<string, number>()
+function wonderScale(id: string, age: number): number | null {
+  let k = wonderScales.get(id)
+  if (k === undefined) {
+    const full = modelGeometry(id)
+    if (!full) return null
+    const pos = full.getAttribute('position')
+    let r = 0
+    for (let i = 0; i < pos.count; i++) r = Math.max(r, Math.hypot(pos.getX(i), pos.getZ(i)))
+    const cap = WONDER_HEIGHT_CAP[id] ?? 1.15
+    k = Math.min(
+      (WONDER_POLE - 0.1) / Math.max(0.01, halfSpanOf(full)),
+      (Village.WONDER_R - 0.1) / Math.max(0.01, r),
+      (primitiveTop(age) * cap - PLAZA_TOP) / Math.max(0.01, heightOf(full)),
+    )
+    full.dispose()
+    wonderScales.set(id, k)
+  }
+  return k
+}
+
+/** La Merveille modelée dans Blender, au stade voulu : esplanade, pièces déjà
+ *  posées, et des perches qui montent avec l'ouvrage. Null tant que le modèle
+ *  n'est pas arrivé : l'appelant garde la primitive. */
+function wonderModelParts(id: string, age: number, stage: number): BufferGeometry[] | null {
+  const k = wonderScale(id, age)
+  const built = k === null ? null : modelGeometry(id, stage)
+  if (k === null || !built) return null
+  built.scale(k, k, k).translate(0, PLAZA_TOP, 0)
+  const p = [wonderPlaza(), built]
+  // Les perches dépassent de 0,35 la pièce la plus haute déjà posée : le
+  // chantier se lit à sa hauteur, pas à une hauteur forfaitaire qui noyait la
+  // fusée ou dominait le dolmen.
+  if (stage < 4) p.push(...wonderScaffold(Math.max(1.2, heightOf(built) - PLAZA_TOP + 0.35)))
   return p
 }
 
@@ -2556,7 +2644,7 @@ export class Village {
     windmill: 3.15, plough: 2.14, lighthouse: 2.7, garage: 1.28, plane: 1.14,
   }
   /** La Merveille : socle de 4,6 × 4,6, demi-diagonale 3,25. */
-  private static readonly WONDER_R = 3.3
+  static readonly WONDER_R = 3.3
   /** Le musée : esplanade de 3,8 × 2,6, demi-diagonale 2,3. */
   private static readonly MUSEUM_R = 2.3
   /** La gare, depuis son point de voie : quai et abri jusqu'à 2,25 de côté
@@ -4328,24 +4416,42 @@ export class Village {
   private wonderGeo: BufferGeometry | null = null
   private wonderPos: { x: number; y: number; z: number } | null = null
   private wonderKey = ''
+  private wonderShown: { age: number; stage: number } | null = null
 
   setWonder(age: number | null, stage: number): void {
-    const key = age === null ? '' : `${age}-${stage}`
+    const id = age === null ? undefined : WONDER_BY_AGE.get(age)?.id
+    // Le modèle fait partie de la clé : quand il arrive, le même stade se
+    // redessine — sinon la primitive resterait jusqu'au stade suivant.
+    const modelled = id !== undefined && modelGeometryReady(id)
+    const key = age === null ? '' : `${age}-${stage}-${modelled ? 'm' : 'p'}`
     if (key === this.wonderKey) return
     this.wonderKey = key
     this.wonderGeo?.dispose()
     this.wonderGeo = null
-    if (age === null) return this.restack()
+    if (age === null) {
+      this.wonderShown = null
+      return this.restack()
+    }
     if (!this.wonderPos) {
       const slot = this.nextSlot(Village.WONDER_R, 2.4, 4.2, true)
       this.wonderPos = { x: slot.x, y: slot.y, z: slot.z }
     }
-    const geo = mergeGeometries(wonderParts(age, stage)) ?? new BufferGeometry()
+    // Seule la Merveille affichée se télécharge : celle du chantier en cours,
+    // ou la dernière achevée. Les dix autres ne coûtent rien.
+    const parts = (id && wonderModelParts(id, age, stage)) || wonderParts(age, stage)
+    const geo = mergeGeometries(parts) ?? new BufferGeometry()
     grain(geo, 0.08)
     geo.rotateY(Math.atan2(-this.wonderPos.x, -this.wonderPos.z))
     geo.translate(this.wonderPos.x, this.wonderPos.y, this.wonderPos.z)
     this.wonderGeo = geo
     this.restack()
+    // Le redessin relit l'état COURANT : si le chantier a changé de stade (ou
+    // de Merveille) pendant le téléchargement, c'est lui qu'on dessine.
+    this.wonderShown = { age, stage }
+    if (id && !modelled)
+      this.fetchModels([id], () => {
+        if (this.wonderShown) this.setWonder(this.wonderShown.age, this.wonderShown.stage)
+      })
   }
 
   get wonderAt(): { x: number; z: number } | null {
