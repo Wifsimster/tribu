@@ -1,0 +1,101 @@
+name: Deploy — homelab
+
+# Chaque release GitHub publiée part en production. Le runner auto-hébergé
+# tourne sur l'hôte Docker : il construit les deux images à partir du tag
+# de la release, puis recrée les conteneurs de la pile /opt/docker/tribu.
+# Les images restent locales (tribu:local, tribu-api:local), comme avant :
+# pas de registre, pas de secret.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag à déployer (ex. v3.51.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-homelab-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  STACK_DIR: /opt/docker/tribu
+
+jobs:
+  deploy:
+    name: Build & reconcile
+    runs-on: [self-hosted]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Build images
+        run: |
+          set -euo pipefail
+          docker build --pull -t tribu:local -f Dockerfile .
+          docker build --pull -t tribu-api:local -f Dockerfile.api .
+
+      - name: Reconcile stack
+        # --no-build : le compose garde ses sections build (contexte d'origine),
+        # mais les images viennent d'être construites ici, depuis le tag.
+        run: |
+          docker compose --project-directory "$STACK_DIR" -f "$STACK_DIR/compose.yml" \
+            up -d --no-build --force-recreate tribu api
+
+      - name: Wait for containers to become healthy
+        # Dépôt public : les logs Actions sont lisibles par tous. On garde les
+        # logs des conteneurs sur le runner et on n'affiche qu'un pointeur.
+        run: |
+          set -euo pipefail
+          save_logs() {
+            local dump_dir="$HOME/tribu-deploy-logs"
+            local dump="$dump_dir/fail-$(date -u +%Y%m%dT%H%M%SZ).log"
+            mkdir -p "$dump_dir"
+            { docker logs --tail=300 tribu; docker logs --tail=300 tribu-api; } > "$dump" 2>&1 || true
+            find "$dump_dir" -name 'fail-*.log' -mtime +30 -delete || true
+            echo "Container logs withheld from public Actions log; saved on runner at: $dump"
+          }
+          for c in tribu tribu-api; do
+            ok=0
+            for i in $(seq 1 36); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$c" 2>/dev/null || echo "missing")
+              echo "[$i/36] $c health: $status"
+              case "$status" in
+                healthy) ok=1; break ;;
+                unhealthy) break ;;
+              esac
+              sleep 5
+            done
+            if [ "$ok" != 1 ]; then
+              echo "$c did not become healthy"
+              save_logs
+              exit 1
+            fi
+          done
+
+      - name: Check served version
+        # La version de package.json doit se retrouver dans le bundle servi.
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version" 2>/dev/null \
+            || grep -m1 '"version"' package.json | sed -E 's/.*"([0-9.]+)".*/\1/')
+          if docker exec tribu sh -c "grep -rqF '$version' /usr/share/nginx/html/assets"; then
+            echo "Served bundle contains $version"
+          else
+            echo "Served bundle does not contain $version"
+            exit 1
+          fi
+
+      - name: Prune dangling images
+        if: success()
+        working-directory: /
+        run: docker image prune -f
