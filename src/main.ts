@@ -161,7 +161,13 @@ function buildWorld(): void {
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là.
-  fauna = new Fauna(island, village.obstaclePoints)
+  // Le quai du marchand compte large pour la faune : l'enclos (rayon 3,1)
+  // se pose autour d'une seule cellule à 1 u des obstacles, et sa palissade
+  // passait au travers des caisses.
+  fauna = new Fauna(
+    island,
+    village.obstaclePoints.concat(village.blockers.map((b) => ({ ...b, r: b.r + 2.6 }))),
+  )
   fauna.onFishJump = () => ambience.plop()
   // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
   // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
@@ -270,6 +276,9 @@ function openWonderCard(): void {
  *  le quai (une île d'un autre âge a d'autres buissons) sont retirés : le
  *  colon n'a jamais à y aller. */
 function placeGoods(): void {
+  // Un quai tiré en cours de partie évite l'enclos déjà dressé.
+  const pen = fauna?.pen
+  village.goodsAvoid = pen ? [pen] : []
   village.setTools(game.save.tools)
   game.save.goods = village.goodsAt
   const zones = village.blockers

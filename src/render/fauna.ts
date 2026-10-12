@@ -411,6 +411,11 @@ export class Fauna {
   private readonly gullMesh: InstancedMesh
   /** Centre de l'enclos et du poulailler, déduits des zones d'habitat. */
   private penCenter: { x: number; z: number } | null = null
+  /** L'enclos à moutons, palissade comprise (rayon 3,1), pour que le quai du
+   *  marchand ne s'y pose pas. */
+  get pen(): { x: number; z: number; r: number } | null {
+    return this.penCenter ? { ...this.penCenter, r: 3.3 } : null
+  }
   private coopAt: { x: number; z: number } | null = null
   /** Décor fixe des zones : la clôture du pré et la cabane à poules. La faune
    *  bouge, ses lieux non — un seul mesh fusionné pour les deux. */

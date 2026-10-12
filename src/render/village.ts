@@ -4669,6 +4669,7 @@ export class Village {
       for (let i = 0; i < this.nodeXZ!.length; i += 2)
         if (Math.hypot(this.nodeXZ![i]! - x, this.nodeXZ![i + 1]! - z) < r) return false
     for (const c of this.island.cells) if (c.beach && Math.hypot(c.x - x, c.z - z) < r) return false
+    for (const a of this.goodsAvoid) if (Math.hypot(a.x - x, a.z - z) < Village.GOODS_R + a.r) return false
     this.buildLanes()
     for (const lane of this.lanes!)
       for (const q of lane.pts) if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
@@ -4677,6 +4678,9 @@ export class Village {
     return true
   }
   private nodeXZ: number[] | null = null
+  /** Zones que le quai ne doit pas couvrir, hors du village : l'enclos à
+   *  moutons de la faune, tiré au hasard à chaque chargement. */
+  goodsAvoid: readonly { x: number; z: number; r: number }[] = []
 
   /** La parcelle du quai : d'abord le long des rues, comme un bâtiment,
    *  sinon n'importe où sur l'île en partant du feu. Jamais de repli SUR le
