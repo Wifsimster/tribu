@@ -4719,7 +4719,12 @@ export class Village {
     const cargo = Village.CARGO.filter((id) => ids.includes(id))
     if (cargo.length > 0) {
       if (!this.goodsPos) this.goodsPos = this.goodsSlot()
-      if (this.goodsPos) parts.push(this.quay(cargo, this.goodsPos))
+      if (this.goodsPos) {
+        parts.push(this.quay(cargo, this.goodsPos))
+        // Un sapin qui a poussé depuis (l'île grandit d'âge en âge) ne
+        // traverse pas les caisses.
+        this.island.clearCorridor([this.goodsPos], Village.GOODS_R + 0.6)
+      }
     }
     this.goodsGeo = parts.length === 0 ? null : parts.length === 1 ? parts[0]! : mergeGeometries(parts)
     this.restack()

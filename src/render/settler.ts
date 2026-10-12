@@ -426,7 +426,25 @@ export class Settler {
   /** Sent by a tap on a resource node, or by the focus buttons. */
   sendTo(p: Vector3): void {
     this.destination.set(p.x, 0, p.z)
+    // Une cible DANS une emprise (un buisson repoussé au bord du quai, un tap
+    // sur une caisse) est ramenée à son bord : sinon il piétinerait contre
+    // l'emprise sans jamais l'atteindre.
+    for (const b of this.extra) {
+      const dx = this.destination.x - b.x
+      const dz = this.destination.z - b.z
+      const d = Math.hypot(dx, dz)
+      if (d >= b.r + 0.3) continue
+      const k = (b.r + 0.3) / Math.max(d, 1e-3)
+      this.destination.set(b.x + (d > 1e-3 ? dx * k : b.r + 0.3), 0, b.z + (d > 1e-3 ? dz * k : 0))
+    }
     this.phase = 'walkOut'
+  }
+
+  /** Les emprises posées après le camp — le quai du marchand — et que le
+   *  colon contourne comme les abris. */
+  private extra: readonly { x: number; z: number; r: number }[] = []
+  setBlockers(extra: readonly { x: number; z: number; r: number }[]): void {
+    this.extra = extra
   }
 
   celebrate(): void {
@@ -618,7 +636,7 @@ export class Settler {
    *  glisse le long des peaux et les contourne, pour cinq comparaisons par
    *  image. */
   private skirtCamp(): void {
-    for (const b of CAMP_BLOCKERS) {
+    for (const b of this.extra.length ? [...CAMP_BLOCKERS, ...this.extra] : CAMP_BLOCKERS) {
       const dx = this.group.position.x - b.x
       const dz = this.group.position.z - b.z
       const d = Math.hypot(dx, dz)
