@@ -225,6 +225,18 @@ function bakeFirelight(geo: BufferGeometry): void {
   col.needsUpdate = true
 }
 
+/** Demi-étendue d'un maillage centré, en x puis en z. */
+function halfX(geo: BufferGeometry): number {
+  geo.computeBoundingBox()
+  const b = geo.boundingBox!
+  return Math.max(-b.min.x, b.max.x)
+}
+function halfZ(geo: BufferGeometry): number {
+  geo.computeBoundingBox()
+  const b = geo.boundingBox!
+  return Math.max(-b.min.z, b.max.z)
+}
+
 /** Grain de matière. Une valeur légèrement différente par sommet, tirée de sa
  *  position: c'est ce qui tient lieu d'enduit tacheté et d'appareillage
  *  irrégulier, et ça se range dans l'attribut de couleur qu'on paie déjà. */
@@ -4637,24 +4649,31 @@ export class Village {
   /** Rien de ce qui attire le colon ne doit tomber sur le quai : ni arbre,
    *  ni bloc, ni buisson, ni plage de pêche, ni rue. Sinon il irait
    *  chercher sa ressource au milieu des caisses. */
-  private goodsClear(x: number, z: number): boolean {
-    const r = Village.GOODS_R + 0.6
-    if (!this.nodeXZ) {
+  private goodsClear(x: number, z: number, strict = true, gap = 1.0): boolean {
+    const r = Village.GOODS_R + 0.3
+    if (strict && !this.nodeXZ) {
       this.nodeXZ = []
-      for (const m of this.island.pickables)
+      // Les sapins ne comptent pas : le quai les abat comme une parcelle
+      // (`clearCorridor`), et un arbre abattu n'est plus un nœud de bois.
+      // Blocs et buissons, eux, ne s'abattent pas — un buisson au milieu des
+      // caisses enverrait le colon cueillir sur le quai.
+      for (const m of this.island.pickables) {
+        if (this.island.kindFor(m) === 'wood') continue
         for (let i = 0; i < m.count; i++) {
           const p = this.island.instancePosition(m, i)
           this.nodeXZ.push(p.x, p.z)
         }
+      }
     }
-    for (let i = 0; i < this.nodeXZ.length; i += 2)
-      if (Math.hypot(this.nodeXZ[i]! - x, this.nodeXZ[i + 1]! - z) < r) return false
+    if (strict)
+      for (let i = 0; i < this.nodeXZ!.length; i += 2)
+        if (Math.hypot(this.nodeXZ![i]! - x, this.nodeXZ![i + 1]! - z) < r) return false
     for (const c of this.island.cells) if (c.beach && Math.hypot(c.x - x, c.z - z) < r) return false
     this.buildLanes()
     for (const lane of this.lanes!)
-      for (const q of lane.pts) if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + 1.0) return false
+      for (const q of lane.pts) if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
     for (const q of [...this.roadPath, ...this.railPath])
-      if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + 1.0) return false
+      if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
     return true
   }
   private nodeXZ: number[] | null = null
@@ -4665,19 +4684,38 @@ export class Village {
    *  restent dans la cale plutôt que de couvrir le foyer. */
   private goodsSlot(): { x: number; z: number; rot: number } | null {
     const r = Village.GOODS_R
-    const fp = 2.0
-    const accept = (x: number, z: number): boolean => this.goodsClear(x, z)
-    let s: { x: number; z: number } | null = this.laneSlot(r, fp, 0, accept)
-    if (!s) {
-      const cells = [...this.island.cells].sort(
-        (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
-      )
+    // 2,4 et non la demi-largeur du quai : la parcelle recule alors de la rue
+    // de 2,4 + 1,25 (voir `laneSlot`), juste au-delà des 3,6 qu'exige
+    // `goodsClear` — sinon aucune parcelle de rue ne passait jamais.
+    const fp = 2.4
+    const cells = [...this.island.cells].sort(
+      (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
+    )
+    let s: { x: number; z: number } | null = null
+    // Deux passes. D'abord une parcelle sans bloc ni buisson. Sur six îles
+    // témoins sur quinze il n'y en a aucune : on tolère alors blocs et
+    // buissons — `placeGoods` (main.ts) les retire des cibles du colon, qui
+    // n'a donc toujours aucune raison d'aller sur le quai. Rivage et rues
+    // restent interdits dans les deux passes.
+    // Troisième passe, pour les îles les plus serrées (4 sur 15) : le quai
+    // peut border une rue à 0,5 près au lieu de 1 — la chaussée reste libre,
+    // le colon passe à côté sans le traverser — et son emprise ne réserve
+    // plus de marge de parcelle (empreinte 1,6 au lieu de 2,4).
+    for (const [strict, gap, foot] of [
+      [true, 1.0, fp],
+      [false, 1.0, fp],
+      [false, 0.5, 1.6],
+    ] as const) {
+      const accept = (x: number, z: number): boolean => this.goodsClear(x, z, strict, gap)
+      s = this.laneSlot(r, foot, 0, accept)
+      if (s) break
       for (const c of cells) {
-        if (!this.fits(new Vector3(c.x, GROUND_Y, c.z), r, fp, 0, false, accept)) continue
+        if (!this.fits(new Vector3(c.x, GROUND_Y, c.z), r, foot, 0, false, accept)) continue
         this.lots.push({ x: c.x, z: c.z, r })
         s = { x: c.x, z: c.z }
         break
       }
+      if (s) break
     }
     // Les lots regardent le feu : le village voit ce que le marchand a laissé.
     return s ? { x: s.x, z: s.z, rot: Math.atan2(HEARTH.x - s.x, HEARTH.z - s.z) } : null
@@ -4699,8 +4737,9 @@ export class Village {
         // pâle, et le lot disparaissait dans la terre battue déjà blanchie par
         // le halo (mesuré : luminance 200 contre 237 pour le sol). L'étain doit
         // rester froid pour se lire comme du métal.
-        tin.computeBoundingBox()
-        const b = tin.boundingBox!
+        // Mesuré AVANT la mise à l'échelle : three recalcule la boîte en place.
+        const hx = halfX(tin) * scale * SCALE
+        const hz = halfZ(tin) * scale * SCALE
         const yaw = facingFire(x, z)
         tin.scale(scale, scale, scale).rotateY(yaw).translate(x, 0, z)
         grain(tin, 0.07)
@@ -4709,11 +4748,7 @@ export class Village {
         tin.translate(-x, 0, -z).scale(SCALE, SCALE, SCALE)
         tin.translate(wx, GROUND_Y, wz)
         parts.push(tin)
-        const k = scale * SCALE
-        this.goodsLots.push({
-          id: 'etain', x: wx, z: wz, yaw,
-          hx: Math.max(-b.min.x, b.max.x) * k, hz: Math.max(-b.min.z, b.max.z) * k,
-        })
+        this.goodsLots.push({ id: 'etain', x: wx, z: wz, yaw, hx, hz })
       }
     }
     const cargo = Village.CARGO.filter((id) => ids.includes(id))
@@ -4755,10 +4790,8 @@ export class Village {
       let hx: number
       let hz: number
       if (g) {
-        g.computeBoundingBox()
-        const b = g.boundingBox!
-        const ex = Math.max(-b.min.x, b.max.x) * k
-        const ez = Math.max(-b.min.z, b.max.z) * k
+        const ex = halfX(g) * k
+        const ez = halfZ(g) * k
         hx = yaw ? ez : ex
         hz = yaw ? ex : ez
         g.scale(k, k, k).rotateY(yaw).translate(lx, 0.05, lz)
