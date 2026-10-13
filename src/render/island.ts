@@ -1395,8 +1395,12 @@ export class Island {
       // v3.61.0 : la mer fonce franchement vers le large (eau profonde de la
       // palette), au lieu de 10 % d'assombrissement. C'est cette pente, du
       // turquoise de la berge au bleu profond, qui dit « on voit le fond près
-      // du rivage, plus au large ».
-      out.copy(PALETTE.water).lerp(PALETTE.waterDeep, smoothstep(2.5, 9, d) * 0.7)
+      // du rivage, plus au large ». La pente DOIT être finie avant 3 cellules :
+      // la rampe s'arrête à 3,2 cellules du point le plus saillant, et au-delà
+      // le bord clampé est étiré à l'infini. Une pente plus longue laissait
+      // au bord des texels de valeurs différentes selon l'angle, et le clamp
+      // les étirait en traînées claires qui rayonnaient depuis l'île.
+      out.copy(PALETTE.water).lerp(PALETTE.waterDeep, smoothstep(1.2, 3.0, d) * 0.7)
       // Tout ce qui suit meurt avant deux cellules. Le large, qui est
       // l'essentiel de la texture, ne paie pas l'ourlet de rive.
       // LE LAGON (v3.5.0, direction visuelle demandée) : une vraie ceinture de
@@ -1496,9 +1500,11 @@ export class Island {
           '#include <map_fragment>',
           [
             '#include <map_fragment>',
-            // Haut-fond seulement : au-delà de ~2 cellules, l'alpha de la
-            // rampe dépasse 0,5 et le motif s'éteint.
-            'float causticMask = 1.0 - smoothstep(0.31, 0.5, sampledDiffuseColor.a);',
+            // Haut-fond seulement. L'alpha de la rampe vaut 0,30 contre la
+            // berge, 0,33 à deux cellules, au moins 0,40 au bord de la rampe :
+            // le motif s'éteint vers 2 cellules et ne peut pas fuir au large
+            // par le bord clampé.
+            'float causticMask = 1.0 - smoothstep(0.305, 0.335, sampledDiffuseColor.a);',
             'if (causticMask > 0.001) {',
             // L'uv de la rampe couvre 2·span unités monde : on repasse en
             // unités monde pour que la maille ne dépende pas de la taille de l'île.
