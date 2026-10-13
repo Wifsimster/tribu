@@ -160,14 +160,10 @@ function buildWorld(): void {
   game.save.layoutV = 3
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
-  // du rivage de CETTE île-là.
-  // Le quai du marchand compte large pour la faune : l'enclos (rayon 3,1)
-  // se pose autour d'une seule cellule à 1 u des obstacles, et sa palissade
-  // passait au travers des caisses.
-  fauna = new Fauna(
-    island,
-    village.obstaclePoints.concat(village.blockers.map((b) => ({ ...b, r: b.r + 2.6 }))),
-  )
+  // du rivage de CETTE île-là. Le quai n'y entre pas ici : qu'il vienne de la
+  // sauvegarde ou d'un achat en cours de partie, il passe par `placeGoods`,
+  // qui le donne à la faune (`setBlockers`) — un seul chemin pour les deux.
+  fauna = new Fauna(island, village.obstaclePoints)
   fauna.onFishJump = () => ambience.plop()
   // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
   // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
@@ -180,6 +176,8 @@ function buildWorld(): void {
     return ambience.work('pierre')
   }
   fishing = false
+  // Le quai n'y entre pas ici : `placeGoods` le donne aux villageois comme à
+  // la faune, qu'il vienne de la sauvegarde ou d'un achat en cours de partie.
   villagers = new Villagers(island, village.obstaclePoints)
   // La tribu s'étoffe avec les âges : une cueilleuse au Néolithique, un
   // enfant à l'Antiquité. Le colon n'est plus seul.
@@ -283,6 +281,10 @@ function placeGoods(): void {
   game.save.goods = village.goodsAt
   const zones = village.blockers
   settler.setBlockers(zones)
+  // Les bêtes aussi : la faune a relevé ses habitats avant le quai, et
+  // garderait sinon un cheval à brouter entre les caisses.
+  fauna.setBlockers(zones)
+  villagers.setBlockers(zones)
   for (const [kind, spots] of nodeSpots)
     nodeSpots.set(
       kind,
