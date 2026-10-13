@@ -1265,8 +1265,15 @@ export class Island {
      *  la couronne de la référence culmine à +130 de luminance sur l'eau
      *  voisine, la nôtre à +102 — le trait s'élargit d'un demi-pixel pour que
      *  le pic survive au lissage de l'écran, il ne devient pas un glow. */
-    const W = 0.16
-    const line = PALETTE.foamLine
+    // v3.61.0 : 0,16 → 0,2. Posé sur le haut-fond turquoise, plus clair qu'avant,
+    // le trait perdait son contraste ; un poil plus large et plus plein, il
+    // redevient le liseré d'écume net qui dessine la côte.
+    const W = 0.2
+    // Couleur poussée au-delà de 1 dans les sommets : l'ACES ramène un blanc
+    // à 1,0 vers un gris clair, qui se perdait sur le haut-fond turquoise.
+    // Surexposé, le trait ressort blanc net, sans programme shader de plus
+    // (un `toneMapped: false` en aurait coûté un).
+    const line = PALETTE.foamLine.clone().multiplyScalar(1.6)
     const verts: number[] = []
     const colors: number[] = []
     const index: number[] = []
@@ -1281,7 +1288,7 @@ export class Island {
       // plafonnait à +81 de luminance quand la couronne de la référence tient
       // +130 — la respiration soleil/hachure reste, l'amplitude ne s'y noie
       // plus.
-      return (0.85 + 0.15 * lit) * (0.8 + 0.2 * brk)
+      return (0.9 + 0.1 * lit) * (0.88 + 0.12 * brk)
     }
 
     /** Quad du trait : lisière intérieure collée au mur (i0→i1), lisière
@@ -1299,7 +1306,7 @@ export class Island {
       pts.forEach(([x, z], k) => {
         // Un souffle au-dessus de la nappe (y=0) et de la 2e ride (0,012).
         verts.push(x, 0.02, z)
-        const a = ampAt(x, z, nx, nz) * (k < 2 ? 1 : 0.3)
+        const a = ampAt(x, z, nx, nz) * (k < 2 ? 1 : 0.45)
         colors.push(line.r, line.g, line.b, a)
       })
       index.push(b, b + 2, b + 1, b, b + 3, b + 2)
@@ -1385,7 +1392,11 @@ export class Island {
       const d = shoreDist(x, z)
       // Nappe d'une seule couleur : c'est la brume qui creuse la distance. Le
       // dégradé radial d'avant faisait exactement le halo qu'on nous reproche.
-      out.copy(PALETTE.water).multiplyScalar(1 - smoothstep(0.4, 3.2, d) * 0.1)
+      // v3.61.0 : la mer fonce franchement vers le large (eau profonde de la
+      // palette), au lieu de 10 % d'assombrissement. C'est cette pente, du
+      // turquoise de la berge au bleu profond, qui dit « on voit le fond près
+      // du rivage, plus au large ».
+      out.copy(PALETTE.water).lerp(PALETTE.waterDeep, smoothstep(2.5, 9, d) * 0.7)
       // Tout ce qui suit meurt avant deux cellules. Le large, qui est
       // l'essentiel de la texture, ne paie pas l'ourlet de rive.
       // LE LAGON (v3.5.0, direction visuelle demandée) : une vraie ceinture de
@@ -1394,7 +1405,10 @@ export class Island {
       // HALO — le halo, c'était une auréole molle centrée sur l'île ; ici la
       // bande suit l'empreinte réelle de la côte (shoreDist), donc elle épouse
       // la découpe au lieu de la cercler.
-      out.lerp(PALETTE.waterShallow, smoothstep(4.2, 0.1, d) * 0.62)
+      // Le haut-fond monte à 0,85 contre la côte (0,62 avant) : un turquoise
+      // clair et franc sur la première cellule, qui retombe vite. La pente
+      // reste douce au-delà, sinon la ceinture lirait comme un anneau posé.
+      out.lerp(PALETTE.waterShallow, smoothstep(4.2, 0.1, d) ** 1.4 * 0.85)
       if (d < 2.2) {
         // Ombre de contact IRRÉGULIÈRE : portée et densité suivent le profil
         // cuit par secteur (profondeur de la fondation + creux de la côte) et
@@ -1434,6 +1448,7 @@ export class Island {
     // derrière lui — sans ça, la voûte étoilée (r=320, sous le niveau de la
     // mer) transperçait toute la zone d'eau en vue rasante.
     const bedMat = new MeshBasicMaterial({ map: tex, depthWrite: true })
+    this.addCaustics(bedMat, span)
     this.unlit.push(bedMat)
     const bed = new Mesh(disc, bedMat)
     bed.rotation.x = -Math.PI / 2
@@ -1454,6 +1469,60 @@ export class Island {
     surface.renderOrder = -1
 
     this.group.add(bed, surface)
+  }
+
+  /** Caustiques douces sur le fond du lagon (v3.61.0, inspirées de l'eau
+   *  translucide d'un jeu de pêche cosy) : un réseau de lignes claires qui
+   *  ondule sur le haut-fond, là où l'on « voit le fond ».
+   *  - Aucune texture : le motif est une somme de sinus déformés, calculée
+   *    dans le shader du fond, qui existe déjà (pas de draw call en plus).
+   *  - Le masque est l'alpha DÉJÀ cuit dans la rampe de l'eau : 0,3 contre la
+   *    berge, 1 au large. Pas de caustiques au large, où l'eau est opaque.
+   *  - Elles multiplient la couleur du fond : la teinte de nuit des `unlit`
+   *    les éteint d'elle-même, aucun réglage jour/nuit à tenir à part.
+   *  Coût : un programme shader de plus (le fond ne partage plus celui de la
+   *  surface). */
+  private addCaustics(mat: MeshBasicMaterial, span: number): void {
+    const uTime = { value: 0 }
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uCausticTime = uTime
+      shader.uniforms.uCausticSpan = { value: span }
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uCausticTime;\nuniform float uCausticSpan;',
+        )
+        .replace(
+          '#include <map_fragment>',
+          [
+            '#include <map_fragment>',
+            // Haut-fond seulement : au-delà de ~2 cellules, l'alpha de la
+            // rampe dépasse 0,5 et le motif s'éteint.
+            'float causticMask = 1.0 - smoothstep(0.31, 0.5, sampledDiffuseColor.a);',
+            'if (causticMask > 0.001) {',
+            // L'uv de la rampe couvre 2·span unités monde : on repasse en
+            // unités monde pour que la maille ne dépende pas de la taille de l'île.
+            '  vec2 p = (vMapUv - 0.5) * uCausticSpan * 4.2;',
+            '  float t = uCausticTime * 0.45;',
+            '  vec2 q = p + 0.55 * vec2(sin(p.y * 0.9 + t), cos(p.x * 0.8 - t * 1.1));',
+            '  float s = abs(sin(q.x * 1.6 + t) + sin(q.y * 1.8 - t * 0.8) + sin((q.x + q.y) * 1.2 + t * 0.6));',
+            // Les lignes naissent là où la somme passe par zéro : fines, pas
+            // des taches. Amplitude basse : elles animent le fond sans
+            // concurrencer le liséré d'écume, qui doit rester le plus clair.
+            '  float c = pow(1.0 - clamp(s * 0.9, 0.0, 1.0), 6.0);',
+            '  diffuseColor.rgb *= 1.0 + c * 0.2 * causticMask;',
+            '}',
+          ].join('\n'),
+        )
+    }
+    // Le temps est avancé par `tickWater`, appelé depuis la boucle du jeu.
+    this.causticTime = uTime
+  }
+  private causticTime: { value: number } | null = null
+
+  /** Avance l'animation des caustiques (secondes de jeu). */
+  tickWater(t: number): void {
+    if (this.causticTime) this.causticTime.value = t % 1000
   }
 
   /** Les destinations d'expédition SE VOIENT : deux silhouettes bleutées à

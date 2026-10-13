@@ -1798,6 +1798,8 @@ function frame(now: number): void {
   // du jour ne soit calculée, et l'éclairage public a besoin de la connaître.
   lastDaylight = daylight
   island.setDaylight(daylight)
+  // Caustiques du lagon : elles ondulent avec le temps réel, même en pause.
+  island.tickWater(elapsed)
   // L'enneigement progresse DANS la saison : l'appel est gardé côté île (il ne
   // repeint qu'aux 2 % de saison écoulée).
   island.setSeason(game.season.id, game.seasonU)
