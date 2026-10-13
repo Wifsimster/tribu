@@ -22,14 +22,14 @@ export const PALETTE = {
   /** Couleur de l'eau *proche* : la brume se charge d'éclaircir le lointain.
    *  L'eau est franchement bleue et d'une valeur basse : c'est l'écart de
    *  luminosité avec la terre, plus que la teinte, qui détache la silhouette. */
-  water: new Color('#2b7fbe'),
-  waterDeep: new Color('#17548f'),
-  waterShallow: new Color('#5cb8dc'),
+  water: new Color('#1f98cf'),
+  waterDeep: new Color('#1572ae'),
+  waterShallow: new Color('#4fdccd'),
   /** Brume et fond de ciel — même teinte, pour que l'horizon disparaisse. */
-  haze: new Color('#93b8cc'),
-  sky: new Color('#aed3e4'),
+  haze: new Color('#b4dcf2'),
+  sky: new Color('#5db3ee'),
   /** La 2e ride, au large : un souffle à peine plus clair que l'eau. */
-  foam: new Color('#8ed3ea'),
+  foam: new Color('#bff3f0'),
   /** Le trait de flottaison. Clair, oui — mais c'est sa FINESSE qui le
    *  distingue des halos des rounds passés : un trait dessiné de 2 px collé à
    *  la découpe, jamais un dégradé. La référence a les deux : ce trait ET un
@@ -37,10 +37,10 @@ export const PALETTE = {
   foamLine: new Color('#f2f9f3'),
   /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
    *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
-  sand: new Color('#e3d3a2'),
-  grass: new Color('#5aa84b'),
-  grassLight: new Color('#76c25b'),
-  grassDark: new Color('#3f8340'),
+  sand: new Color('#efd98e'),
+  grass: new Color('#5cbb2e'),
+  grassLight: new Color('#8cd83e'),
+  grassDark: new Color('#34952e'),
   /** Terre du socle : ce qui affleure sous l'herbe dans les contre-marches. */
   earth: new Color('#a4906b'),
   earthDark: new Color('#6f6047'),
@@ -50,10 +50,10 @@ export const PALETTE = {
   dirt: new Color('#ab8352'),
   dirtDark: new Color('#8a6740'),
   trunk: new Color('#7d5d41'),
-  leafA: new Color('#4f9e44'),
-  leafB: new Color('#6bbb51'),
-  leafC: new Color('#3a7f39'),
-  thatch: new Color('#d0aa6a'),
+  leafA: new Color('#46a82f'),
+  leafB: new Color('#6cc63a'),
+  leafC: new Color('#2f8a2c'),
+  thatch: new Color('#e0b25a'),
   hide: new Color('#bb8a62'),
   skin: new Color('#dda878'),
   cloth: new Color('#c26b4d'),
@@ -65,6 +65,33 @@ export const PALETTE = {
   roofDark: new Color('#31489b'),
   roofLight: new Color('#6d87dd'),
 } as const
+
+/** Lumière de jour, réglée avec la palette (v3.61.0, « variante A » validée
+ *  sur planche d'ambiance). Rangée ici plutôt que dans `scene.ts` pour qu'un
+ *  test sans navigateur puisse la figer : la scène a besoin du DOM.
+ *  - Soleil plus chaud et un peu plus fort : les faces éclairées dorent.
+ *  - Sol hémisphérique chaud (#7d7d5c) au lieu de bleu-gris : les ombres
+ *    tirent vers le vert doré au lieu de ternir l'herbe.
+ *  - Ambiante un peu plus basse : le contraste soleil/ombre reste franc.
+ *  - Exposition 1,10 : le tout gagne en clarté sans brûler le sable. */
+export const LIGHT = {
+  sunDay: new Color('#ffe2b0'),
+  sunIntensity: 2.55,
+  hemiSky: new Color('#d2e9ff'),
+  hemiGround: new Color('#7d7d5c'),
+  hemiIntensity: 0.62,
+  /** Part de l'ambiante qui suit le jour (le reste, 0,16, tient la nuit). */
+  hemiDay: 0.56,
+  exposure: 1.1,
+} as const
+
+/** Part de la teinte d'âge (`AGES.sky` / `AGES.fog`) mêlée au ciel et à la
+ *  brume. Elle valait 0,35 et 0,18 : chaque âge tardif tire vers le gris-vert
+ *  pâle, et le ciel finissait délavé. À zéro, le ciel reste bleu franc d'un
+ *  bout à l'autre de la partie ; l'âge se lit dans le village, pas dans un
+ *  ciel sale. */
+export const AGE_SKY_MIX = 0
+export const AGE_HAZE_MIX = 0
 
 /** Direction du soleil, en dur à un seul endroit. `scene.ts` la donne à la
  *  lumière, `island.ts` en déduit de quel côté l'île pose son ombre sur l'eau :

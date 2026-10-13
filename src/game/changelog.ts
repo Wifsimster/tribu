@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.61.0',
+    title: 'Un ciel bleu franc',
+    items: [
+      "Le ciel est d'un bleu franc et ne grisaille plus au fil des âges : il garde la même couleur du Paléolithique à l'Ère numérique. La brume de l'horizon est plus claire.",
+      "Le soleil est plus chaud et un peu plus fort, et les ombres tirent vers le vert doré au lieu du bleu-gris. L'herbe, les feuillages et le chaume sont plus vifs, le sable plus doré.",
+      "L'eau est turquoise : claire sur les haut-fonds, plus profonde au large. Le sable, l'écume et l'eau gardent un net écart de clarté, pour que la côte se lise toujours.",
+      "Rien d'autre ne change : ta partie, tes bâtiments et ta production restent tels quels.",
+    ],
+  },
+  {
     version: '3.59.0',
     title: 'Le décor laisse la place',
     items: [
