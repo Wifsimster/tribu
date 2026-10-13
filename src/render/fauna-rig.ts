@@ -117,6 +117,15 @@ export const GULL_WING = {
    *  bord de la capsule — une épaule hors du corps ouvrirait un jour. */
   shoulderAt: [0.025, 0, -0.01] as const,
   elbowAt: [0.22, 0.022, -0.015] as const,
+  /** Fondu battu ↔ plané (τ, s). */
+  blend: 0.3,
+  /** Descente en plané, remontée en battu (u/s), perte maximale (u). */
+  sink: 0.1,
+  climb: 0.25,
+  maxDrop: 0.5,
+  /** Corps en opposition aux ailes (u), et ce qui reste de son roulis (rad). */
+  bodyBob: 0.015,
+  bodyRoll: 0.05,
 }
 
 /** Les 12 flottants de `uRig` (3 × vec4). Leur sens dépend des pièces que

@@ -182,3 +182,103 @@ test('A5 : jonctions du cerf fermées au pas, au trot de fuite et au broutage', 
   assert.ok(roots >= 20, `${roots} sommets de jonction`)
   assert.ok(worst >= -0.01, `un sommet de jonction sort de ${(-worst).toFixed(3)} u`)
 })
+
+// ── Mouette : vol battu et plané ───────────────────────────────────────────
+
+const { gullGeo } = await import('../src/render/fauna.ts')
+const { GULL_WING, wingUniform } = await import('../src/render/fauna-rig.ts')
+
+test('mouette : épaules dans le corps, coude commun au bras et à la main dans toutes les poses', () => {
+  const geo = gullGeo()
+  const piv = geo.getAttribute('aPivot')
+  const ids = new Set()
+  for (let i = 0; i < piv.count; i++) ids.add(Math.round(piv.getW(i)))
+  assert.deepEqual([...ids].sort((a, b) => a - b), [PART.RIGID, PART.ARM_L, PART.ARM_R, PART.HAND_L, PART.HAND_R])
+  // Corps : capsule de rayon 0,05 couchée sur z. L'épaule est à 0,025 de l'axe.
+  const [sx, sy] = GULL_WING.shoulderAt
+  assert.ok(0.05 - Math.hypot(sx, sy) >= 0.02, 'épaule à 0,02 u au moins dans le corps')
+  const u = wingUniform(GULL_WING)
+  const [ex, ey, ez] = GULL_WING.elbowAt
+  const a = []
+  const b = []
+  let worst = 0
+  for (const s of [1, -1]) {
+    const arm = [s * sx, sy, GULL_WING.shoulderAt[2], s > 0 ? PART.ARM_L : PART.ARM_R]
+    const hand = [s * ex, ey, ez, s > 0 ? PART.HAND_L : PART.HAND_R]
+    for (let k = 0; k < 64; k++)
+      for (const flap of [0, 0.5, 1]) {
+        const anim = [(k / 64) * TAU, 0, 0, flap]
+        const p = [s * ex, ey, ez]
+        rigPose(a, p, arm, anim, u)
+        rigPose(b, p, hand, anim, u)
+        worst = Math.max(worst, Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]))
+      }
+  }
+  assert.ok(worst < 1e-9, `le coude se déboîte de ${worst} u`)
+})
+
+test('mouette : ailes en miroir ; le battu monte à +30° et descend à −30°, le plané tient le dièdre', () => {
+  const u = wingUniform(GULL_WING)
+  const tipL = [0.62, 0.11, -0.03]
+  const tipR = [-0.62, 0.11, -0.03]
+  const L = [PART.HAND_L, GULL_WING.elbowAt[0], GULL_WING.elbowAt[1], GULL_WING.elbowAt[2]]
+  const R = [PART.HAND_R, -GULL_WING.elbowAt[0], GULL_WING.elbowAt[1], GULL_WING.elbowAt[2]]
+  const pl = []
+  const pr = []
+  let lo = Infinity
+  let hi = -Infinity
+  for (let k = 0; k < 64; k++) {
+    const anim = [(k / 64) * TAU, 0, 0, 1]
+    rigPose(pl, tipL, [L[1], L[2], L[3], L[0]], anim, u)
+    rigPose(pr, tipR, [R[1], R[2], R[3], R[0]], anim, u)
+    assert.ok(Math.abs(pl[0] + pr[0]) < 1e-9 && Math.abs(pl[1] - pr[1]) < 1e-9, 'miroir gauche/droite')
+    lo = Math.min(lo, pl[1])
+    hi = Math.max(hi, pl[1])
+  }
+  // Une aile de 0,6 u qui balaie ±30° (+ la main) : le bout monte et descend
+  // d'au moins 0,25 u de part et d'autre.
+  assert.ok(hi > 0.11 + 0.25 && lo < 0.11 - 0.25, `bout d'aile de ${lo.toFixed(2)} à ${hi.toFixed(2)}`)
+  rigPose(pl, tipL, [L[1], L[2], L[3], L[0]], [1.7, 0, 0, 0], u)
+  const glide = pl[1]
+  rigPose(pl, tipL, [L[1], L[2], L[3], L[0]], [4.2, 0, 0, 0], u)
+  assert.ok(Math.abs(pl[1] - glide) < 1e-9, 'en plané, la phase ne bouge plus l\u2019aile')
+  assert.ok(glide > 0.11 && glide < 0.11 + 0.12, `dièdre léger : bout à ${glide.toFixed(3)}`)
+})
+
+test('mouette : en 40 s de vol, des battus de 2–3 s et des planés de 3–5 s, fondus sans à-coup', () => {
+  const island = new Island(7, 2, [])
+  const f = new Fauna(island, [])
+  f.setKnown(true, true, true, true)
+  const anim = f.gullMesh.geometry.getAttribute('aAnim')
+  const DT = 1 / 60
+  const runs = [[], [], []]
+  const cur = [null, null, null]
+  let jump = 0
+  // `aAnim` n'est rempli qu'à la première image : le saut se mesure ensuite.
+  f.update(DT, 0, FAR, false)
+  const prev = [anim.getW(0), anim.getW(1), anim.getW(2)]
+  for (let k = 1; k < 40 * 60; k++) {
+    f.update(DT, k * DT, FAR, false)
+    for (let i = 0; i < 3; i++) {
+      const g = f.gulls[i]
+      const w = anim.getW(i)
+      jump = Math.max(jump, Math.abs(w - prev[i]))
+      prev[i] = w
+      if (!cur[i] || cur[i].on !== g.flapping) {
+        if (cur[i]) runs[i].push(cur[i])
+        cur[i] = { on: g.flapping, t: 0 }
+      }
+      cur[i].t += DT
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    const full = runs[i].slice(1)
+    assert.ok(full.some((r) => r.on) && full.some((r) => !r.on), `mouette ${i} : bat et plane`)
+    for (const r of full) {
+      const [lo, hi] = r.on ? [2, 3] : [3, 5]
+      assert.ok(r.t >= lo - 0.05 && r.t <= hi + 0.05, `mouette ${i} : ${r.on ? 'battu' : 'plané'} de ${r.t.toFixed(2)} s`)
+    }
+    assert.ok(f.gulls[i].drop <= 0 && f.gulls[i].drop >= -GULL_WING.maxDrop)
+  }
+  assert.ok(jump < 0.1, `poids du battu : saut de ${jump.toFixed(3)} en une image`)
+})

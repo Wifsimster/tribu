@@ -23,7 +23,7 @@ import { tint } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE } from './village'
 import { GROUND_Y, type Island } from './island'
 import { follow, type Footprint, type Ground, type GroundSource, type Pt } from './ground'
-import { DEER_GAIT, PART, gaitUniform, rigMaterial, type Gait } from './fauna-rig'
+import { DEER_GAIT, GULL_WING, PART, gaitUniform, rigMaterial, wingUniform, type Gait } from './fauna-rig'
 
 /** Pièce animée : identifiant (`PART`) et pivot (x, y, z) en espace objet. */
 type Rig = readonly [number, number, number, number]
@@ -291,7 +291,7 @@ function horseGeo(): BufferGeometry {
   return weld(p)
 }
 
-function gullGeo(): BufferGeometry {
+export function gullGeo(): BufferGeometry {
   const body = new Color('#f4f6f4')
   const wing = new Color('#d9dfe0')
   const wingDark = new Color('#b9c2c6')
@@ -317,13 +317,20 @@ function gullGeo(): BufferGeometry {
   // Ailes en dièdre, bouts sombres : la signature de la mouette vue de loin.
   // Trois segments par aile — l'épaule, le bras, la main — pour que le profil
   // s'incurve au lieu de faire une planche.
+  // Squelette (v3.60.0) : le premier segment tourne à l'épaule, DANS le corps ;
+  // le reste de l'aile (bras, main, rémiges) tourne au coude, là où les deux
+  // segments se touchent, puis suit l'épaule. Gauche de l'oiseau = +x.
+  const [shx, shy, shz] = GULL_WING.shoulderAt
+  const [elx, ely, elz] = GULL_WING.elbowAt
   for (const s of [-1, 1]) {
-    p.push(part(new BoxGeometry(0.2, 0.014, 0.15).rotateZ(s * 0.1), wing, s * 0.12, 0.01, -0.01))
-    p.push(part(new BoxGeometry(0.24, 0.012, 0.13).rotateZ(s * 0.2), wingDark, s * 0.33, 0.045, -0.02))
-    p.push(part(new BoxGeometry(0.14, 0.011, 0.1).rotateZ(s * 0.32), tip, s * 0.51, 0.09, -0.03))
+    const arm: Rig = [s > 0 ? PART.ARM_L : PART.ARM_R, s * shx, shy, shz]
+    const hand: Rig = [s > 0 ? PART.HAND_L : PART.HAND_R, s * elx, ely, elz]
+    p.push(part(new BoxGeometry(0.2, 0.014, 0.15).rotateZ(s * 0.1), wing, s * 0.12, 0.01, -0.01, arm))
+    p.push(part(new BoxGeometry(0.24, 0.012, 0.13).rotateZ(s * 0.2), wingDark, s * 0.33, 0.045, -0.02, hand))
+    p.push(part(new BoxGeometry(0.14, 0.011, 0.1).rotateZ(s * 0.32), tip, s * 0.51, 0.09, -0.03, hand))
     // Rémiges du bout, écartées comme des doigts.
     for (let k = 0; k < 3; k++)
-      p.push(part(new BoxGeometry(0.07, 0.009, 0.022).rotateZ(s * 0.34).rotateY(s * (0.1 + k * 0.12)), tip, s * 0.6, 0.11, -0.05 + k * 0.03))
+      p.push(part(new BoxGeometry(0.07, 0.009, 0.022).rotateZ(s * 0.34).rotateY(s * (0.1 + k * 0.12)), tip, s * 0.6, 0.11, -0.05 + k * 0.03, hand))
   }
   return weld(p)
 }
@@ -417,6 +424,23 @@ interface Gull {
   w: number
   alt: number
   phase: number
+  /** Battement (v3.60.0) : phase de l'aile à l'horloge, poids du battu 0–1
+   *  (0 = plané), état visé, temps restant dans cet état, combien d'états
+   *  déjà enchaînés, et altitude perdue en plané (≤ 0). */
+  wing: number
+  flap: number
+  flapping: boolean
+  left: number
+  laps: number
+  drop: number
+}
+
+/** Durée d'un battu (2–3 s) ou d'un plané (3–5 s). Tirée de la graine de la
+ *  mouette et du rang de l'épisode, pas de `Math.random` : le hasard de la
+ *  faune (étapes, trajets) reste celui de la 3.59.0. */
+function gullSpell(g: Gull): number {
+  const r = Math.abs(Math.sin(g.phase * 12.9898 + g.laps * 78.233) * 43758.5453) % 1
+  return g.flapping ? 2 + r : 3 + 2 * r
 }
 
 interface Spot {
@@ -734,7 +758,7 @@ export class Fauna implements GroundSource {
     this.sheepMesh = build(sheepGeo(), 4, 0.05)
     this.henMesh = build(henGeo(), 3, 0.04)
     this.horseMesh = build(horseGeo(), 2, 0.09)
-    this.gullMesh = build(gullGeo(), 3, 0.03)
+    this.gullMesh = build(gullGeo(), 3, 0.03, rigMaterial(wingUniform(GULL_WING)))
     this.sheepMesh.visible = false
     this.henMesh.visible = false
     this.horseMesh.visible = false
@@ -760,7 +784,16 @@ export class Fauna implements GroundSource {
         w: (i % 2 === 0 ? 1 : -1) * (0.3 + Math.random() * 0.12),
         alt: 2.6 + Math.random() * 0.7,
         phase: Math.random() * Math.PI * 2,
+        wing: Math.PI / 2,
+        flap: i === 1 ? 0 : 1,
+        flapping: i !== 1,
+        left: 0,
+        laps: i,
+        drop: 0,
       })
+      const g = this.gulls[i]!
+      // Pas toutes au même instant du cycle.
+      g.left = gullSpell(g) * (0.3 + 0.7 * (g.phase / TAU))
     }
   }
 
@@ -1438,22 +1471,45 @@ export class Fauna implements GroundSource {
   }
 
   private stepGulls(dt: number, time: number): void {
+    const anim = this.gullMesh.geometry.getAttribute('aAnim') as InstancedBufferAttribute
+    const a = anim.array as Float32Array
+    const W = GULL_WING
     for (let i = 0; i < this.gulls.length; i++) {
       const g = this.gulls[i]!
       g.a += g.w * dt
+      // Battu 2–3 s, plané 3–5 s. Le plané descend doucement, le battu
+      // regagne l'altitude perdue.
+      g.left -= dt
+      if (g.left <= 0) {
+        g.flapping = !g.flapping
+        g.laps++
+        g.left = gullSpell(g)
+        // Le battu repart toujours épaule en haut : depuis le dièdre du
+        // plané, l'aile monte au lieu de tomber d'un coup.
+        if (g.flapping) g.wing = Math.PI / 2
+      }
+      g.flap = ease(g.flap, g.flapping ? 1 : 0, dt, W.blend)
+      g.wing += dt * TAU * W.hz
+      if (g.wing >= TAU) g.wing -= TAU
+      g.drop = g.flapping ? Math.min(0, g.drop + W.climb * dt) : Math.max(-W.maxDrop, g.drop - W.sink * dt)
       const x = g.cx + Math.cos(g.a) * g.r
       const z = g.cz + Math.sin(g.a) * g.r
       // Cap tangent au cercle, dans le sens de rotation.
       const heading = Math.atan2(-Math.sin(g.a) * g.w, Math.cos(g.a) * g.w)
-      // Battement accepté en bascule du corps : roulis rapide + inclinaison
-      // vers l'intérieur du virage.
-      const flap = Math.sin(time * 6.2 + g.phase)
-      dummy.position.set(x, g.alt + Math.sin(time * 0.8 + g.phase) * 0.2 + flap * 0.03, z)
-      dummy.rotation.set(0.08, heading, (g.w > 0 ? -0.2 : 0.2) + flap * 0.3)
+      // Le corps descend quand les ailes montent (et inversement), avec un
+      // soupçon de roulis : ce sont les ailes qui battent, plus le corps.
+      const beat = Math.sin(g.wing) * g.flap
+      dummy.position.set(x, g.alt + g.drop + Math.sin(time * 0.8 + g.phase) * 0.2 - beat * W.bodyBob, z)
+      dummy.rotation.set(0.08, heading, (g.w > 0 ? -0.2 : 0.2) + beat * W.bodyRoll)
       dummy.scale.set(1, 1, 1)
       dummy.updateMatrix()
       this.gullMesh.setMatrixAt(i, dummy.matrix)
+      a[i * 4] = g.wing
+      a[i * 4 + 1] = 0
+      a[i * 4 + 2] = 0
+      a[i * 4 + 3] = g.flap
     }
     this.gullMesh.instanceMatrix.needsUpdate = true
+    anim.needsUpdate = true
   }
 }
