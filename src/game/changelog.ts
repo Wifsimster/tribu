@@ -17,6 +17,7 @@ export const CHANGELOG: Release[] = [
       "Les wagons transportent ce que ta tribu produit le plus, du plus abondant au moins abondant : des grumes pour le bois, des blocs pour la pierre, du grain doré pour la nourriture, des balles de paille pour les fibres, des jarres pour l'argile, du minerai pour le cuivre et des barres pour le fer. Le chargement change seulement à l'arrêt en gare : si ta production change, tu le verras au prochain passage du train.",
       "Les wagons sont attelés les uns aux autres et suivent la voie dans les courbes. La voie a été adoucie pour que leurs roues restent sur les rails. En gare, la rame s'arrête le long du quai, la voiture de voyageurs au plus près de l'abri sans dépasser le heurtoir. Aux terminus, le train ne fait plus demi-tour sur place : la locomotive repart en poussant ses wagons.",
       "La locomotive et les wagons ont été modelés pour Tribu. Ils ne sont téléchargés que si ton île a un chemin de fer.",
+      "Plus aucun bâtiment ne déborde sur les rails. Si l'un d'eux touchait la voie dans ta partie, il a été déplacé un peu plus loin. Les autres restent à leur place.",
     ],
   },
   {

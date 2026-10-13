@@ -1973,8 +1973,9 @@ export class Village {
       )
     // Les RAILS suivent un tracé adouci : le plan de la voie tourne de 30° d'un
     // pas à l'autre, et un wagon rigide posé à cheval sur un tel angle a les
-    // roues à côté du rail (voir smoothPath). Gare, parcelles et couloir
-    // restent calés sur le plan (`railPath`) : rien ne bouge au sol.
+    // roues à côté du rail (voir smoothPath). La gare et le couloir de coupe
+    // restent calés sur le plan (`railPath`) ; les PARCELLES, elles, se
+    // mesurent au tracé adouci : c'est lui qui est posé au sol (`trackDist`).
     const track = smoothPath(pts)
     this.trackPath = track
     this.trackCum = [0]
@@ -1994,7 +1995,7 @@ export class Village {
       const cy = Math.cos(yaw)
       const sy = Math.sin(yaw)
       const y = GROUND_Y + 0.05
-      p.push(part(new BoxGeometry(1.15, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
+      p.push(part(new BoxGeometry(Village.BALLAST_W, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
       // Une traverse par pas de 0,4 u (il y en avait trois par pas de 1,6) :
       // c'est ce qui fait lire « voie ».
       p.push(
@@ -2370,6 +2371,7 @@ export class Village {
         // même exigence de terre ferme que pour les bâtiments du village.
         if (!this.onLand(slot, 2.6)) continue
         if (!this.clearOfLots(ix, iz, this.reach('lighthouse'))) continue
+        if (this.trackDist(ix, iz) < Village.RAIL_CLEAR + this.reach('lighthouse')) continue
         bestK = k
         best = slot
       }
@@ -2725,6 +2727,98 @@ export class Village {
    *  relâchée par aucun repli — faute de place, on cherche plus loin. */
   static readonly ALLEY = 0.6
 
+  /** Largeur du ballast, posé de part et d'autre de l'axe des rails. */
+  static readonly BALLAST_W = 1.15
+  /** Dégagement d'une NOUVELLE parcelle à l'axe des rails, au-delà de son
+   *  disque d'occupation : le ballast, puis de quoi passer à pied. */
+  static readonly RAIL_CLEAR = 1.0
+  /** En deçà, un bâtiment DÉJÀ posé est sur le ballast : il est délogé
+   *  (`evictFromTrack`). Plus bas que `RAIL_CLEAR` exprès : un bâtiment d'une
+   *  sauvegarde ne bouge que s'il est en infraction, pas pour du confort. */
+  static readonly RAIL_EVICT = Village.BALLAST_W / 2
+  /** Dégagement en vigueur : `RAIL_CLEAR`, sauf pour la toute dernière
+   *  recherche d'une île pleine, qui accepte le bord du ballast (+5 cm) plutôt
+   *  que de ne pas poser le bâtiment du tout. */
+  private railGap = Village.RAIL_CLEAR
+  private static readonly RAIL_TIGHT = Village.RAIL_EVICT + 0.05
+
+  /** Distance de (x, z) à l'axe des rails tels qu'ils sont posés (tracé
+   *  adouci, segment par segment). Sans voie : l'infini. */
+  private trackDist(x: number, z: number): number {
+    const t = this.trackPath
+    let best = Infinity
+    for (let i = 1; i < t.length; i++) {
+      const a = t[i - 1]!
+      const b = t[i]!
+      const vx = b.x - a.x
+      const vz = b.z - a.z
+      const L = vx * vx + vz * vz
+      const u = L > 0 ? Math.max(0, Math.min(1, ((x - a.x) * vx + (z - a.z) * vz) / L)) : 0
+      const d = (a.x + vx * u - x) ** 2 + (a.z + vz * u - z) ** 2
+      if (d < best) best = d
+    }
+    return Math.sqrt(best)
+  }
+
+  /** Bâtiments délogés par la voie depuis la construction du village (mesure
+   *  et tests). */
+  evicted = 0
+
+  /** Ce que la voie posée recouvre est délogé : le bâti d'avant le chemin de
+   *  fer (la voie le contourne sur son plan, mais le lissage peut l'en
+   *  rapprocher de 1 u), un plan sauvegardé par une version qui mesurait au
+   *  plan. Seuls les disques à moins d'un demi-ballast de l'axe bougent ; les
+   *  bâtiments rendent leur parcelle et `sync` les repose. La Merveille, le
+   *  musée et le quai se reposent ici même. Renvoie vrai si quelque chose a
+   *  bougé. */
+  private evictFromTrack(): boolean {
+    if (this.trackPath.length < 2) return false
+    const over = (x: number, z: number, r: number): boolean =>
+      this.trackDist(x, z) - r < Village.RAIL_EVICT
+    // Le rayon fait partie de la clé : un bâtiment replié sur le feu partage
+    // ses coordonnées avec la gare, et c'est son disque à lui qui part.
+    const freeLot = (x: number, z: number, r: number): void => {
+      const k = this.lots.findIndex((l) => l.x === x && l.z === z && l.r === r)
+      if (k >= 0) this.lots.splice(k, 1)
+    }
+    let moved = 0
+    for (let i = this.propPlacements.length - 1; i >= 0; i--) {
+      const pl = this.propPlacements[i]!
+      if (!over(pl.x, pl.z, this.reach(pl.id))) continue
+      this.propPlacements.splice(i, 1)
+      this.placed.delete(pl.id)
+      freeLot(pl.x, pl.z, this.reach(pl.id))
+      moved++
+    }
+    const wonder = this.wonderPos && over(this.wonderPos.x, this.wonderPos.z, Village.WONDER_R)
+    const museum = this.museumPos && over(this.museumPos.x, this.museumPos.z, Village.MUSEUM_R)
+    const goods = this.goodsPos && over(this.goodsPos.x, this.goodsPos.z, Village.GOODS_R)
+    // Toutes les parcelles fautives sont rendues AVANT d'en reposer une :
+    // sinon la Merveille contournerait un atelier qui s'en va.
+    if (wonder) freeLot(this.wonderPos!.x, this.wonderPos!.z, Village.WONDER_R)
+    if (museum) freeLot(this.museumPos!.x, this.museumPos!.z, Village.MUSEUM_R)
+    if (goods) freeLot(this.goodsPos!.x, this.goodsPos!.z, Village.GOODS_R)
+    if (wonder) {
+      this.wonderPos = null
+      this.wonderKey = ''
+      const shown = this.wonderShown
+      if (shown) this.setWonder(shown.age, shown.stage)
+      moved++
+    }
+    if (museum) {
+      this.museumPos = null
+      this.setRelics(this.relicIds)
+      moved++
+    }
+    if (goods) {
+      this.goodsPos = null
+      this.setTools(this.toolIds)
+      moved++
+    }
+    this.evicted += moved
+    return moved > 0
+  }
+
   /** Le disque `r` centré en (x, z) laisse-t-il une ruelle à tous les autres ? */
   private clearOfLots(x: number, z: number, r: number, spacing = 0): boolean {
     for (const l of this.lots) {
@@ -2751,8 +2845,11 @@ export class Village {
     if (CAMP_BLOCKERS.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.6 + r * 0.5)) return false
     if (trees && this.treeDist(x, z) < 1.1 + footprint * 0.35) return false
     // On ne bâtit pas SUR la voie ferrée : elle est posée avant les savoirs
-    // suivants, et rien ne l'écartait d'eux.
-    if (this.railPath.some((q) => Math.hypot(x - q.x, z - q.z) < 1.0 + r)) return false
+    // suivants, et rien ne l'écartait d'eux. Mesuré sur le tracé ADOUCI, celui
+    // des rails : le plan dont il est tiré tourne de 30° par pas, et le lissage
+    // s'en écarte jusqu'à 1 u — un bâtiment calé sur le plan finissait sur le
+    // ballast.
+    if (this.trackDist(x, z) < this.railGap + r) return false
     // Le pied du ponton reste libre : la chaussée et la barque y arrivent.
     const head = this.jettyHead
     if (head && Math.hypot(x - head.x, z - head.z) < r + 1.0 + Village.ALLEY) return false
@@ -2787,13 +2884,21 @@ export class Village {
     const cells = [...this.island.cells].sort(
       (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
     )
-    for (const c of cells) {
-      const slot = new Vector3(c.x, GROUND_Y, c.z)
-      if (!this.fits(slot, r, footprint, 0, false, accept)) continue
-      this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
-      this.lots.push({ x: c.x, z: c.z, r })
-      return slot
+    // Deux balayages : à distance de confort de la voie, puis au bord du
+    // ballast — une île pleine pose le bâtiment le long des rails plutôt que
+    // sur le feu.
+    for (const gap of [Village.RAIL_CLEAR, Village.RAIL_TIGHT]) {
+      this.railGap = gap
+      for (const c of cells) {
+        const slot = new Vector3(c.x, GROUND_Y, c.z)
+        if (!this.fits(slot, r, footprint, 0, false, accept)) continue
+        this.railGap = Village.RAIL_CLEAR
+        this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
+        this.lots.push({ x: c.x, z: c.z, r })
+        return slot
+      }
     }
+    this.railGap = Village.RAIL_CLEAR
     // L'île entière est pleine : on pose au feu plutôt que de ne rien montrer.
     // Le test d'espacement échoue alors, et c'est voulu : l'île est trop petite.
     this.slotRot = 0
@@ -2957,6 +3062,25 @@ export class Village {
       if (k >= 0) this.lots.splice(k, 1)
       dirty = true
     }
+    // La voie peut être posée au milieu du lot (le dépôt arrive) : ce qu'elle
+    // recouvre est délogé, puis reposé au tour suivant. Deux tours suffisent
+    // (la voie n'est posée qu'une fois) ; le troisième est une garde. Un
+    // bâtiment qui ne trouve plus que le feu (île pleine) y tomberait SUR les
+    // rails — la voie passe par le foyer : il est délogé au dernier tour et
+    // attend une place, plutôt que d'être posé sur la voie.
+    for (let pass = 0; pass < 3; pass++) {
+      this.placeMissing(buildings)
+      if (!this.evictFromTrack()) break
+    }
+    if (this.placedNew) dirty = true
+    this.placedNew = false
+    // Une seule refonte du mesh par lot : au chargement d'une partie avancée,
+    // reconstruire après chaque savoir rendait le coût quadratique.
+    if (dirty) this.rebuildProps()
+  }
+
+  private placedNew = false
+  private placeMissing(buildings: Set<string>): void {
     for (const b of buildings) {
       if (this.placed.has(b)) continue
       // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
@@ -2979,7 +3103,7 @@ export class Village {
       const rot = b === 'lighthouse' ? Math.atan2(-s.x, -s.z) : this.slotRot
       this.propPlacements.push({ id: b, x: s.x, y: s.y, z: s.z, rot })
       this.placed.add(b)
-      dirty = true
+      this.placedNew = true
       // La borne milliaire n'est que la signature des voies romaines : ce que
       // le savoir pose vraiment, c'est la chaussée qui traverse l'île.
       if (b === 'milestone' && !this.roadKnown) {
@@ -2993,9 +3117,6 @@ export class Village {
         this.buildShore()
       }
     }
-    // Une seule refonte du mesh par lot : au chargement d'une partie avancée,
-    // reconstruire après chaque savoir rendait le coût quadratique.
-    if (dirty) this.rebuildProps()
   }
 
 
@@ -4893,6 +5014,9 @@ export class Village {
     if (!saved || this.goodsPos) return
     const r = Village.GOODS_R
     if (!this.island.isLand(saved.x, saved.z) || !this.clearOfLots(saved.x, saved.z, r)) return
+    // Un quai que la voie posée recouvre (plan d'une version qui mesurait au
+    // plan) est retiré au sort, comme un quai qui ne tient plus.
+    if (this.trackDist(saved.x, saved.z) - r < Village.RAIL_EVICT) return
     this.goodsPos = { x: saved.x, z: saved.z, rot: Math.atan2(HEARTH.x - saved.x, HEARTH.z - saved.z) }
     this.lots.push({ x: saved.x, z: saved.z, r })
   }
@@ -4900,7 +5024,7 @@ export class Village {
   /** Rien de ce qui attire le colon ne doit tomber sur le quai : ni arbre,
    *  ni bloc, ni buisson, ni plage de pêche, ni rue. Sinon il irait
    *  chercher sa ressource au milieu des caisses. */
-  private goodsClear(x: number, z: number, strict = true, gap = 1.0): boolean {
+  private goodsClear(x: number, z: number, strict = true, gap = 1.0, railGap = gap): boolean {
     const r = Village.GOODS_R + 0.3
     if (strict && !this.nodeXZ) {
       this.nodeXZ = []
@@ -4924,8 +5048,10 @@ export class Village {
     this.buildLanes()
     for (const lane of this.lanes!)
       for (const q of lane.pts) if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
-    for (const q of [...this.roadPath, ...this.railPath])
+    for (const q of this.roadPath)
       if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
+    // Les rails : au tracé posé, pas au plan (voir `fits`).
+    if (this.trackDist(x, z) < Village.GOODS_R + railGap) return false
     return true
   }
   private nodeXZ: number[] | null = null
@@ -4956,12 +5082,18 @@ export class Village {
     // peut border une rue à 0,5 près au lieu de 1 — la chaussée reste libre,
     // le colon passe à côté sans le traverser — et son emprise ne réserve
     // plus de marge de parcelle (empreinte 1,6 au lieu de 2,4).
-    for (const [strict, gap, foot] of [
-      [true, 1.0, fp],
-      [false, 1.0, fp],
-      [false, 0.5, 1.6],
+    // Quatrième passe : le quai peut longer les rails au bord du ballast. Les
+    // rails sont mesurés au tracé posé (adouci), plus exigeant que les
+    // sommets du plan : sans elle, deux îles témoins sur douze perdaient leur
+    // quai.
+    for (const [strict, gap, foot, rail] of [
+      [true, 1.0, fp, 1.0],
+      [false, 1.0, fp, 1.0],
+      [false, 0.5, 1.6, 1.0],
+      [false, 0.5, 1.6, Village.RAIL_TIGHT],
     ] as const) {
-      const accept = (x: number, z: number): boolean => this.goodsClear(x, z, strict, gap)
+      this.railGap = Math.min(Village.RAIL_CLEAR, rail)
+      const accept = (x: number, z: number): boolean => this.goodsClear(x, z, strict, gap, rail)
       s = this.laneSlot(r, foot, 0, accept)
       if (s) break
       for (const c of cells) {
@@ -4972,6 +5104,7 @@ export class Village {
       }
       if (s) break
     }
+    this.railGap = Village.RAIL_CLEAR
     // Les lots regardent le feu : le village voit ce que le marchand a laissé.
     return s ? { x: s.x, z: s.z, rot: Math.atan2(HEARTH.x - s.x, HEARTH.z - s.z) } : null
   }
