@@ -499,6 +499,20 @@ export class Settler {
         this.pathRev = -1
       }
     }
+    // La carte a changé : s'il se retrouve dans une poche (un recoin fermé
+    // par la pose), aucun chemin n'en sort — il serait condamné à travailler
+    // et rentrer sur place. Il est reposé sur le nœud le plus proche de la
+    // composante principale, un pas court (QA PR #15, B2).
+    if (this.pathRev !== g.revision) {
+      const main = g.mainComponent(BODY_R)
+      if (g.componentAt(pos.x, pos.z, BODY_R) !== main) {
+        const out = g.nearestIn(pos.x, pos.z, BODY_R, main, 6) ?? g.nearestIn(pos.x, pos.z, BODY_R, main, 20)
+        if (out) {
+          pos.x = out.x
+          pos.z = out.z
+        }
+      }
+    }
     const stale =
       this.pathRev !== g.revision ||
       goal.x !== this.pathGoal.x ||

@@ -267,3 +267,71 @@ test("un villageois dont le chemin devient impossible après une pose ne travers
   assert.equal(walled, 0, `${walled} images dans le quai posé`)
   assert.ok(moved > 0.5, 'il repart vers une autre cible')
 })
+
+/** Un nœud libre hors de la composante principale (une poche), ou null. */
+function pocket(ground, r) {
+  const main = ground.mainComponent(r)
+  for (let z = -20; z <= 20; z += 0.2)
+    for (let x = -20; x <= 20; x += 0.2)
+      if (ground.free(x, z, r)) {
+        const c = ground.componentAt(x, z, r)
+        if (c >= 0 && c !== main) return { x, z }
+      }
+  return null
+}
+
+test('mobiles : nés dans leur composante, sortis d\'une poche, jamais immobiles plus de 10 s', () => {
+  // Défaut relevé par la QA de la PR #15 : un cerf né dans une poche d'un
+  // nœud restait figé 600 s, la cueilleuse 21 à 27 s dans une poche de 91
+  // nœuds près du campement. On place ici exprès un cerf, un cheval et la
+  // cueilleuse dans une poche réelle de la carte.
+  let tried = 0
+  for (const [seed, age] of [[42, 7], [99, 10], [7, 5], [5, 10], [777, 10]]) {
+    const w = town(seed, age)
+    const g = w.ground
+    const herds = [[w.fauna.deer, 0.3], [w.fauna.sheep, 0.28], [w.fauna.hens, 0.12], [w.fauna.horses, 0.35]]
+    // Une image : la première lecture de la carte range chacun chez lui.
+    w.villagers.update(1 / 60, 0, false, false)
+    w.fauna.update(1 / 60, 0, new Vector3(1e4, 0, 1e4), false)
+    for (const [herd, r] of herds)
+      for (const b of herd)
+        if (herd !== w.fauna.sheep) assert.equal(g.componentAt(b.x, b.z, r), g.mainComponent(r), `graine ${seed} âge ${age} : bête née hors de la composante principale`)
+    for (const s of w.villagers.souls) assert.equal(g.componentAt(s.x, s.z, 0.25), g.mainComponent(0.25), `graine ${seed} âge ${age} : villageois hors de la composante principale`)
+    const P = pocket(g, 0.35)
+    if (!P) continue
+    tried++
+    const victims = [[w.fauna.deer[0], 0.3], [w.fauna.horses[0], 0.35], [w.villagers.souls[0], 0.25]]
+    for (const [b] of victims) {
+      b.x = P.x
+      b.z = P.z
+      b.path = []
+      if ('state' in b) b.state = 2, b.timer = 0.5
+      else b.walking = false, b.timer = 0.5, b.home = false
+    }
+    const inside = solids(w.village)
+    const last = victims.map(([b]) => ({ x: b.x, z: b.z, t: 0 }))
+    let worst = 0
+    let walled = 0
+    let jump = 0
+    const prev = victims.map(([b]) => ({ x: b.x, z: b.z }))
+    for (let f = 1; f < 60 * 60; f++) {
+      const t = f / 60
+      w.ground.refresh()
+      w.villagers.update(1 / 60, t, false, false)
+      w.fauna.update(1 / 60, t, new Vector3(1e4, 0, 1e4), false)
+      victims.forEach(([b], i) => {
+        if (inside(b.x, b.z)) walled++
+        jump = Math.max(jump, Math.hypot(b.x - prev[i].x, b.z - prev[i].z))
+        prev[i] = { x: b.x, z: b.z }
+        if (Math.hypot(b.x - last[i].x, b.z - last[i].z) > 0.02) last[i] = { x: b.x, z: b.z, t }
+        worst = Math.max(worst, t - last[i].t)
+      })
+    }
+    victims.forEach(([b, r]) => assert.equal(g.componentAt(b.x, b.z, r), g.mainComponent(r), `graine ${seed} âge ${age} : toujours dans la poche`))
+    assert.equal(walled, 0, `graine ${seed} âge ${age} : ${walled} images dans un mur`)
+    assert.ok(worst <= 10, `graine ${seed} âge ${age} : immobile ${worst.toFixed(1)} s`)
+    assert.ok(jump < 6, `graine ${seed} âge ${age} : saut de ${jump.toFixed(2)} u`)
+  }
+  assert.ok(tried >= 1, 'au moins une poche trouvée pour le test')
+  Math.random = random
+})

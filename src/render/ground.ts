@@ -64,11 +64,6 @@ const NODE = RES * STRIDE
  *  distance vraie vaut donc au moins la distance entre centres moins 0,17 :
  *  c'est ce que rend `clearAt`, une valeur sûre, jamais optimiste. */
 const SLACK = 0.17
-/** Un nœud est praticable s'il laisse passer le corps ; un pas entre deux
- *  nœuds l'est si son milieu aussi. Une marge d'un demi-pas sur chaque nœud
- *  (essayée d'abord) fermait les passages étroits du campement : le colon
- *  restait enfermé dans une poche entre la tente et l'appentis. */
-const NODE_MARGIN = 0
 const SQRT2 = Math.SQRT2
 
 /** Transformée de distance exacte en 1D (Felzenszwalb & Huttenlocher). */
@@ -128,6 +123,10 @@ export class Ground {
   private heap: Int32Array
   private heapF: Float32Array
   private heapN = 0
+  /** Les composantes connexes des nœuds, une par rayon de corps : refaites
+   *  au besoin, après une pose (voir `components`). */
+  private readonly comps = new Map<number, { label: Int32Array; main: number; rev: number }>()
+  private stack: Int32Array
 
   // Champs déclarés à la main, comme l'île : Node charge le module tel quel
   // dans les tests.
@@ -162,6 +161,7 @@ export class Ground {
     this.closed = new Uint32Array(n)
     this.heap = new Int32Array(1024)
     this.heapF = new Float32Array(1024)
+    this.stack = new Int32Array(n)
     this.rebuild()
   }
 
@@ -375,7 +375,7 @@ export class Ground {
 
   /** Le nœud praticable le plus proche (spirale de carrés), ou -1. */
   private nearestNode(x: number, z: number, r: number, maxDist: number): number {
-    const need = r + NODE_MARGIN
+    const need = r
     const c = this.nodeAt(x, z)
     const ci = c % this.mx
     const cj = (c / this.mx) | 0
@@ -406,9 +406,114 @@ export class Ground {
   /** Le point libre le plus proche pour un corps de rayon r : le point
    *  lui-même s'il est libre, sinon un nœud praticable. */
   nearestFree(x: number, z: number, r: number, maxDist = 6): Pt | null {
-    if (this.clearAt(x, z) >= r + NODE_MARGIN) return { x, z }
+    if (this.clearAt(x, z) >= r) return { x, z }
     const n = this.nearestNode(x, z, r, maxDist)
     return n < 0 ? null : { x: this.nodeX(n), z: this.nodeZ(n) }
+  }
+
+  // ── composantes connexes ───────────────────────────────────────────────────────────────
+  // Pourquoi : la QA de la PR #15 a trouvé des bêtes nées dans une poche
+  // (un nœud praticable isolé entre un arbre et un rocher, ou 91 nœuds près du
+  // campement) d'où aucun chemin ne sort : un cerf y restait figé 600 s.
+  // Savoir à quelle composante appartient un point permet de ne tirer les
+  // cibles que là où l'on peut aller, et de sortir un mobile d'une poche.
+
+  /** Étiquettes des composantes pour un corps de rayon r (mêmes règles de
+   *  passage que `route`), et la principale : la plus grande, celle du bourg.
+   *  Calculées à la première demande après chaque reconstruction. */
+  private components(r: number): { label: Int32Array; main: number } {
+    let c = this.comps.get(r)
+    if (c && c.rev === this.revision) return c
+    const { mx, mz } = this
+    const n = mx * mz
+    const label = c ? c.label : new Int32Array(n)
+    label.fill(-1)
+    const st = this.stack
+    let next = 0
+    let main = -1
+    let mainSize = 0
+    for (let s = 0; s < n; s++) {
+      if (label[s]! >= 0 || this.nodeClear(s) < r) continue
+      const id = next++
+      let size = 0
+      let top = 0
+      st[top++] = s
+      label[s] = id
+      while (top > 0) {
+        const a = st[--top]!
+        size++
+        const i = a % mx
+        const j = (a / mx) | 0
+        for (let dj = -1; dj <= 1; dj++)
+          for (let di = -1; di <= 1; di++) {
+            if (di === 0 && dj === 0) continue
+            const ii = i + di
+            const jj = j + dj
+            if (ii < 0 || jj < 0 || ii >= mx || jj >= mz) continue
+            const m = jj * mx + ii
+            if (label[m]! >= 0 || this.nodeClear(m) < r) continue
+            if (di !== 0 && dj !== 0 && (this.nodeClear(j * mx + ii) < r || this.nodeClear(jj * mx + i) < r)) continue
+            if (this.clearAt((this.nodeX(a) + this.nodeX(m)) / 2, (this.nodeZ(a) + this.nodeZ(m)) / 2) < r) continue
+            label[m] = id
+            st[top++] = m
+          }
+      }
+      if (size > mainSize) {
+        mainSize = size
+        main = id
+      }
+    }
+    c = { label, main, rev: this.revision }
+    this.comps.set(r, c)
+    return c
+  }
+
+  /** La composante principale pour un corps de rayon r. */
+  mainComponent(r: number): number {
+    return this.components(r).main
+  }
+
+  /** La composante où se trouve ce point (celle de son nœud praticable le
+   *  plus proche, à moins d'une unité), ou -1. */
+  componentAt(x: number, z: number, r: number): number {
+    const n = this.nearestNode(x, z, r, 1)
+    return n < 0 ? -1 : this.components(r).label[n]!
+  }
+
+  /** Le point le plus proche de (x, z) dans la composante `comp` : le point
+   *  lui-même s'il est libre et y appartient, sinon le nœud le plus proche
+   *  de cette composante (spirale de carrés), ou null au-delà de `maxDist`. */
+  nearestIn(x: number, z: number, r: number, comp: number, maxDist = 6): Pt | null {
+    if (comp < 0) return null
+    const { label } = this.components(r)
+    if (this.clearAt(x, z) >= r) {
+      const n = this.nearestNode(x, z, r, 1)
+      if (n >= 0 && label[n] === comp) return { x, z }
+    }
+    const c = this.nodeAt(x, z)
+    const ci = c % this.mx
+    const cj = (c / this.mx) | 0
+    const R = Math.ceil(maxDist / NODE)
+    let best = -1
+    let bd = Infinity
+    for (let ring = 0; ring <= R; ring++) {
+      if (best >= 0 && (ring - 1) * NODE > bd) break
+      for (let dj = -ring; dj <= ring; dj++)
+        for (let di = -ring; di <= ring; di++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== ring) continue
+          const i = ci + di
+          const j = cj + dj
+          if (i < 0 || j < 0 || i >= this.mx || j >= this.mz) continue
+          const n = j * this.mx + i
+          if (label[n] !== comp) continue
+          const d = Math.hypot(this.nodeX(n) - x, this.nodeZ(n) - z)
+          if (d < bd) {
+            bd = d
+            best = n
+          }
+        }
+    }
+    return best < 0 ? null : { x: this.nodeX(best), z: this.nodeZ(best) }
   }
 
   // ── tas binaire ──────────────────────────────────────────────────────────
@@ -458,7 +563,7 @@ export class Ground {
    *  rester planté. Départ dans une emprise (un bâtiment vient de pousser
    *  sous lui) : le premier pas l'en sort par le plus court. */
   route(x0: number, z0: number, x1: number, z1: number, r: number, maxExpand = 24000): Route {
-    const need = r + NODE_MARGIN
+    const need = r
     // Ligne droite dégagée : le cas courant, sans recherche.
     if (this.clearAt(x0, z0) >= r && this.clearAt(x1, z1) >= r && this.lineClear(x0, z0, x1, z1, r)) {
       return { pts: [{ x: x1, z: z1 }], reached: true, length: Math.hypot(x1 - x0, z1 - z0) }
@@ -604,17 +709,4 @@ export function follow(pos: { x: number; z: number }, path: Pt[], step: number):
     }
   }
   return dir
-}
-
-/** Longueur restante d'un chemin depuis `pos`. */
-export function remaining(pos: { x: number; z: number }, path: Pt[]): number {
-  let L = 0
-  let x = pos.x
-  let z = pos.z
-  for (const p of path) {
-    L += Math.hypot(p.x - x, p.z - z)
-    x = p.x
-    z = p.z
-  }
-  return L
 }

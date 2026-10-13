@@ -128,7 +128,14 @@ interface Soul {
   path: Pt[]
   /** Tirages ratés d'affilée : au-delà, il revient vers le foyer. */
   misses: number
+  /** Taille de repositionnement : 1 normal, 0 effacé (voir `rehome`). */
+  fade: number
+  /** Où il réapparaît une fois effacé ; null hors repositionnement. */
+  warp: Pt | null
 }
+
+/** Un quart de seconde pour s'effacer, autant pour revenir. */
+const FADE = 4
 
 export class Villagers {
   /** Deux corps DISTINCTS : la cueilleuse et l'enfant n'ont pas les mêmes
@@ -181,6 +188,8 @@ export class Villagers {
         home: false,
         path: [],
         misses: 0,
+        fade: 1,
+        warp: null,
       })
     this.setPopulation(0)
   }
@@ -205,15 +214,12 @@ export class Villagers {
   private settle(): void {
     const g = this.ground
     if (!g || g.revision === this.groundRev) return
+    // La première carte est lue avant la première image : personne ne les a
+    // encore vus, ils naissent directement là où l'on peut marcher.
+    const first = this.groundRev === -1
     this.groundRev = g.revision
     for (const s of this.souls) {
-      if (!g.free(s.x, s.z, BODY_R)) {
-        const p = g.nearestFree(s.x, s.z, BODY_R, 8)
-        if (p) {
-          s.x = p.x
-          s.z = p.z
-        }
-      }
+      this.rehome(s, first)
       // Chemin impossible sur la nouvelle carte : l'ancien, tracé avant la
       // pose, traverserait le nouveau bâtiment. On l'abandonne ; la pause
       // courte fait tirer une nouvelle cible, atteignable, à l'image d'après.
@@ -225,12 +231,41 @@ export class Villagers {
     }
   }
 
-  /** Trace le chemin jusqu'à (tx, tz), ramené au point libre le plus proche.
+  /** Rend une âme à la composante principale du cadastre (celle du bourg).
+   *  Pourquoi : la QA de la PR #15 a vu la cueilleuse naître dans une poche
+   *  de 91 nœuds près du campement, d'où aucun chemin ne sort — elle restait
+   *  plantée 21 à 27 s entre deux nuits. Une poche est une autre composante :
+   *  il n'y a pas de chemin, on la repose sur le nœud libre le plus proche de
+   *  la composante principale (un saut court). Prise DANS une emprise, elle
+   *  en sort à l'instant puis réapparaît en fondu ; libre mais enfermée, elle
+   *  s'efface d'abord sur place. */
+  private rehome(s: Soul, instant: boolean): void {
+    const g = this.ground
+    if (!g) return
+    const main = g.mainComponent(BODY_R)
+    const free = g.free(s.x, s.z, BODY_R)
+    if (free && g.componentAt(s.x, s.z, BODY_R) === main) return
+    const p = g.nearestIn(s.x, s.z, BODY_R, main, 6) ?? g.nearestIn(s.x, s.z, BODY_R, main, 20) ?? (free ? null : g.nearestFree(s.x, s.z, BODY_R, 8))
+    if (!p) return
+    s.path = []
+    s.walking = false
+    s.timer = 0.6
+    if (instant || !free) {
+      s.x = p.x
+      s.z = p.z
+      s.warp = null
+      s.fade = instant ? 1 : 0
+    } else s.warp = p
+  }
+
+  /** Trace le chemin jusqu'à (tx, tz), ramené au point le plus proche de la composante principale.
    *  Faux si la cible n'est pas atteignable. */
   private plan(s: Soul): boolean {
     const g = this.ground
     if (!g) return true
-    const at = g.nearestFree(s.tx, s.tz, BODY_R, 3)
+    // Cible dans la composante principale seulement : un point libre au fond
+    // d'une poche n'a pas de chemin (QA PR #15, B2).
+    const at = g.nearestIn(s.tx, s.tz, BODY_R, g.mainComponent(BODY_R), 3)
     if (!at) return false
     const r = g.route(s.x, s.z, at.x, at.z, BODY_R, 12000)
     if (!r.reached) return false
@@ -276,6 +311,11 @@ export class Villagers {
       s.tx = CAMP_HOME.x + 1.2
       s.tz = CAMP_HOME.z + 1.4
       if (this.plan(s)) return
+      // Même le foyer est hors d'atteinte : il est dans une poche (garde-fou,
+      // `settle` l'en sort déjà à chaque pose).
+      s.walking = false
+      this.rehome(s, false)
+      if (s.warp) return
     }
     s.walking = false
     s.timer = 0.4
@@ -313,7 +353,21 @@ export class Villagers {
         s.walking = false
       }
 
-      if (!s.home) {
+      // Repositionnement en cours : il s'efface sur place, saute une fois
+      // invisible, puis revient.
+      if (s.warp) {
+        s.fade -= dt * FADE
+        s.walking = false
+        s.timer = Math.max(s.timer, 0.3)
+        if (s.fade <= 0) {
+          s.fade = 0
+          s.x = s.warp.x
+          s.z = s.warp.z
+          s.warp = null
+        }
+      } else if (s.fade < 1) s.fade = Math.min(1, s.fade + dt * FADE)
+
+      if (!s.home && !s.warp) {
         if (s.walking && this.ground) {
           // Sur le cadastre : il suit son chemin, sans jamais le quitter.
           if (s.path.length === 0) {
@@ -363,7 +417,7 @@ export class Villagers {
       const hidden = s.home
       this.dummy.position.set(s.x, GROUND_Y + bob, s.z)
       this.dummy.rotation.set(0, s.heading, s.walking ? Math.sin(s.phase) * 0.06 : 0)
-      this.dummy.scale.setScalar(hidden ? 0.001 : s.scale)
+      this.dummy.scale.setScalar(hidden ? 0.001 : Math.max(0.001, s.scale * s.fade))
       this.dummy.updateMatrix()
       this.bodies[i]!.setMatrixAt(0, this.dummy.matrix)
       this.bodies[i]!.instanceMatrix.needsUpdate = true

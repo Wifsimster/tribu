@@ -301,7 +301,18 @@ interface Beast {
   gait: number
   /** Le chemin du cadastre jusqu'à (tx, tz) ; vide hors cadastre. */
   path: Pt[]
+  /** Opacité de repositionnement : 1 visible, 0 effacée (voir `rehome`). */
+  fade: number
+  /** Où la bête réapparaît une fois effacée ; null hors repositionnement. */
+  warp: Pt | null
+  /** Tirages d'étape ratés d'affilée. */
+  miss: number
 }
+
+/** Vitesse du fondu de repositionnement : un quart de seconde pour
+ *  s'effacer, autant pour revenir — assez court pour ne pas laisser la bête
+ *  plantée, assez long pour qu'on ne la voie pas sauter. */
+const FADE = 4
 
 interface LandCfg {
   speed: number
@@ -417,6 +428,9 @@ function makeHerd(n: number, spots: Spot[]): Beast[] {
       sleep: 0,
       gait: 0.85 + Math.random() * 0.3,
       path: [],
+      fade: 1,
+      warp: null,
+      miss: 0,
     })
   }
   return herd
@@ -902,12 +916,16 @@ export class Fauna implements GroundSource {
     this.groundRev = -1
   }
 
-  /** La carte a changé : une bête prise sous une nouvelle emprise en sort
-   *  par le plus court, et chaque marche en cours se refait sur la carte du
-   *  jour. Rien n'est tiré au hasard ici. */
+  /** La carte a changé : une bête prise sous une nouvelle emprise ou
+   *  enfermée dans une poche est rendue à sa composante (`rehome`), et chaque
+   *  marche en cours se refait sur la carte du jour. Rien n'est tiré au
+   *  hasard ici. */
   private settle(): void {
     const g = this.ground
     if (!g || g.revision === this.groundRev) return
+    // La première carte est lue avant la première image : personne n'a vu
+    // les bêtes, elles naissent directement dans leur composante.
+    const first = this.groundRev === -1
     this.groundRev = g.revision
     const herds: [Beast[], LandCfg][] = [
       [this.deer, this.deerCfg],
@@ -917,13 +935,7 @@ export class Fauna implements GroundSource {
     ]
     for (const [herd, cfg] of herds)
       for (const b of herd) {
-        if (!g.free(b.x, b.z, cfg.body)) {
-          const p = g.nearestFree(b.x, b.z, cfg.body, 10)
-          if (p) {
-            b.x = p.x
-            b.z = p.z
-          }
-        }
+        this.rehome(b, cfg, first)
         b.path = []
         if (b.state === 0 || b.state === 3) {
           b.state = 2
@@ -932,11 +944,57 @@ export class Fauna implements GroundSource {
       }
   }
 
+  /** La composante où vit une bête : l'enclos pour un mouton qui s'y
+   *  trouve dès que la palissade est debout (il y est enfermé exprès), la
+   *  composante principale de l'île — celle du bourg — pour tous les autres,
+   *  moutons restés au pré compris : on ne les téléporte pas dans l'enclos. */
+  private homeComp(b: Beast, cfg: LandCfg): number {
+    const g = this.ground!
+    if (cfg === this.sheepCfg && this.penCenter && this.pens?.visible) {
+      const pen = g.componentAt(this.penCenter.x, this.penCenter.z, cfg.body)
+      if (pen >= 0 && g.componentAt(b.x, b.z, cfg.body) === pen) return pen
+    }
+    return g.mainComponent(cfg.body)
+  }
+
+  /** Rend une bête à sa composante. Pourquoi : une bête née ou laissée dans
+   *  une poche (un nœud libre entre un arbre et un rocher, un recoin fermé
+   *  par une pose) n'a aucun chemin pour en sortir — la QA de la PR #15 a vu
+   *  un cerf y rester figé 600 s. Comme la poche est une autre composante,
+   *  il n'existe par définition aucun chemin : la bête est reposée sur le
+   *  nœud le plus proche de sa composante, un saut de quelques dixièmes en
+   *  général. Prise DANS une emprise, elle en sort à l'instant (pas une
+   *  image dans le mur) et réapparaît en fondu ; libre mais enfermée, elle
+   *  s'efface d'abord sur place. */
+  private rehome(b: Beast, cfg: LandCfg, instant: boolean): void {
+    const g = this.ground!
+    const home = this.homeComp(b, cfg)
+    const free = g.free(b.x, b.z, cfg.body)
+    if (free && g.componentAt(b.x, b.z, cfg.body) === home) return
+    const p =
+      g.nearestIn(b.x, b.z, cfg.body, home, 6) ??
+      g.nearestIn(b.x, b.z, cfg.body, home, 20) ??
+      (free ? null : g.nearestFree(b.x, b.z, cfg.body, 10))
+    if (!p) return
+    b.path = []
+    b.state = 1
+    b.timer = 0.8
+    if (instant || !free) {
+      b.x = b.tx = p.x
+      b.z = b.tz = p.z
+      b.warp = null
+      b.fade = instant ? 1 : 0
+    } else b.warp = p
+  }
+
   /** Le chemin d'une bête jusqu'au point voulu (ramené au point libre le plus
    *  proche) ; null si on n'y arrive pas, ou si le détour dépasse `maxLen`. */
   private routeTo(b: Beast, x: number, z: number, cfg: LandCfg, maxLen: number): { x: number; z: number; pts: Pt[] } | null {
     const g = this.ground!
-    const at = g.nearestFree(x, z, cfg.body, 1.5)
+    // La cible se prend dans la composante de la bête (`homeComp`) : un
+    // point d'habitat dans une poche n'a pas de chemin, et la bête qui s'y
+    // rendrait « au plus près » n'y entrerait de toute façon pas.
+    const at = g.nearestIn(x, z, cfg.body, this.homeComp(b, cfg), 1.5)
     if (!at) return null
     const r = g.route(b.x, b.z, at.x, at.z, cfg.body, 6000)
     if (!r.reached || r.length > maxLen) return null
@@ -961,6 +1019,7 @@ export class Fauna implements GroundSource {
       b.tz = r.z
       b.path = r.pts
       b.state = 0
+      b.miss = 0
       return
     }
     // Aucun point d'habitat joignable (pré coupé par une palissade, bête
@@ -975,10 +1034,17 @@ export class Fauna implements GroundSource {
       b.tz = r.z
       b.path = r.pts
       b.state = 0
+      b.miss = 0
       return
     }
     b.state = 2
     b.timer = 0.8 + Math.random() * 1.2
+    // Trois échecs d'affilée : la bête est sans doute hors de sa composante
+    // (garde-fou : `settle` l'y remet déjà à chaque pose).
+    if (++b.miss >= 3) {
+      b.miss = 0
+      this.rehome(b, cfg, false)
+    }
   }
 
   /** Chaque espèce apparaît avec le savoir qui la fait entrer dans la vie de la
@@ -1115,11 +1181,26 @@ export class Fauna implements GroundSource {
       const b = herd[i]!
       b.sleep += ((night ? 1 : 0) - b.sleep) * Math.min(1, dt * 1.4)
       const awake = b.sleep < 0.4
+      // Repositionnement en cours (`rehome`) : la bête s'efface sur place,
+      // saute une fois invisible, puis revient.
+      if (b.warp) {
+        b.fade -= dt * FADE
+        b.state = 1
+        b.timer = Math.max(b.timer, 0.3)
+        if (b.fade <= 0) {
+          b.fade = 0
+          b.x = b.tx = b.warp.x
+          b.z = b.tz = b.warp.z
+          b.warp = null
+        }
+      } else if (b.fade < 1) b.fade = Math.min(1, b.fade + dt * FADE)
 
       if (awake) {
         // Le gibier fuit : dès que le colon approche, cap sur le point
         // d'habitat le plus à l'écart de lui.
-        if (threat && b.state !== 3) {
+        // Une bête qui s'efface pour être reposée ne fuit pas : elle sauterait
+        // ensuite au milieu de sa course.
+        if (threat && b.state !== 3 && !b.warp) {
           const dx = b.x - threat.x
           const dz = b.z - threat.z
           if (dx * dx + dz * dz < 16) {
@@ -1245,7 +1326,8 @@ export class Fauna implements GroundSource {
       )
       dummy.rotation.set(b.pitch, b.heading, moving ? Math.sin(b.phase) * 0.05 : 0)
       // La nuit : couché sur place — tassé, immobile, un peu élargi.
-      dummy.scale.set(1 + b.sleep * 0.12, 1 - b.sleep * 0.55, 1 + b.sleep * 0.06)
+      const k = Math.max(0.001, b.fade)
+      dummy.scale.set((1 + b.sleep * 0.12) * k, (1 - b.sleep * 0.55) * k, (1 + b.sleep * 0.06) * k)
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
     }
