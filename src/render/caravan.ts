@@ -14,6 +14,8 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
+import { loadModels } from './models'
+import { headingYaw, vehicleGeometry } from './vehicles'
 
 type State = 'away' | 'sailingIn' | 'docked' | 'sailingOut'
 
@@ -40,6 +42,8 @@ function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferG
 export class Caravan {
   readonly group = new Group()
   private readonly sail: Mesh
+  private readonly hull: Mesh
+  private modelled = false
   private state: State = 'away'
   private t = 0
   private readonly spawn: Vector3
@@ -75,6 +79,7 @@ export class Caravan {
       new MeshToonMaterial({ vertexColors: true }),
     )
     hull.castShadow = true
+    this.hull = hull
 
     // Voile carrée rayée, gonflée par déplacement de sommets à l'update.
     const sailGeo = new PlaneGeometry(1.05, 1.0, 1, 6)
@@ -115,10 +120,25 @@ export class Caravan {
   }
 
   arrive(): void {
+    // Le modèle ne se télécharge qu'à la première visite : avant l'âge du
+    // Bronze, il n'y a pas de marchand à dessiner.
+    void loadModels(['merchant']).then(() => this.adopt())
     this.state = 'sailingIn'
     this.t = 0
     this.group.visible = true
     this.group.position.copy(this.spawn)
+  }
+
+  /** Coque et cargaison passent au modèle Blender, s'il est là. Le ×1,5 vit
+   *  sur le groupe et le fichier est livré à sa taille finale : on le lui
+   *  retire, sinon la barque serait agrandie deux fois. */
+  private adopt(): void {
+    if (this.modelled) return
+    const geo = vehicleGeometry('merchant', this.group.scale.x)
+    if (!geo) return
+    this.hull.geometry.dispose()
+    this.hull.geometry = geo
+    this.modelled = true
   }
 
   depart(): void {
@@ -141,7 +161,8 @@ export class Caravan {
       this.group.position.lerpVectors(from, to, e)
       const dx = to.x - from.x
       const dz = to.z - from.z
-      this.group.rotation.y = Math.atan2(dx, dz) + Math.PI / 2
+      // La proue (+X local) dans le sens de la route — voir headingYaw.
+      this.group.rotation.y = headingYaw(dx, dz)
       if (k >= 1) {
         if (this.state === 'sailingIn') this.state = 'docked'
         else {

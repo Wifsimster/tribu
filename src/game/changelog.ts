@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.56.0',
+    title: 'Des véhicules qui vont de l’avant',
+    items: [
+      "Les dix véhicules de l'île ont désormais leur vrai visage : le radeau de rondins, la pirogue, la barque à voile, la caravelle à croix rouge, le vapeur à roues, le hors-bord, la barque marchande chargée de jarres, la locomotive et son wagon, l'automobile et l'avion à aile haute. Le colon reste assis à son banc, et la voile rayée reste tendue sous sa vergue.",
+      "Ils avançaient à reculons. L'auto roulait coffre en avant, la barque marchande et la barque du colon naviguaient poupe la première, et l'avion volait de côté. Tous vont maintenant nez devant. Au ponton, la barque attend proue vers le large. L'avion rentre face à l'aérodrome et fait demi-tour sur la piste pour être prêt au prochain départ.",
+      "Ces véhicules ont été modelés pour Tribu. Seuls ceux que ton île montre sont téléchargés, juste après le reste. Si la connexion traîne, l'ancienne forme tient la place quelques instants. Ta partie se charge comme avant.",
+    ],
+  },
+  {
     version: '3.55.1',
     title: 'Pas de cheval sur le quai',
     items: [

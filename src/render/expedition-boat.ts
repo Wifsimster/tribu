@@ -15,6 +15,8 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
+import { loadModels } from './models'
+import { BOAT_MODELS, headingYaw, vehicleGeometry } from './vehicles'
 
 function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
   geo.translate(x, y, z)
@@ -47,6 +49,9 @@ export class ExpeditionBoat {
   private from = new Vector3()
   private to = new Vector3()
   private dockedFlag = false
+  /** Palier déjà passé au modèle Blender : sa primitive est jetée. */
+  private readonly modelled = [false, false, false, false, false, false]
+  private tier = 0
 
   constructor() {
     const mat = new MeshToonMaterial({ vertexColors: true })
@@ -174,13 +179,41 @@ export class ExpeditionBoat {
   /** Hauteur d'assise du passager par tier : le colon garde SA taille (c'est
    *  l'étalon), mais le pont monte avec la coque remise à l'échelle. */
   private static readonly RIDER_Y = [0.1, 0.15, 0.2, 0.59, 0.66, 0.29]
+  /** La même chose sur les modèles Blender, relevée au plus haut du pont sous
+   *  l'emprise du passager. Seuls la caravelle (pont bombé, jusqu'à 1,04) et
+   *  le vapeur (0,96) diffèrent : avec l'assise des primitives, le colon s'y
+   *  enfonçait de 0,19 et 0,04. */
+  private static readonly RIDER_Y_MODEL = [0.1, 0.15, 0.2, 0.78, 0.7, 0.29]
 
   /** 0 radeau, 1 pirogue, 2 barque à voile, 3 caravelle, 4 vapeur, 5 hors-bord. */
   setTier(tier: number): void {
     const t = Math.min(tier, 5)
+    this.tier = t
     this.tiers.forEach((m, i) => (m.visible = i === t))
     this.sail.visible = t === 2
-    this.rider.position.y = ExpeditionBoat.RIDER_Y[t]!
+    this.seat()
+    // Seul le palier affiché se télécharge : une tribu au radeau ne paie pas
+    // le hors-bord. En attendant (ou si le fichier manque), la primitive reste.
+    const id = BOAT_MODELS[t]!
+    void loadModels([id]).then(() => this.adopt(t))
+  }
+
+  private seat(): void {
+    const t = this.tier
+    this.rider.position.y = (this.modelled[t] ? ExpeditionBoat.RIDER_Y_MODEL : ExpeditionBoat.RIDER_Y)[t]!
+  }
+
+  /** Passe le palier au modèle s'il est là. Même mesh, même matériau : rien de
+   *  plus à dessiner, seule la géométrie change. */
+  private adopt(t: number): void {
+    if (this.modelled[t]) return
+    const geo = vehicleGeometry(BOAT_MODELS[t]!)
+    if (!geo) return
+    const mesh = this.tiers[t]!
+    mesh.geometry.dispose()
+    mesh.geometry = geo
+    this.modelled[t] = true
+    if (t === this.tier) this.seat()
   }
 
   private moor: { x: number; z: number; yaw: number } | null = null
@@ -199,7 +232,9 @@ export class ExpeditionBoat {
       return
     }
     this.group.position.set(this.moor.x, 0, this.moor.z)
-    this.group.rotation.y = this.moor.yaw + Math.PI / 2
+    // Proue vers le large, dans l'axe du ponton : prête à partir. `yaw` est
+    // le cap terre → mer du ponton.
+    this.group.rotation.y = headingYaw(Math.sin(this.moor.yaw), Math.cos(this.moor.yaw))
     this.group.visible = true
   }
 
@@ -250,7 +285,8 @@ export class ExpeditionBoat {
     this.group.position.lerpVectors(this.from, this.to, e)
     const dx = this.to.x - this.from.x
     const dz = this.to.z - this.from.z
-    this.group.rotation.y = Math.atan2(dx, dz) + Math.PI / 2
+    // La proue (+X local) dans le sens de la route — voir headingYaw.
+    this.group.rotation.y = headingYaw(dx, dz)
 
     // Houle légère.
     this.group.position.y = Math.sin(time * 1.8) * 0.05
