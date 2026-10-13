@@ -557,6 +557,18 @@ export class Settler {
     if (this.wantSleep || this.sleeping || this.lieDown > 0) {
       if (this.updateSleep(dt)) return
     }
+    // Un atelier ou un quai qui pousse sous lui pendant qu'il travaille ou
+    // dépose : il ne marche pas, `walkToward` ne l'en sortirait qu'à la fin
+    // du geste (2,6 s dans le mur, QA PR #15). Il en sort à l'image même.
+    const g = this.ground
+    if (g && g.clearAt(this.group.position.x, this.group.position.z) < 0) {
+      const out = g.nearestFree(this.group.position.x, this.group.position.z, BODY_R, 8)
+      if (out) {
+        this.group.position.x = out.x
+        this.group.position.z = out.z
+        this.pathRev = -1
+      }
+    }
     const speed = this.speed * boost
     switch (this.phase) {
       case 'walkOut':
