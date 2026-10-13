@@ -19,6 +19,11 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GROUND_Y, type Island } from './island'
 import { PALETTE } from './palette'
 import { CAMP_HOME } from './village'
+import { follow, type Ground, type Pt } from './ground'
+
+/** Demi-largeur d'un villageois au sol (la tunique de l'adulte fait 0,26 de
+ *  rayon) : le cadastre garde le corps entier hors des murs. */
+const BODY_R = 0.25
 
 function part(src: BufferGeometry, c: Color, x = 0, y = 0, z = 0): BufferGeometry {
   const g = src.index ? src.toNonIndexed() : src
@@ -119,6 +124,10 @@ interface Soul {
   phase: number
   scale: number
   home: boolean
+  /** Le chemin du cadastre jusqu'à (tx, tz). */
+  path: Pt[]
+  /** Tirages ratés d'affilée : au-delà, il revient vers le foyer. */
+  misses: number
 }
 
 export class Villagers {
@@ -138,6 +147,9 @@ export class Villagers {
   /** Le bâti seul, tel que relevé à la construction. */
   private readonly built: { x: number; z: number; r: number }[]
   private readonly island: Island
+  /** Le cadastre au sol : sans lui, l'ancienne poussée radiale. */
+  private ground: Ground | null = null
+  private groundRev = -1
 
   // Champs déclarés à la main et non en propriétés de paramètre : Node, qui
   // ne fait que retirer les types, charge ainsi les villageois dans les tests.
@@ -167,6 +179,8 @@ export class Villagers {
         // Plus de rétrécissement : chaque corps a déjà ses proportions.
         scale: 1,
         home: false,
+        path: [],
+        misses: 0,
       })
     this.setPopulation(0)
   }
@@ -177,6 +191,46 @@ export class Villagers {
    *  marchait entre les caisses. Même chemin que la faune et le colon. */
   setBlockers(zones: readonly { x: number; z: number; r: number }[]): void {
     this.obstacles = this.built.concat(zones)
+  }
+
+  /** Branche le cadastre au sol (ground.ts). */
+  setGround(ground: Ground | null): void {
+    this.ground = ground
+    this.groundRev = -1
+  }
+
+  /** La carte a changé (pose en cours de partie, chargement) : une âme prise
+   *  sous la nouvelle emprise en sort par le plus court, avant l'image, et
+   *  chaque chemin se refait sur la carte du jour. */
+  private settle(): void {
+    const g = this.ground
+    if (!g || g.revision === this.groundRev) return
+    this.groundRev = g.revision
+    for (const s of this.souls) {
+      if (!g.free(s.x, s.z, BODY_R)) {
+        const p = g.nearestFree(s.x, s.z, BODY_R, 8)
+        if (p) {
+          s.x = p.x
+          s.z = p.z
+        }
+      }
+      if (s.walking) this.plan(s)
+    }
+  }
+
+  /** Trace le chemin jusqu'à (tx, tz), ramené au point libre le plus proche.
+   *  Faux si la cible n'est pas atteignable. */
+  private plan(s: Soul): boolean {
+    const g = this.ground
+    if (!g) return true
+    const at = g.nearestFree(s.tx, s.tz, BODY_R, 3)
+    if (!at) return false
+    const r = g.route(s.x, s.z, at.x, at.z, BODY_R, 12000)
+    if (!r.reached) return false
+    s.tx = at.x
+    s.tz = at.z
+    s.path = r.pts
+    return true
   }
 
   /** Combien d'âmes en plus du colon — le monde le décide selon l'âge. */
@@ -203,12 +257,28 @@ export class Villagers {
     s.tx = tx * k
     s.tz = tz * k
     s.walking = true
+    if (this.plan(s)) {
+      s.misses = 0
+      return
+    }
+    // Cible enclavée (au fond d'une cour, sur l'eau) : il ne fonce pas dans
+    // le mur, il retente bientôt ; au troisième échec, il rentre au foyer.
+    s.misses++
+    if (s.misses >= 3) {
+      s.misses = 0
+      s.tx = CAMP_HOME.x + 1.2
+      s.tz = CAMP_HOME.z + 1.4
+      if (this.plan(s)) return
+    }
+    s.walking = false
+    s.timer = 0.4
   }
 
   /** `night` est l'heure du coucher des ADULTES — repoussée par la lumière
    *  découverte (veillée). `childNight` est celle de l'ENFANT : la tombée de
    *  la nuit, point. Aucun lampadaire ne fait veiller un enfant. */
   update(dt: number, time: number, night: boolean, childNight = night): void {
+    this.settle()
     for (let i = 0; i < 2; i++) {
       const s = this.souls[i]!
       const active = i < this.count
@@ -218,10 +288,18 @@ export class Villagers {
 
       // La nuit, chacun rentre au camp et s'efface ; l'aube les rend.
       if (asleep && !s.home) {
-        s.tx = CAMP_HOME.x + (i === 0 ? 1.2 : -0.8)
-        s.tz = CAMP_HOME.z + 1.4
-        s.walking = true
-        if (Math.hypot(s.x - s.tx, s.z - s.tz) < 0.4) s.home = true
+        const hx = CAMP_HOME.x + (i === 0 ? 1.2 : -0.8)
+        const hz = CAMP_HOME.z + 1.4
+        // Le chemin du retour se trace une fois, à la tombée de la nuit.
+        if (!s.walking || s.path.length === 0 || s.tx !== hx || s.tz !== hz) {
+          s.tx = hx
+          s.tz = hz
+          s.walking = true
+          if (!this.plan(s)) s.path = []
+          s.tx = hx
+          s.tz = hz
+        }
+        if (Math.hypot(s.x - s.tx, s.z - s.tz) < 0.4 || (this.ground && s.path.length === 0)) s.home = true
       } else if (!asleep && s.home) {
         s.home = false
         s.timer = 1 + Math.random() * 3
@@ -229,7 +307,18 @@ export class Villagers {
       }
 
       if (!s.home) {
-        if (s.walking) {
+        if (s.walking && this.ground) {
+          // Sur le cadastre : il suit son chemin, sans jamais le quitter.
+          if (s.path.length === 0) {
+            s.walking = false
+            s.timer = 2.5 + Math.random() * 6
+          } else {
+            const sp = (i === 0 ? 0.62 : 0.95) * (asleep ? 1.4 : 1)
+            const dir = follow(s, s.path, sp * dt)
+            if (dir) s.heading = Math.atan2(dir.dx, dir.dz)
+            s.phase += dt * (i === 0 ? 7 : 11)
+          }
+        } else if (s.walking) {
           const dx = s.tx - s.x
           const dz = s.tz - s.z
           const d = Math.hypot(dx, dz)
@@ -248,8 +337,9 @@ export class Villagers {
           s.timer -= dt
           if (s.timer <= 0) this.pickTarget(s)
         }
-        // Jamais dans les murs : même poussée radiale que la faune.
-        for (const o of this.obstacles) {
+        // Jamais dans les murs : même poussée radiale que la faune. Inutile
+        // sur le cadastre, qui ne trace que des chemins dégagés.
+        if (!this.ground) for (const o of this.obstacles) {
           const rr = o.r + 0.25
           const dx = s.x - o.x
           const dz = s.z - o.z
