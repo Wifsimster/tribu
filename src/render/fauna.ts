@@ -8,7 +8,9 @@ import {
   CylinderGeometry,
   DynamicDrawUsage,
   Group,
+  type Material,
   IcosahedronGeometry,
+  InstancedBufferAttribute,
   InstancedMesh,
   Mesh,
   MeshToonMaterial,
@@ -21,10 +23,16 @@ import { tint } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE } from './village'
 import { GROUND_Y, type Island } from './island'
 import { follow, type Footprint, type Ground, type GroundSource, type Pt } from './ground'
+import { DEER_GAIT, GULL_WING, PART, gaitUniform, rigMaterial, wingUniform, type Gait } from './fauna-rig'
+
+/** Pièce animée : identifiant (`PART`) et pivot (x, y, z) en espace objet. */
+type Rig = readonly [number, number, number, number]
 
 /** Une pièce teintée puis posée — même recette que le village : tout un animal
- *  finit fondu en une seule géométrie, une espèce entière en un seul call. */
-function part(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
+ *  finit fondu en une seule géométrie, une espèce entière en un seul call.
+ *  `rig` marque une pièce animée (patte, cou, aile) et le pivot où elle
+ *  s'articule : c'est l'attribut `aPivot` que lit le vertex shader. */
+function part(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0, rig?: Rig): BufferGeometry {
   const geo = source.index ? source : mergeVertices(source)
   geo.translate(x, y, z)
   const n = geo.attributes.position!.count
@@ -35,10 +43,31 @@ function part(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): Buffer
     rgb[i * 3 + 2] = color.b
   }
   geo.setAttribute('color', new BufferAttribute(rgb, 3))
+  if (rig) geo.setAttribute('aPivot', new BufferAttribute(pivots(n, rig), 4))
   return geo
 }
 
+function pivots(n: number, rig: Rig): Float32Array {
+  const out = new Float32Array(n * 4)
+  for (let i = 0; i < n; i++) {
+    out[i * 4] = rig[1]
+    out[i * 4 + 1] = rig[2]
+    out[i * 4 + 2] = rig[3]
+    out[i * 4 + 3] = rig[0]
+  }
+  return out
+}
+
+const RIGID: Rig = [PART.RIGID, 0, 0, 0]
+
+/** Soude les pièces. Dès qu'une pièce est animée, les autres reçoivent un
+ *  `aPivot` nul (pièce 0, rigide) : la fusion exige les mêmes attributs
+ *  partout. Une espèce sans pièce animée (mouton, poule, cheval en 3.61.0)
+ *  n'en porte aucun — pas un octet de plus sur ce qui ne bouge pas. */
 function weld(parts: BufferGeometry[]): BufferGeometry {
+  if (parts.some((g) => g.getAttribute('aPivot')))
+    for (const g of parts)
+      if (!g.getAttribute('aPivot')) g.setAttribute('aPivot', new BufferAttribute(pivots(g.attributes.position!.count, RIGID), 4))
   return mergeGeometries(parts) ?? new BufferGeometry()
 }
 
@@ -46,7 +75,11 @@ function weld(parts: BufferGeometry[]): BufferGeometry {
 // Toutes construites face à +z. À quarante pixels, seul le profil compte : un
 // cerf, c'est un cou dressé et des bois ; un mouton, une boule sur pattes.
 
-function deerGeo(): BufferGeometry {
+/** Le corps du chevreuil (capsule couchée sur z, aplatie en y) : la référence
+ *  des jonctions. Hanches et garrot doivent rester DEDANS (test A5). */
+export const DEER_BODY = { y: 0.64, z: -0.04, r: 0.15, half: 0.23, sy: 1.14 } as const
+
+export function deerGeo(): BufferGeometry {
   const coat = new Color('#a97a4e')
   // Le dos d'un chevreuil est nettement plus sombre que ses flancs, et son
   // ventre presque crème : c'est ce dégradé qui l'empêche de lire comme un
@@ -60,7 +93,8 @@ function deerGeo(): BufferGeometry {
   const p: BufferGeometry[] = []
 
   // Corps fuselé, un peu plus haut que large.
-  p.push(part(new CapsuleGeometry(0.15, 0.46, 2, 8).rotateX(Math.PI / 2).scale(1, 1.14, 1), coat, 0, 0.64, -0.04))
+  const B = DEER_BODY
+  p.push(part(new CapsuleGeometry(B.r, B.half * 2, 2, 8).rotateX(Math.PI / 2).scale(1, B.sy, 1), coat, 0, B.y, B.z))
   // Selle dorsale et ventre clair : deux calottes posées sur le corps.
   p.push(part(new CapsuleGeometry(0.128, 0.4, 2, 7).rotateX(Math.PI / 2).scale(1, 0.66, 1), back, 0, 0.75, -0.03))
   p.push(part(new CapsuleGeometry(0.118, 0.34, 2, 7).rotateX(Math.PI / 2).scale(1, 0.5, 1), belly, 0, 0.53, -0.02))
@@ -69,36 +103,46 @@ function deerGeo(): BufferGeometry {
   p.push(part(new SphereGeometry(0.05, 5, 4), bone, 0, 0.78, -0.44))
 
   // Cou dressé — c'est lui qui distingue le chevreuil du mouton à distance.
-  p.push(part(new CylinderGeometry(0.05, 0.085, 0.42, 6).rotateX(0.38), coat, 0, 0.9, 0.28))
-  p.push(part(new CylinderGeometry(0.035, 0.05, 0.2, 6).rotateX(0.38), belly, 0, 0.86, 0.33))
-  p.push(part(new CapsuleGeometry(0.06, 0.12, 1, 6).rotateX(Math.PI / 2 - 0.25), coat, 0, 1.09, 0.38))
+  p.push(part(new CylinderGeometry(0.05, 0.085, 0.42, 6).rotateX(0.38), coat, 0, 0.9, 0.28, DEER_NECK))
+  p.push(part(new CylinderGeometry(0.035, 0.05, 0.2, 6).rotateX(0.38), belly, 0, 0.86, 0.33, DEER_NECK))
+  p.push(part(new CapsuleGeometry(0.06, 0.12, 1, 6).rotateX(Math.PI / 2 - 0.25), coat, 0, 1.09, 0.38, DEER_NECK))
   // Chanfrein sombre, museau noir et bavette claire : le masque du chevreuil.
-  p.push(part(new ConeGeometry(0.042, 0.12, 5).rotateX(Math.PI / 2), dark, 0, 1.07, 0.52))
-  p.push(part(new SphereGeometry(0.028, 6, 5), eye.clone(), 0, 1.07, 0.57))
-  p.push(part(new SphereGeometry(0.035, 6, 5).scale(1.2, 0.7, 1), bone, 0, 1.02, 0.5))
+  p.push(part(new ConeGeometry(0.042, 0.12, 5).rotateX(Math.PI / 2), dark, 0, 1.07, 0.52, DEER_NECK))
+  p.push(part(new SphereGeometry(0.028, 6, 5), eye.clone(), 0, 1.07, 0.57, DEER_NECK))
+  p.push(part(new SphereGeometry(0.035, 6, 5).scale(1.2, 0.7, 1), bone, 0, 1.02, 0.5, DEER_NECK))
   for (const s of [-1, 1]) {
     // Œil sur le côté du chanfrein, comme chez tous les herbivores.
-    p.push(part(new SphereGeometry(0.019, 5, 4), eye, s * 0.05, 1.11, 0.44))
+    p.push(part(new SphereGeometry(0.019, 5, 4), eye, s * 0.05, 1.11, 0.44, DEER_NECK))
     // Grandes oreilles en cuillère : chez le chevreuil elles font la moitié
     // de la tête. Doublées d'un intérieur clair.
-    p.push(part(new ConeGeometry(0.045, 0.14, 5).rotateZ(s * 1.05).rotateX(-0.2), coat, s * 0.085, 1.17, 0.3))
-    p.push(part(new ConeGeometry(0.028, 0.1, 4).rotateZ(s * 1.05).rotateX(-0.2), belly, s * 0.095, 1.17, 0.315))
+    p.push(part(new ConeGeometry(0.045, 0.14, 5).rotateZ(s * 1.05).rotateX(-0.2), coat, s * 0.085, 1.17, 0.3, DEER_NECK))
+    p.push(part(new ConeGeometry(0.028, 0.1, 4).rotateZ(s * 1.05).rotateX(-0.2), belly, s * 0.095, 1.17, 0.315, DEER_NECK))
     // Bois : merrain incliné, andouiller, et la pointe pâle du bout.
-    p.push(part(new CylinderGeometry(0.014, 0.018, 0.24, 4).rotateZ(s * 0.55).rotateX(-0.35), bone, s * 0.06, 1.26, 0.32))
-    p.push(part(new CylinderGeometry(0.01, 0.014, 0.14, 4).rotateZ(s * 1.25), bone, s * 0.12, 1.3, 0.36))
-    p.push(part(new SphereGeometry(0.016, 5, 4), bone, s * 0.16, 1.34, 0.36))
+    p.push(part(new CylinderGeometry(0.014, 0.018, 0.24, 4).rotateZ(s * 0.55).rotateX(-0.35), bone, s * 0.06, 1.26, 0.32, DEER_NECK))
+    p.push(part(new CylinderGeometry(0.01, 0.014, 0.14, 4).rotateZ(s * 1.25), bone, s * 0.12, 1.3, 0.36, DEER_NECK))
+    p.push(part(new SphereGeometry(0.016, 5, 4), bone, s * 0.16, 1.34, 0.36, DEER_NECK))
   }
 
   // Pattes : un fuseau qui s'affine, et un sabot sombre au bout — une patte
   // d'une seule teinte se lisait comme un bâton planté sous le corps.
+  // Chaque patte pivote à la hanche (y 0,60), DANS le corps : à 0,02 u au
+  // moins de sa surface, la jonction ne s'ouvre jamais quand elle tourne. Le
+  // fût monte jusqu'à la hanche (0,60 au lieu de 0,54), caché dans le corps
+  // au repos, pour qu'une patte en arrière ne montre pas de jour sous le
+  // ventre. Même nombre de triangles.
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
-      p.push(part(new CylinderGeometry(0.026, 0.034, 0.44, 5), coat, sx * 0.1, 0.32, sz * 0.26))
-      p.push(part(new CylinderGeometry(0.022, 0.026, 0.12, 5), dark, sx * 0.1, 0.11, sz * 0.26))
-      p.push(part(new CylinderGeometry(0.026, 0.022, 0.05, 5), hoof, sx * 0.1, 0.035, sz * 0.26))
+      const rig: Rig = [sz > 0 ? (sx > 0 ? PART.FL : PART.FR) : sx > 0 ? PART.HL : PART.HR, sx * 0.1, DEER_HIP_Y, sz * 0.26]
+      p.push(part(new CylinderGeometry(0.026, 0.034, 0.5, 5), coat, sx * 0.1, 0.35, sz * 0.26, rig))
+      p.push(part(new CylinderGeometry(0.022, 0.026, 0.12, 5), dark, sx * 0.1, 0.11, sz * 0.26, rig))
+      p.push(part(new CylinderGeometry(0.026, 0.022, 0.05, 5), hoof, sx * 0.1, 0.035, sz * 0.26, rig))
     }
   return weld(p)
 }
+
+/** La hanche du chevreuil, et la base de son cou (au garrot, dans le corps). */
+export const DEER_HIP_Y = 0.6
+export const DEER_NECK: Rig = [PART.NECK, 0, 0.7, 0.18]
 
 function sheepGeo(): BufferGeometry {
   const fleece = new Color('#e9e2cf')
@@ -247,7 +291,7 @@ function horseGeo(): BufferGeometry {
   return weld(p)
 }
 
-function gullGeo(): BufferGeometry {
+export function gullGeo(): BufferGeometry {
   const body = new Color('#f4f6f4')
   const wing = new Color('#d9dfe0')
   const wingDark = new Color('#b9c2c6')
@@ -273,13 +317,20 @@ function gullGeo(): BufferGeometry {
   // Ailes en dièdre, bouts sombres : la signature de la mouette vue de loin.
   // Trois segments par aile — l'épaule, le bras, la main — pour que le profil
   // s'incurve au lieu de faire une planche.
+  // Squelette (v3.61.0) : le premier segment tourne à l'épaule, DANS le corps ;
+  // le reste de l'aile (bras, main, rémiges) tourne au coude, là où les deux
+  // segments se touchent, puis suit l'épaule. Gauche de l'oiseau = +x.
+  const [shx, shy, shz] = GULL_WING.shoulderAt
+  const [elx, ely, elz] = GULL_WING.elbowAt
   for (const s of [-1, 1]) {
-    p.push(part(new BoxGeometry(0.2, 0.014, 0.15).rotateZ(s * 0.1), wing, s * 0.12, 0.01, -0.01))
-    p.push(part(new BoxGeometry(0.24, 0.012, 0.13).rotateZ(s * 0.2), wingDark, s * 0.33, 0.045, -0.02))
-    p.push(part(new BoxGeometry(0.14, 0.011, 0.1).rotateZ(s * 0.32), tip, s * 0.51, 0.09, -0.03))
+    const arm: Rig = [s > 0 ? PART.ARM_L : PART.ARM_R, s * shx, shy, shz]
+    const hand: Rig = [s > 0 ? PART.HAND_L : PART.HAND_R, s * elx, ely, elz]
+    p.push(part(new BoxGeometry(0.2, 0.014, 0.15).rotateZ(s * 0.1), wing, s * 0.12, 0.01, -0.01, arm))
+    p.push(part(new BoxGeometry(0.24, 0.012, 0.13).rotateZ(s * 0.2), wingDark, s * 0.33, 0.045, -0.02, hand))
+    p.push(part(new BoxGeometry(0.14, 0.011, 0.1).rotateZ(s * 0.32), tip, s * 0.51, 0.09, -0.03, hand))
     // Rémiges du bout, écartées comme des doigts.
     for (let k = 0; k < 3; k++)
-      p.push(part(new BoxGeometry(0.07, 0.009, 0.022).rotateZ(s * 0.34).rotateY(s * (0.1 + k * 0.12)), tip, s * 0.6, 0.11, -0.05 + k * 0.03))
+      p.push(part(new BoxGeometry(0.07, 0.009, 0.022).rotateZ(s * 0.34).rotateY(s * (0.1 + k * 0.12)), tip, s * 0.6, 0.11, -0.05 + k * 0.03, hand))
   }
   return weld(p)
 }
@@ -307,6 +358,11 @@ interface Beast {
   warp: Pt | null
   /** Tirages d'étape ratés d'affilée. */
   miss: number
+  /** Poids lissés du squelette (espèces riguées) : allure 0–1, broutage du
+   *  cou 0–1, trot 0–1. Ils deviennent `aAnim.yzw` ; la phase, `aAnim.x`. */
+  amp: number
+  graze: number
+  trot: number
 }
 
 /** Vitesse du fondu de repositionnement : un quart de seconde pour
@@ -333,6 +389,31 @@ interface LandCfg {
   sink: number
   /** Demi-largeur du corps au sol : ce que le cadastre garde hors des murs. */
   body: number
+  /** Espèce riguée (v3.61.0) : la phase avance avec la DISTANCE parcourue, à
+   *  la cadence de l'allure, et le cou broute à la place du corps entier.
+   *  Absente : l'ancien rebond à l'horloge, corps rigide. */
+  gait?: Gait
+}
+
+/** Lissage exponentiel vers `want`, τ en secondes (63 % du chemin). */
+function ease(v: number, want: number, dt: number, tau: number): number {
+  return v + (want - v) * Math.min(1, dt / tau)
+}
+
+const TAU = Math.PI * 2
+
+/** Avance la phase de marche. Espèce riguée : à la DISTANCE réellement
+ *  parcourue (`d`), à la cadence de l'allure en cours — c'est ce qui garde le
+ *  sabot planté, quel que soit `gait` ou la fuite. Ramenée dans [0, 2π) : le
+ *  shader la lit en flottant 32 bits. Sinon : l'ancien rebond à l'horloge. */
+function stride(b: Beast, cfg: LandCfg, d: number, dt: number, flee: boolean): void {
+  const g = cfg.gait
+  if (!g) {
+    b.phase += dt * cfg.bobFreq * (flee ? 1.8 : 1)
+    return
+  }
+  b.phase += d * (g.kWalk + (g.kTrot - g.kWalk) * b.trot)
+  if (b.phase >= TAU) b.phase -= TAU * Math.floor(b.phase / TAU)
 }
 
 interface Gull {
@@ -343,6 +424,23 @@ interface Gull {
   w: number
   alt: number
   phase: number
+  /** Battement (v3.61.0) : phase de l'aile à l'horloge, poids du battu 0–1
+   *  (0 = plané), état visé, temps restant dans cet état, combien d'états
+   *  déjà enchaînés, et altitude perdue en plané (≤ 0). */
+  wing: number
+  flap: number
+  flapping: boolean
+  left: number
+  laps: number
+  drop: number
+}
+
+/** Durée d'un battu (2–3 s) ou d'un plané (3–5 s). Tirée de la graine de la
+ *  mouette et du rang de l'épisode, pas de `Math.random` : le hasard de la
+ *  faune (étapes, trajets) reste celui de la 3.59.0. */
+function gullSpell(g: Gull): number {
+  const r = Math.abs(Math.sin(g.phase * 12.9898 + g.laps * 78.233) * 43758.5453) % 1
+  return g.flapping ? 2 + r : 3 + 2 * r
 }
 
 interface Spot {
@@ -431,6 +529,9 @@ function makeHerd(n: number, spots: Spot[]): Beast[] {
       fade: 1,
       warp: null,
       miss: 0,
+      amp: 0,
+      graze: 0,
+      trot: 0,
     })
   }
   return herd
@@ -483,7 +584,7 @@ export class Fauna implements GroundSource {
 
   // Les allures sont figées ici plutôt qu'en littéraux dans update : zéro objet
   // construit par frame.
-  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5, sink: 0.05, body: 0.3 }
+  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5, sink: 0.05, body: 0.3, gait: DEER_GAIT }
   private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, bobFreq: 5, sink: 0.02, body: 0.28 }
   private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16, sink: 0.008, body: 0.12 }
   private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8, sink: 0.07, body: 0.35 }
@@ -638,8 +739,12 @@ export class Fauna implements GroundSource {
     )
     this.coopAt = { x: coop.x, z: coop.z }
 
-    const build = (geo: BufferGeometry, n: number, spread: number): InstancedMesh => {
-      const mesh = new InstancedMesh(geo, this.skin, n)
+    const build = (geo: BufferGeometry, n: number, spread: number, skin: Material = this.skin): InstancedMesh => {
+      // Espèce riguée : quatre nombres d'état par bête (`aAnim`), réécrits à
+      // chaque image comme la matrice.
+      if (geo.getAttribute('aPivot'))
+        geo.setAttribute('aAnim', new InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(DynamicDrawUsage))
+      const mesh = new InstancedMesh(geo, skin, n)
       mesh.instanceMatrix.setUsage(DynamicDrawUsage)
       // Les instances vivent loin de la géométrie d'origine : le culling par
       // boîte de la géométrie les ferait clignoter.
@@ -649,11 +754,11 @@ export class Fauna implements GroundSource {
       this.group.add(mesh)
       return mesh
     }
-    this.deerMesh = build(deerGeo(), 3, 0.07)
+    this.deerMesh = build(deerGeo(), 3, 0.07, rigMaterial(gaitUniform(DEER_GAIT)))
     this.sheepMesh = build(sheepGeo(), 4, 0.05)
     this.henMesh = build(henGeo(), 3, 0.04)
     this.horseMesh = build(horseGeo(), 2, 0.09)
-    this.gullMesh = build(gullGeo(), 3, 0.03)
+    this.gullMesh = build(gullGeo(), 3, 0.03, rigMaterial(wingUniform(GULL_WING)))
     this.sheepMesh.visible = false
     this.henMesh.visible = false
     this.horseMesh.visible = false
@@ -679,7 +784,16 @@ export class Fauna implements GroundSource {
         w: (i % 2 === 0 ? 1 : -1) * (0.3 + Math.random() * 0.12),
         alt: 2.6 + Math.random() * 0.7,
         phase: Math.random() * Math.PI * 2,
+        wing: Math.PI / 2,
+        flap: i === 1 ? 0 : 1,
+        flapping: i !== 1,
+        left: 0,
+        laps: i,
+        drop: 0,
       })
+      const g = this.gulls[i]!
+      // Pas toutes au même instant du cycle.
+      g.left = gullSpell(g) * (0.3 + 0.7 * (g.phase / TAU))
     }
   }
 
@@ -1177,6 +1291,7 @@ export class Fauna implements GroundSource {
     night: boolean,
     threat: Vector3 | null,
   ): void {
+    const anim = cfg.gait ? (mesh.geometry.getAttribute('aAnim') as InstancedBufferAttribute | undefined) : undefined
     for (let i = 0; i < herd.length; i++) {
       const b = herd[i]!
       b.sleep += ((night ? 1 : 0) - b.sleep) * Math.min(1, dt * 1.4)
@@ -1247,8 +1362,10 @@ export class Fauna implements GroundSource {
             const sp = cfg.speed * b.gait * (flee ? 2.7 : 1)
             const nx = b.path[0]!
             b.heading = turnToward(b.heading, Math.atan2(nx.x - b.x, nx.z - b.z), cfg.turn * (flee ? 2.4 : 1) * dt * 2)
+            const x0 = b.x
+            const z0 = b.z
             follow(b, b.path, sp * dt)
-            b.phase += dt * cfg.bobFreq * (flee ? 1.8 : 1)
+            stride(b, cfg, Math.hypot(b.x - x0, b.z - z0), dt, flee)
           }
           if (flee) {
             b.timer -= dt
@@ -1269,7 +1386,7 @@ export class Fauna implements GroundSource {
             // se lit au lieu d'un glissement latéral.
             b.x += Math.sin(b.heading) * sp * dt
             b.z += Math.cos(b.heading) * sp * dt
-            b.phase += dt * cfg.bobFreq * (flee ? 1.8 : 1)
+            stride(b, cfg, sp * dt, dt, flee)
           }
           if (flee) {
             b.timer -= dt
@@ -1314,11 +1431,29 @@ export class Fauna implements GroundSource {
       const moving = awake && (b.state === 0 || b.state === 3)
       const grazing = awake && b.state === 2
       // Brouter = tout le corps qui bascule, museau vers l'herbe, avec une
-      // petite houle : à cette échelle c'est plus lisible qu'un cou articulé.
-      const wantPitch = grazing ? cfg.grazePitch * (0.82 + 0.18 * Math.sin(time * 2.2 + b.phase)) : 0
+      // petite houle. Une espèce riguée plonge le COU : le corps ne garde que
+      // 30 % de la bascule, pour que le museau touche l'herbe.
+      const g = cfg.gait
+      const wantPitch = grazing ? cfg.grazePitch * (g ? g.bodyPitch : 1) * (0.82 + 0.18 * Math.sin(time * 2.2 + b.phase)) : 0
       b.pitch += (wantPitch - b.pitch) * Math.min(1, dt * 3)
+      if (anim && g) {
+        // Allure : 0,15 s pour partir ou s'arrêter (une bête qui dort ou
+        // s'efface n'avance pas : ses pattes reviennent au repos). Trot :
+        // sursaut en 0,08 s, retour au pas en 0,4 s. Cou : 0,35 s pour
+        // plonger, 0,25 s pour remonter.
+        b.amp = ease(b.amp, moving ? 1 : 0, dt, 0.15)
+        const flee = moving && b.state === 3
+        b.trot = ease(b.trot, flee ? 1 : 0, dt, flee ? 0.08 : 0.4)
+        b.graze = ease(b.graze, grazing ? 1 : 0, dt, grazing ? 0.35 : 0.25)
+        const a = anim.array as Float32Array
+        a[i * 4] = b.phase
+        a[i * 4 + 1] = b.amp
+        a[i * 4 + 2] = b.graze * (1 + g.neckSwell * Math.sin(time * TAU * g.swellHz + b.phase))
+        a[i * 4 + 3] = b.trot
+      }
 
-      const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp : 0
+      // Deux rebonds par cycle de pattes ; au trot de fuite, plus appuyés.
+      const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp * (g ? 1 + (g.trotBob - 1) * b.trot : 1) : 0
       dummy.position.set(
         b.x,
         GROUND_Y + bob - (b.pitch + b.sleep) * cfg.sink,
@@ -1332,25 +1467,49 @@ export class Fauna implements GroundSource {
       mesh.setMatrixAt(i, dummy.matrix)
     }
     mesh.instanceMatrix.needsUpdate = true
+    if (anim) anim.needsUpdate = true
   }
 
   private stepGulls(dt: number, time: number): void {
+    const anim = this.gullMesh.geometry.getAttribute('aAnim') as InstancedBufferAttribute
+    const a = anim.array as Float32Array
+    const W = GULL_WING
     for (let i = 0; i < this.gulls.length; i++) {
       const g = this.gulls[i]!
       g.a += g.w * dt
+      // Battu 2–3 s, plané 3–5 s. Le plané descend doucement, le battu
+      // regagne l'altitude perdue.
+      g.left -= dt
+      if (g.left <= 0) {
+        g.flapping = !g.flapping
+        g.laps++
+        g.left = gullSpell(g)
+        // Le battu repart toujours épaule en haut : depuis le dièdre du
+        // plané, l'aile monte au lieu de tomber d'un coup.
+        if (g.flapping) g.wing = Math.PI / 2
+      }
+      g.flap = ease(g.flap, g.flapping ? 1 : 0, dt, W.blend)
+      g.wing += dt * TAU * W.hz
+      if (g.wing >= TAU) g.wing -= TAU
+      g.drop = g.flapping ? Math.min(0, g.drop + W.climb * dt) : Math.max(-W.maxDrop, g.drop - W.sink * dt)
       const x = g.cx + Math.cos(g.a) * g.r
       const z = g.cz + Math.sin(g.a) * g.r
       // Cap tangent au cercle, dans le sens de rotation.
       const heading = Math.atan2(-Math.sin(g.a) * g.w, Math.cos(g.a) * g.w)
-      // Battement accepté en bascule du corps : roulis rapide + inclinaison
-      // vers l'intérieur du virage.
-      const flap = Math.sin(time * 6.2 + g.phase)
-      dummy.position.set(x, g.alt + Math.sin(time * 0.8 + g.phase) * 0.2 + flap * 0.03, z)
-      dummy.rotation.set(0.08, heading, (g.w > 0 ? -0.2 : 0.2) + flap * 0.3)
+      // Le corps descend quand les ailes montent (et inversement), avec un
+      // soupçon de roulis : ce sont les ailes qui battent, plus le corps.
+      const beat = Math.sin(g.wing) * g.flap
+      dummy.position.set(x, g.alt + g.drop + Math.sin(time * 0.8 + g.phase) * 0.2 - beat * W.bodyBob, z)
+      dummy.rotation.set(0.08, heading, (g.w > 0 ? -0.2 : 0.2) + beat * W.bodyRoll)
       dummy.scale.set(1, 1, 1)
       dummy.updateMatrix()
       this.gullMesh.setMatrixAt(i, dummy.matrix)
+      a[i * 4] = g.wing
+      a[i * 4 + 1] = 0
+      a[i * 4 + 2] = 0
+      a[i * 4 + 3] = g.flap
     }
     this.gullMesh.instanceMatrix.needsUpdate = true
+    anim.needsUpdate = true
   }
 }
