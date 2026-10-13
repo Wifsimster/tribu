@@ -160,3 +160,50 @@ test('sans quai, la faune reste exactement celle d’avant', () => {
     assert.equal(after, before, `graine ${seed} : setBlockers([]) a changé la faune`)
   }
 })
+
+/** Marge la plus faible entre la palissade (48 points à R 3,1) et l'emprise
+ *  RÉELLE d'un bâtiment (`Village.FOOTPRINT`, sans la marge de 0,45 des
+ *  obstacles de la faune) ; négative = un piquet dans le mur. */
+function penVsBuildings(f, village) {
+  const FP = Village.FOOTPRINT
+  let min = Infinity
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2
+    const px = f.penCenter.x + Math.cos(a) * 3.1
+    const pz = f.penCenter.z + Math.sin(a) * 3.1
+    for (const p of village.propPlacements) min = Math.min(min, Math.hypot(px - p.x, pz - p.z) - (FP[p.id] ?? 0.5))
+  }
+  return min
+}
+
+test('l’enclos ne plante jamais sa palissade dans un bâtiment ni sur le quai', () => {
+  // L'ancre de l'enclos est tirée parmi les points du pré, qui ne gardent que
+  // ~1 u du bâti quand la palissade en fait 3,1 : sur master, graine 7, le
+  // tirage 3 plantait la clôture 1,5 dans l'aqueduc. Avec ou sans quai, au
+  // tirage comme après `setBlockers`, chaque piquet reste dehors.
+  for (const [seed, age] of CASES) {
+    for (const quay of [true, false]) {
+      // Un village neuf par cas : le quai, une fois posé, ne se retire pas.
+      const { island, village } = town(seed, age)
+      village.setTools(quay ? TOOLS.slice(0, age - 1) : ['etain'])
+      const g = village.goodsAt
+      assert.equal(!!g, quay, `graine ${seed} : quai inattendu`)
+      for (let rng = 1; rng <= 8; rng++) {
+        const label = `graine ${seed}, ${quay ? 'quai' : 'sans quai'}, tirage ${rng}`
+        seeded(rng, () => {
+          const f = new Fauna(island, village.obstaclePoints)
+          f.setBlockers(village.blockers)
+          assert.ok(f.penCenter, `${label} : plus d'enclos`)
+          const m = penVsBuildings(f, village)
+          assert.ok(m >= 0.2, `${label} : palissade à ${m.toFixed(2)} d'un bâtiment`)
+          if (g)
+            for (let i = 0; i < 48; i++) {
+              const a = (i / 48) * Math.PI * 2
+              const d = quayDist(g, f.penCenter.x + Math.cos(a) * 3.1, f.penCenter.z + Math.sin(a) * 3.1)
+              assert.ok(d > 0.2, `${label} : palissade à ${d.toFixed(2)} du quai`)
+            }
+        })
+      }
+    }
+  }
+})

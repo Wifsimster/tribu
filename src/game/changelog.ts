@@ -14,7 +14,7 @@ export const CHANGELOG: Release[] = [
     title: 'Pas de cheval sur le quai',
     items: [
       "Un cheval ou un chevreuil pouvait brouter au milieu des caisses du marchand : les bêtes ne savaient rien du quai quand il apparaissait en cours de partie. Elles le contournent désormais comme les bâtiments, qu'il soit déjà là au chargement ou qu'il s'installe sous tes yeux, et celles qui se trouvaient dessus vont paître un peu plus loin.",
-      "L'enclos et le poulailler ne se posent jamais sur le quai. Sur une île sans quai, rien ne bouge.",
+      "L'enclos et le poulailler ne se posent jamais sur le quai, et la palissade des moutons ne traverse plus un moulin ou un atelier : si elle le touchait, l'enclos s'installe juste à côté, dans le même pré. Ailleurs, rien ne bouge.",
     ],
   },
   {

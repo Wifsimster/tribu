@@ -344,6 +344,13 @@ const BLOCKER_SPOT = 1.2
 /** L'enclos palissade comprise (piquets à 3,1) : le rayon que `pen` publie
  *  au quai, et celui que l'enclos garde face à lui. */
 const PEN_R = 3.3
+/** Recul du centre de l'enclos au bord d'un obstacle du BÂTI. L'obstacle vaut
+ *  emprise réelle + 0,45 (`Village.obstaclePoints`) ; la palissade est à 3,1
+ *  et un piquet a 0,07 de rayon. 3,1 + 0,2 − 0,45 : les piquets restent à
+ *  0,2 au moins de l'emprise réelle. Pas les 3,3 du quai : la marge de
+ *  l'obstacle compte déjà, et un recul plus large déplacerait sans raison
+ *  des enclos qui tenaient. */
+const PEN_WALL = 3.1 + 0.2 - 0.45
 /** La cabane à poules, rampe comprise. */
 const COOP_R = 1.0
 
@@ -588,10 +595,18 @@ export class Fauna {
     this.solid = this.obstacles
 
     // Le troupeau de moutons reste groupé : ses cibles se limitent au voisinage
-    // d'une ancre, tirée là où les prés sont les plus denses.
-    const anchor = this.sheepSpots[(Math.random() * this.sheepSpots.length) | 0]!
-    this.sheepSpots = this.flock(anchor, this.sheepSpots)
-    this.penCenter = { x: anchor.x, z: anchor.z }
+    // d'une ancre, tirée là où les prés sont les plus denses. Un point du pré
+    // ne garde que ~1 u du bâti, et la palissade en fait 3,1 : l'ancre tirée
+    // peut planter la clôture dans un moulin. Elle se pose alors au plus près
+    // dans le pré, sans second tirage — la suite des tirages (troupeaux,
+    // mouettes) ne bouge pas, et une île dont l'enclos tenait déjà reste
+    // identique au tirage près.
+    const drawn = this.sheepSpots[(Math.random() * this.sheepSpots.length) | 0]!
+    const anchor = this.penSite(drawn, this.sheepSpots, [])
+    if (anchor) {
+      this.sheepSpots = this.flock(anchor, this.sheepSpots)
+      this.penCenter = { x: anchor.x, z: anchor.z }
+    }
     const coop = this.henSpots.reduce(
       (a, s) => ({ x: a.x + s.x / this.henSpots.length, z: a.z + s.z / this.henSpots.length }),
       { x: 0, z: 0 },
@@ -644,6 +659,37 @@ export class Fauna {
   }
 
 
+  /** LA règle de l'enclos, au tirage comme au passage du quai : sa
+   *  palissade ne touche ni un bâtiment ni le quai. Centre à PEN_WALL au
+   *  moins du bord de chaque obstacle du bâti, et à PEN_R de chaque emprise
+   *  posée après coup (`zones`, le quai à GOODS_R — la même distance que le
+   *  quai garde à l'enclos dans `goodsAvoid`, pour que l'un n'en chasse
+   *  jamais l'autre). */
+  private penFits(p: Spot, zones: readonly Zone[]): boolean {
+    for (const o of this.obstacles) if (Math.hypot(p.x - o.x, p.z - o.z) < o.r + PEN_WALL) return false
+    for (const b of zones) if (Math.hypot(p.x - b.x, p.z - b.z) < b.r + PEN_R) return false
+    return true
+  }
+
+  /** Où planter l'enclos voulu en `at` : là s'il y tient, sinon au point du
+   *  pré le plus proche qui tient — sans tirage, la partie reste
+   *  reproductible. Faute de place, pas d'enclos du tout plutôt qu'une
+   *  palissade à travers un mur ou des caisses. */
+  private penSite(at: Spot, meadow: Spot[], zones: readonly Zone[]): Spot | null {
+    if (this.penFits(at, zones)) return at
+    let best: Spot | null = null
+    let bd = Infinity
+    for (const s of meadow) {
+      if (!this.penFits(s, zones)) continue
+      const d = Math.hypot(s.x - at.x, s.z - at.z)
+      if (d < bd) {
+        bd = d
+        best = s
+      }
+    }
+    return best
+  }
+
   /** Les moutons de l'enclos : le pré dans un rayon de 2,6 autour de l'ancre,
    *  sauf s'il en reste trop peu pour un troupeau. */
   private flock(anchor: Spot, meadow: Spot[]): Spot[] {
@@ -693,15 +739,13 @@ export class Fauna {
 
     // L'enclos : en cours de partie, le quai l'a déjà évité (`goodsAvoid`) ;
     // au chargement, il a été tiré sans connaître le quai. S'il le touche, il
-    // se déplace au plus près dans le pré — sans tirage, pour que la partie
-    // reste reproductible — et faute de place, il n'y a pas de clôture du
-    // tout plutôt qu'une palissade à travers les caisses. La règle est donc
-    // la même dans les deux sens : centre de l'enclos et centre du quai
-    // jamais à moins de GOODS_R + PEN_R.
+    // se déplace par la même règle qu'au tirage (`penSite`) : le nouveau
+    // point doit tenir loin du quai ET du bâti — le plus proche point du pré
+    // hors du quai pouvait sinon planter la clôture dans un bâtiment.
     const meadow = keep(this.home.sheep)
-    const penMoved = !!this.penCenter && !clear(this.penCenter, PEN_R)
+    const penMoved = !!this.penCenter && !this.penFits(this.penCenter, zones)
     if (penMoved) {
-      const a = nearest(meadow.filter((s) => clear(s, PEN_R)), this.penCenter!)
+      const a = this.penSite(this.penCenter!, meadow, zones)
       this.penCenter = a ? { x: a.x, z: a.z } : null
     }
     this.sheepSpots = this.penCenter ? this.flock(this.penCenter, meadow) : meadow
