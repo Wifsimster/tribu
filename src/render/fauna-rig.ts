@@ -1,6 +1,6 @@
 import { MeshToonMaterial } from 'three'
 
-// ── Squelette procédural de la faune (v3.60.0) ─────────────────────────────
+// ── Squelette procédural de la faune (v3.61.0) ─────────────────────────────
 // Pas d'os, pas de texture : chaque sommet d'un animal porte l'identifiant de
 // sa pièce et le pivot autour duquel elle tourne (`aPivot`), chaque bête quatre
 // nombres d'état (`aAnim`), et le vertex shader plie les pièces. Pourquoi pas
@@ -14,7 +14,7 @@ import { MeshToonMaterial } from 'three'
 // TS, il faut donc qu'elle calcule EXACTEMENT ce que fait le shader.
 
 /** Identifiant de pièce, stocké en `aPivot.w`. 0 = rigide : le sommet n'est
- *  pas touché (mouton, poule, cheval en entier dans la 3.60.0). */
+ *  pas touché (mouton, poule, cheval en entier dans la 3.61.0). */
 export const PART = {
   RIGID: 0,
   /** Pattes avant gauche, avant droite, arrière gauche, arrière droite. La

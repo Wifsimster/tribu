@@ -10,13 +10,25 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
-    version: '3.60.0',
+    version: '3.61.0',
     title: 'Le chevreuil marche, la mouette bat des ailes',
     items: [
       "Le chevreuil ne glisse plus sur l'herbe comme une statue : ses quatre pattes avancent l'une après l'autre au pas, et chaque sabot reste posé au sol tant qu'il porte la bête. Plus il va vite, plus ses pas s'allongent.",
       "Quand le colon l'approche, il part au trot, les pattes croisées deux par deux, la tête portée en avant.",
       "Pour brouter, il baisse le cou jusqu'à l'herbe au lieu de basculer tout le corps, puis le relève en douceur.",
       "Les mouettes battent vraiment des ailes : l'aile se plie au coude et le bout suit avec un temps de retard. Après quelques battements, elles planent ailes tendues en se laissant descendre, puis repartent.",
+    ],
+  },
+  {
+    version: '3.60.0',
+    title: 'Un ciel bleu franc',
+    items: [
+      "Le ciel est d'un bleu franc et ne grisaille plus au fil des âges : il garde la même couleur du Paléolithique à l'Ère des limites. La brume de l'horizon est plus claire.",
+      "Le soleil est plus chaud et un peu plus fort, et les ombres tirent vers le vert doré au lieu du bleu-gris. L'herbe, les feuillages et le chaume sont plus vifs, le sable plus doré.",
+      "L'eau est turquoise : claire sur les haut-fonds, plus profonde au large. Le sable, l'écume et l'eau gardent un net écart de clarté, pour que la côte se lise toujours.",
+      "La lumière ondule sur les haut-fonds, et le liseré d'écume qui dessine la côte est plus net et plus blanc.",
+      "Quand il pleut ou que le temps se couvre, le ciel grisaille : il ne reste plus bleu franc sous l'averse.",
+      "Ta partie, tes bâtiments et ta production restent tels quels.",
     ],
   },
   {

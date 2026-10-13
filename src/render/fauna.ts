@@ -62,7 +62,7 @@ const RIGID: Rig = [PART.RIGID, 0, 0, 0]
 
 /** Soude les pièces. Dès qu'une pièce est animée, les autres reçoivent un
  *  `aPivot` nul (pièce 0, rigide) : la fusion exige les mêmes attributs
- *  partout. Une espèce sans pièce animée (mouton, poule, cheval en 3.60.0)
+ *  partout. Une espèce sans pièce animée (mouton, poule, cheval en 3.61.0)
  *  n'en porte aucun — pas un octet de plus sur ce qui ne bouge pas. */
 function weld(parts: BufferGeometry[]): BufferGeometry {
   if (parts.some((g) => g.getAttribute('aPivot')))
@@ -317,7 +317,7 @@ export function gullGeo(): BufferGeometry {
   // Ailes en dièdre, bouts sombres : la signature de la mouette vue de loin.
   // Trois segments par aile — l'épaule, le bras, la main — pour que le profil
   // s'incurve au lieu de faire une planche.
-  // Squelette (v3.60.0) : le premier segment tourne à l'épaule, DANS le corps ;
+  // Squelette (v3.61.0) : le premier segment tourne à l'épaule, DANS le corps ;
   // le reste de l'aile (bras, main, rémiges) tourne au coude, là où les deux
   // segments se touchent, puis suit l'épaule. Gauche de l'oiseau = +x.
   const [shx, shy, shz] = GULL_WING.shoulderAt
@@ -389,7 +389,7 @@ interface LandCfg {
   sink: number
   /** Demi-largeur du corps au sol : ce que le cadastre garde hors des murs. */
   body: number
-  /** Espèce riguée (v3.60.0) : la phase avance avec la DISTANCE parcourue, à
+  /** Espèce riguée (v3.61.0) : la phase avance avec la DISTANCE parcourue, à
    *  la cadence de l'allure, et le cou broute à la place du corps entier.
    *  Absente : l'ancien rebond à l'horloge, corps rigide. */
   gait?: Gait
@@ -424,7 +424,7 @@ interface Gull {
   w: number
   alt: number
   phase: number
-  /** Battement (v3.60.0) : phase de l'aile à l'horloge, poids du battu 0–1
+  /** Battement (v3.61.0) : phase de l'aile à l'horloge, poids du battu 0–1
    *  (0 = plané), état visé, temps restant dans cet état, combien d'états
    *  déjà enchaînés, et altitude perdue en plané (≤ 0). */
   wing: number

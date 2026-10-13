@@ -1,4 +1,4 @@
-// Squelette procédural de la faune (v3.60.0). La copie TS du shader (`rigPose`)
+// Squelette procédural de la faune (v3.61.0). La copie TS du shader (`rigPose`)
 // sert de banc : ce qu'elle calcule, le vertex shader le dessine.
 //   corepack pnpm test
 import { test } from 'node:test'
