@@ -118,6 +118,11 @@ const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
 const SUN_DAY = LIGHT.sunDay
 const SUN_LOW = new Color('#ffb36b')
+/** Ciel et brume de temps couvert. Depuis la v3.61.0, le ciel ne prend plus la
+ *  teinte d'âge, qui le grisait aussi par beau temps : sans ce gris, la pluie
+ *  tombait d'un ciel bleu franc. */
+const STORM_SKY = new Color('#8d9eab')
+const STORM_HAZE = new Color('#b9c4cb')
 
 export class Stage {
   readonly renderer: WebGLRenderer
@@ -1139,6 +1144,7 @@ export class Stage {
   private ageId = 0
   private lastDaylight = -1
   private lastWarmth = -1
+  private lastStorm = -1
 
   /** La course du soleil : u ∈ [0,1), lever à 0, zénith à 0,25, coucher à 0,5.
    *  Tout le reste — couleur, intensité, ciel, brume — découle de l'élévation.
@@ -1196,16 +1202,29 @@ export class Stage {
     this.sun.castShadow = k > 0.02
     this.hemi.intensity = (0.16 + LIGHT.hemiDay * k) * (0.82 + 0.18 * this.wCur.sun)
 
-    const haze = this.hazeFor(age.fog).lerp(NIGHT_HAZE, 1 - k)
+    // Le gris ne vient qu'avec le temps couvert et la pluie (grey de 0,65 à
+    // 0,85) : par temps clair (0,05) ou voilé (0,2), il vaut zéro et la
+    // palette validée reste intacte.
+    const storm = smoothstep(0.25, 0.85, this.wCur.grey) * 0.6
+    const haze = this.hazeFor(age.fog).lerp(STORM_HAZE, storm).lerp(NIGHT_HAZE, 1 - k)
     this.fog.color.copy(haze)
 
     // Le ciel n'est repeint que quand l'ambiance change vraiment : une aube
     // entière n'écrit la texture qu'une cinquantaine de fois.
-    if (Math.abs(k - this.lastDaylight) > 0.02 || Math.abs(w - this.lastWarmth) > 0.02) {
+    if (
+      Math.abs(k - this.lastDaylight) > 0.02 ||
+      Math.abs(w - this.lastWarmth) > 0.02 ||
+      Math.abs(storm - this.lastStorm) > 0.02
+    ) {
       this.lastDaylight = k
       this.lastWarmth = w
+      this.lastStorm = storm
       this.sky.dispose()
-      const top = PALETTE.sky.clone().lerp(new Color(age.sky), AGE_SKY_MIX).lerp(NIGHT_SKY, 1 - k)
+      const top = PALETTE.sky
+        .clone()
+        .lerp(new Color(age.sky), AGE_SKY_MIX)
+        .lerp(STORM_SKY, storm)
+        .lerp(NIGHT_SKY, 1 - k)
       // L'horizon s'embrase davantage aux heures basses : le halo directionnel
       // fait le point chaud, le dégradé fait la nappe.
       const bottom = haze.clone().lerp(SUN_LOW, w * 0.62)
