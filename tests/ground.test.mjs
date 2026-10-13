@@ -219,3 +219,51 @@ test('un chemin contourne un obstacle au lieu de le traverser', () => {
     pz = q.z
   }
 })
+
+test("un villageois dont le chemin devient impossible après une pose ne traverse pas la nouvelle emprise", () => {
+  // Défaut relevé par la QA de la PR #15 : `settle()` ignorait l'échec de
+  // `plan()`, et l'ancien chemin, tracé avant la pose, menait à travers le
+  // nouveau quai (jusqu'à 40 s dedans). Ici, le chemin d'avant la pose passe
+  // par le centre du futur quai, et la replanification qui suit la pose
+  // échoue (cible devenue inaccessible) : il doit lâcher l'ancien chemin.
+  const w = town(42, 2)
+  w.village.setTools(['etain', 'sel'])
+  const g = w.village.goodsAt
+  w.village.setTools([])
+  w.ground.refresh()
+  assert.ok(g, 'le quai a une place')
+  const s = w.villagers.souls[0]
+  const a = w.ground.nearestFree(g.x + 3, g.z, 0.25, 3)
+  assert.ok(a, 'un départ libre devant le quai')
+  // Une première image sur l'ancienne carte : le cadastre est lu.
+  s.home = false
+  w.villagers.update(1 / 60, 0, false, false)
+  s.x = a.x
+  s.z = a.z
+  s.walking = true
+  s.tx = g.x - 3
+  s.tz = g.z
+  s.path = [{ x: g.x, z: g.z }, { x: g.x - 3, z: g.z }]
+  // La pose ; la replanification qui la suit échoue une fois.
+  w.village.setTools(['etain', 'sel'])
+  assert.equal(w.ground.refresh(), true)
+  const plan = w.villagers.plan
+  let calls = 0
+  w.villagers.plan = function (so) {
+    if (calls++ === 0) return false
+    return plan.call(this, so)
+  }
+  const inside = solids(w.village)
+  let walled = 0
+  let moved = 0
+  const start = { x: s.x, z: s.z }
+  for (let f = 0; f < 60 * 30; f++) {
+    w.ground.refresh()
+    w.villagers.update(1 / 60, f / 60, false, false)
+    if (w.ground.clearAt(s.x, s.z) < 0 || inside(s.x, s.z)) walled++
+    moved = Math.max(moved, Math.hypot(s.x - start.x, s.z - start.z))
+  }
+  assert.ok(calls >= 1, 'la pose a fait replanifier')
+  assert.equal(walled, 0, `${walled} images dans le quai posé`)
+  assert.ok(moved > 0.5, 'il repart vers une autre cible')
+})

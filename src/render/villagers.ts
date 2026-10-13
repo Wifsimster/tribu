@@ -214,7 +214,14 @@ export class Villagers {
           s.z = p.z
         }
       }
-      if (s.walking) this.plan(s)
+      // Chemin impossible sur la nouvelle carte : l'ancien, tracé avant la
+      // pose, traverserait le nouveau bâtiment. On l'abandonne ; la pause
+      // courte fait tirer une nouvelle cible, atteignable, à l'image d'après.
+      if (s.walking && !this.plan(s)) {
+        s.path = []
+        s.walking = false
+        s.timer = 0.4
+      }
     }
   }
 
