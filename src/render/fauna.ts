@@ -953,7 +953,24 @@ export class Fauna implements GroundSource {
       const far = k >= 10
       if (!far && (c.x - b.x) ** 2 + (c.z - b.z) ** 2 > cfg.step * cfg.step) continue
       const r = this.routeTo(b, c.x + (Math.random() - 0.5) * 0.4, c.z + (Math.random() - 0.5) * 0.4, cfg, far ? 40 : cfg.step * 1.8)
-      if (!r) continue
+      // Une étape qui ramène la bête sur place (point d'habitat ramené au
+      // libre juste à côté d'elle) n'en est pas une : elle resterait figée
+      // d'une pause à l'autre.
+      if (!r || Math.hypot(r.x - b.x, r.z - b.z) < 0.3) continue
+      b.tx = r.x
+      b.tz = r.z
+      b.path = r.pts
+      b.state = 0
+      return
+    }
+    // Aucun point d'habitat joignable (pré coupé par une palissade, bête
+    // repoussée hors de sa zone) : un pas de flânerie autour d'elle, sur la
+    // terre libre, plutôt que de rester plantée à retenter.
+    for (let k = 0; k < 8; k++) {
+      const a = Math.random() * Math.PI * 2
+      const d = cfg.step * (0.4 + Math.random() * 0.6)
+      const r = this.routeTo(b, b.x + Math.sin(a) * d, b.z + Math.cos(a) * d, cfg, cfg.step * 2)
+      if (!r || Math.hypot(r.x - b.x, r.z - b.z) < 0.3) continue
       b.tx = r.x
       b.tz = r.z
       b.path = r.pts

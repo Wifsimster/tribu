@@ -64,10 +64,11 @@ const NODE = RES * STRIDE
  *  distance vraie vaut donc au moins la distance entre centres moins 0,17 :
  *  c'est ce que rend `clearAt`, une valeur sûre, jamais optimiste. */
 const SLACK = 0.17
-/** Un nœud n'est praticable que s'il laisse le corps passer PLUS la moitié
- *  d'un pas de nœud (0,14) : tout point d'un segment entre deux nœuds voisins
- *  garde alors le corps hors des emprises. */
-const NODE_MARGIN = 0.15
+/** Un nœud est praticable s'il laisse passer le corps ; un pas entre deux
+ *  nœuds l'est si son milieu aussi. Une marge d'un demi-pas sur chaque nœud
+ *  (essayée d'abord) fermait les passages étroits du campement : le colon
+ *  restait enfermé dans une poche entre la tente et l'appentis. */
+const NODE_MARGIN = 0
 const SQRT2 = Math.SQRT2
 
 /** Transformée de distance exacte en 1D (Felzenszwalb & Huttenlocher). */
@@ -521,6 +522,9 @@ export class Ground {
           // En diagonale, les deux voisins orthogonaux doivent passer : pas
           // de coin coupé au ras d'un mur.
           if (di !== 0 && dj !== 0 && (this.nodeClear(j * mx + ii) < need || this.nodeClear(jj * mx + i) < need)) continue
+          // Le milieu du pas : un mur fin (une lisse, un piquet) entre deux
+          // nœuds libres ne se franchit pas.
+          if (this.clearAt((this.nodeX(n) + this.nodeX(m)) / 2, (this.nodeZ(n) + this.nodeZ(m)) / 2) < r) continue
           const ng = g + (di !== 0 && dj !== 0 ? SQRT2 : 1) * NODE
           if (this.stamp[m] === gen && ng >= this.gScore[m]!) continue
           this.stamp[m] = gen
