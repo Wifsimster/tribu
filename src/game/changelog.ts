@@ -13,7 +13,7 @@ export const CHANGELOG: Release[] = [
     version: '3.61.0',
     title: 'Le chevreuil marche, la mouette bat des ailes',
     items: [
-      "Le chevreuil ne glisse plus sur l'herbe comme une statue : ses quatre pattes avancent l'une après l'autre au pas, et chaque sabot reste posé au sol tant qu'il porte la bête. Plus il va vite, plus ses pas s'allongent.",
+      "Le chevreuil ne glisse plus sur l'herbe comme une statue : ses quatre pattes avancent l'une après l'autre au pas, et chaque sabot reste posé au sol tant qu'il porte la bête. Au trot, ses pas s'allongent.",
       "Quand le colon l'approche, il part au trot, les pattes croisées deux par deux, la tête portée en avant.",
       "Pour brouter, il baisse le cou jusqu'à l'herbe au lieu de basculer tout le corps, puis le relève en douceur.",
       "Les mouettes battent vraiment des ailes : l'aile se plie au coude et le bout suit avec un temps de retard. Après quelques battements, elles planent ailes tendues en se laissant descendre, puis repartent.",
