@@ -299,7 +299,11 @@ export class Villagers {
     s.tx = tx * k
     s.tz = tz * k
     s.walking = true
-    if (this.plan(s)) {
+    // Une cible ramenée sur place (point tiré hors d'atteinte, rabattu sur le
+    // nœud où il se tient) n'est pas une promenade : il enchaînerait deux
+    // pauses sans bouger, jusqu'à 13 s plantés (mesure QA PR #15). C'est la
+    // même règle que pour les bêtes : on retente aussitôt.
+    if (this.plan(s) && Math.hypot(s.tx - s.x, s.tz - s.z) >= 0.5) {
       s.misses = 0
       return
     }
