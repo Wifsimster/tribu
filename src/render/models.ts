@@ -39,9 +39,9 @@ import tourUrl from '../assets/models/tour.glb?url'
 import grattecielUrl from '../assets/models/gratteciel.glb?url'
 import fuseeUrl from '../assets/models/fusee.glb?url'
 import fusionUrl from '../assets/models/fusion.glb?url'
-// Les dix véhicules : les six paliers de la barque d'expédition, la barque
-// marchande, le train, l'auto et l'avion. Un maillage chacun, comme les
-// reliques, posé dans le repère de sa primitive par vehicles.ts.
+// Les véhicules : les six paliers de la barque d'expédition, la barque
+// marchande, l'auto et l'avion. Un maillage chacun, comme les reliques, posé
+// dans le repère de sa primitive par vehicles.ts.
 import raftUrl from '../assets/models/raft.glb?url'
 import canoeUrl from '../assets/models/canoe.glb?url'
 import sailboatUrl from '../assets/models/sailboat.glb?url'
@@ -49,9 +49,21 @@ import caravelUrl from '../assets/models/caravel.glb?url'
 import steamerUrl from '../assets/models/steamer.glb?url'
 import motorboatUrl from '../assets/models/motorboat.glb?url'
 import merchantUrl from '../assets/models/merchant.glb?url'
-import trainUrl from '../assets/models/train.glb?url'
 import carUrl from '../assets/models/car.glb?url'
 import planeUrl from '../assets/models/plane.glb?url'
+// La rame du chemin de fer, pièce par pièce : la loco, la voiture de
+// voyageurs, un wagon par ressource et le wagon couvert. Assemblée sur la voie
+// par consist.ts, attelage contre attelage.
+import locoUrl from '../assets/models/loco.glb?url'
+import wagonCoachUrl from '../assets/models/wagon_coach.glb?url'
+import wagonWoodUrl from '../assets/models/wagon_wood.glb?url'
+import wagonStoneUrl from '../assets/models/wagon_stone.glb?url'
+import wagonFoodUrl from '../assets/models/wagon_food.glb?url'
+import wagonFiberUrl from '../assets/models/wagon_fiber.glb?url'
+import wagonClayUrl from '../assets/models/wagon_clay.glb?url'
+import wagonCopperUrl from '../assets/models/wagon_copper.glb?url'
+import wagonIronUrl from '../assets/models/wagon_iron.glb?url'
+import wagonEmptyUrl from '../assets/models/wagon_empty.glb?url'
 import { asPart } from './model-geo'
 
 /** Les modèles faits dans Blender, par identifiant de jeu (relique, outil,
@@ -98,9 +110,18 @@ const URLS: Record<string, string> = {
   steamer: steamerUrl,
   motorboat: motorboatUrl,
   merchant: merchantUrl,
-  train: trainUrl,
   car: carUrl,
   plane: planeUrl,
+  loco: locoUrl,
+  wagon_coach: wagonCoachUrl,
+  wagon_wood: wagonWoodUrl,
+  wagon_stone: wagonStoneUrl,
+  wagon_food: wagonFoodUrl,
+  wagon_fiber: wagonFiberUrl,
+  wagon_clay: wagonClayUrl,
+  wagon_copper: wagonCopperUrl,
+  wagon_iron: wagonIronUrl,
+  wagon_empty: wagonEmptyUrl,
 }
 
 /** Le maillage tel que livré par le chargeur, attribut `_stage` compris. On

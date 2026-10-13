@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.57.0',
+    title: 'Le train s’allonge',
+    items: [
+      "Le train grandit avec ta tribu. À l'Ère industrielle, la locomotive tire deux wagons ; chaque âge suivant en accroche un de plus, jusqu'à cinq. Dès l'Ère moderne, une voiture de voyageurs roule juste derrière la locomotive.",
+      "Les wagons transportent ce que ta tribu produit le plus, du plus abondant au moins abondant : des grumes pour le bois, des blocs pour la pierre, du grain doré pour la nourriture, des balles de paille pour les fibres, des jarres pour l'argile, du minerai pour le cuivre et des barres pour le fer. Le chargement change seulement à l'arrêt en gare : si ta production change, tu le verras au prochain passage du train.",
+      "Les wagons sont attelés les uns aux autres et suivent la voie dans les courbes. La voie a été adoucie pour que leurs roues restent sur les rails. En gare, la voiture de voyageurs s'arrête devant l'abri du quai. Aux terminus, le train ne fait plus demi-tour sur place : la locomotive repart en poussant ses wagons.",
+      "La locomotive et les wagons ont été modelés pour Tribu. Ils ne sont téléchargés que si ton île a un chemin de fer.",
+    ],
+  },
+  {
     version: '3.56.0',
     title: 'Des véhicules qui vont de l’avant',
     items: [
