@@ -132,10 +132,19 @@ export class Villagers {
   private readonly dummy = new Object3D()
   private count = 0
 
-  constructor(
-    private readonly island: Island,
-    private readonly obstacles: { x: number; z: number; r: number }[],
-  ) {
+  /** Ce que les villageois contournent : le bâti, puis le quai du marchand
+   *  dès qu'il existe (`setBlockers`). */
+  private obstacles: { x: number; z: number; r: number }[]
+  /** Le bâti seul, tel que relevé à la construction. */
+  private readonly built: { x: number; z: number; r: number }[]
+  private readonly island: Island
+
+  // Champs déclarés à la main et non en propriétés de paramètre : Node, qui
+  // ne fait que retirer les types, charge ainsi les villageois dans les tests.
+  constructor(island: Island, obstacles: { x: number; z: number; r: number }[]) {
+    this.island = island
+    this.built = obstacles
+    this.obstacles = obstacles
     const skin = new MeshToonMaterial({ vertexColors: true })
     for (const child of [false, true]) {
       const m = new InstancedMesh(bodyGeo(child), skin, 1)
@@ -160,6 +169,14 @@ export class Villagers {
         home: false,
       })
     this.setPopulation(0)
+  }
+
+  /** Le quai du marchand, posé au chargement comme acheté en cours de partie.
+   *  Les villageois le recevaient seulement à la construction du monde : un
+   *  quai acheté ensuite restait invisible pour eux, et une cueilleuse
+   *  marchait entre les caisses. Même chemin que la faune et le colon. */
+  setBlockers(zones: readonly { x: number; z: number; r: number }[]): void {
+    this.obstacles = this.built.concat(zones)
   }
 
   /** Combien d'âmes en plus du colon — le monde le décide selon l'âge. */
