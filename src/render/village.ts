@@ -33,6 +33,7 @@ import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
 import { headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
+import type { Footprint, GroundSource } from './ground'
 import {
   CAR_LENGTH,
   CAR_MODEL,
@@ -1422,7 +1423,30 @@ function wonderModelParts(id: string, age: number, stage: number): BufferGeometr
   return p
 }
 
-export class Village {
+/** Les triangles de géométries en coordonnées monde, à plat (x,y,z × 3). */
+function trianglesOf(geos: BufferGeometry[]): number[] {
+  const out: number[] = []
+  for (const g of geos) {
+    const pos = g.getAttribute('position')
+    const idx = g.index
+    const n = idx ? idx.count : pos.count
+    for (let k = 0; k < n; k++) {
+      const i = idx ? idx.getX(k) : k
+      out.push(pos.getX(i), pos.getY(i), pos.getZ(i))
+    }
+  }
+  return out
+}
+
+/** Un ruban plat de demi-largeur h, de a à b : deux triangles. */
+function flatQuad(ax: number, az: number, bx: number, bz: number, h: number): number[] {
+  const L = Math.hypot(bx - ax, bz - az) || 1
+  const nx = (-(bz - az) / L) * h
+  const nz = ((bx - ax) / L) * h
+  return [ax + nx, 0, az + nz, ax - nx, 0, az - nz, bx - nx, 0, bz - nz, ax + nx, 0, az + nz, bx - nx, 0, bz - nz, bx + nx, 0, bz + nz]
+}
+
+export class Village implements GroundSource {
   readonly group = new Group()
   private readonly solid = new MeshToonMaterial({ vertexColors: true })
   private readonly placed = new Set<string>()
@@ -1547,6 +1571,9 @@ export class Village {
     const geo = mergeGeometries(p) ?? new BufferGeometry()
     grain(geo)
     bakeFirelight(geo)
+    // Le cadastre au sol lit cette géométrie (repère du foyer, ×1,2) : c'est
+    // la forme réelle des abris, pas les sept disques de CAMP_BLOCKERS.
+    this.campGeo = geo
     const hearth = new Mesh(geo, this.solid)
     hearth.castShadow = true
     hearth.receiveShadow = true
@@ -1776,6 +1803,9 @@ export class Village {
    *  ce dernier est joué ×1,2 depuis le foyer, ce qui poussait le ponton au
    *  large et le surélevait d'autant. Un seul mesh, sans passe d'ombre. */
   private buildShore(): void {
+    // Ponton, gare et arbres abattus par les rues changent ici.
+    this.revision++
+    this.stationTris = null
     if (this.shoreMesh) {
       this.group.remove(this.shoreMesh)
       this.shoreMesh.geometry.dispose()
@@ -2067,6 +2097,7 @@ export class Village {
     const y = GROUND_Y
     // Le quai est du côté du foyer : on descend du train face au village.
     const side = (HEARTH.x - c.x) * cy - (HEARTH.z - c.z) * sy > 0 ? 1 : -1
+    const from = p.length
     const at = (u: number, h: number, v: number): [number, number, number] => [
       c.x + cy * u * side + sy * v,
       y + h,
@@ -2090,6 +2121,8 @@ export class Village {
     // Le panneau du quai, face aux voyageurs.
     put(new CylinderGeometry(0.04, 0.04, 0.8, 5), C.stoneDark, 1.0, 0.66, 1.7)
     put(new BoxGeometry(0.06, 0.3, 0.8), C.plaster, 1.0, 1.0, 1.7)
+    // Le cadastre au sol garde la gare telle qu'elle est dessinée.
+    this.stationTris = trianglesOf(p.slice(from))
   }
 
   /** LA RAME : la locomotive, la voiture de voyageurs dès l'Ère moderne, et
@@ -4662,6 +4695,49 @@ export class Village {
     }
   }
 
+  // ── Le cadastre au sol (ground.ts) ───────────────────────────────────────
+  /** Change à chaque pose : le cadastre au sol se refait alors. */
+  revision = 0
+  /** La géométrie du campement, repère du foyer (×1,2) : sa forme réelle. */
+  private campGeo: BufferGeometry | null = null
+  /** Quai et abri de la gare, en triangles monde, relevés à leur pose. */
+  private stationTris: number[] | null = null
+
+  /** Tout ce que le village pose au sol et que l'on ne traverse pas : les
+   *  ateliers (phare compris), la Merveille, le musée, le quai du marchand,
+   *  la gare, les abris du campement, le ponton et l'attelage qui laboure.
+   *  Les seuils de hauteur sont ceux de l'audit des collisions : une dalle
+   *  au ras du sol (rue, voie, dallage du camp) se piétine, un mur non. */
+  groundFootprints(): Footprint[] {
+    const out: Footprint[] = []
+    const knee = GROUND_Y + 0.12
+    if (this.propsGeo) out.push({ geo: this.propsGeo, minY: knee })
+    if (this.wonderGeo) out.push({ geo: this.wonderGeo, minY: knee })
+    // L'esplanade du musée et la terre battue du quai comptent : on ne
+    // traverse ni une vitrine ni un tas de caisses.
+    if (this.museumGeo) out.push({ geo: this.museumGeo, minY: GROUND_Y + 0.05 })
+    if (this.goodsGeo) out.push({ geo: this.goodsGeo, minY: -Infinity })
+    if (this.campGeo)
+      out.push({ geo: this.campGeo, minY: GROUND_Y + 0.12 * SCALE, scale: SCALE, ox: HEARTH.x, oy: GROUND_Y, oz: HEARTH.z })
+    if (this.stationTris) out.push({ tris: this.stationTris, minY: -Infinity })
+    const head = this.jettyHead
+    const end = this.jettyEnd
+    if (head && end) out.push({ tris: flatQuad(head.x, head.z, end.x, end.z, 0.675), minY: -Infinity })
+    // L'attelage fait l'aller-retour sur ±1,2 : tout le sillon est à lui.
+    for (const pl of this.propPlacements) {
+      if (pl.id !== 'plough') continue
+      const c = Math.cos(pl.rot)
+      const sn = Math.sin(pl.rot)
+      const at = (x: number, z: number): [number, number] => [pl.x + x * c + z * sn, pl.z - x * sn + z * c]
+      const a = at(-1.85, -0.25)
+      const b = at(2.2, -0.25)
+      const d = at(2.2, 0.25)
+      const e = at(-1.85, 0.25)
+      out.push({ tris: [a[0], 0, a[1], b[0], 0, b[1], d[0], 0, d[1], a[0], 0, a[1], d[0], 0, d[1], e[0], 0, e[1]], minY: -Infinity })
+    }
+    return out
+  }
+
   /** Emprises au sol des bâtiments — la faune les évite. Le rayon suit
    *  l'emprise réelle du bâtiment : depuis les remises à l'échelle, un rayon
    *  uniforme laissait les moutons traverser l'aqueduc. Le quai du marchand
@@ -5082,6 +5158,9 @@ export class Village {
    *  échoue (attributs qui divergent), chacun garde le sien — rien ne
    *  disparaît. */
   private restack(): void {
+    // Toute pose (atelier, Merveille, musée, quai) passe par ici : le
+    // cadastre au sol apprend qu'il doit se refaire.
+    this.revision++
     const sources = [this.propsGeo, this.wonderGeo, this.museumGeo, this.goodsGeo]
     for (const m of this.statics) {
       this.group.remove(m)

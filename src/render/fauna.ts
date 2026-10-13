@@ -20,6 +20,7 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { tint } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE } from './village'
 import { GROUND_Y, type Island } from './island'
+import { follow, type Footprint, type Ground, type GroundSource, type Pt } from './ground'
 
 /** Une pièce teintée puis posée — même recette que le village : tout un animal
  *  finit fondu en une seule géométrie, une espèce entière en un seul call. */
@@ -298,7 +299,20 @@ interface Beast {
   pitch: number
   sleep: number
   gait: number
+  /** Le chemin du cadastre jusqu'à (tx, tz) ; vide hors cadastre. */
+  path: Pt[]
+  /** Opacité de repositionnement : 1 visible, 0 effacée (voir `rehome`). */
+  fade: number
+  /** Où la bête réapparaît une fois effacée ; null hors repositionnement. */
+  warp: Pt | null
+  /** Tirages d'étape ratés d'affilée. */
+  miss: number
 }
+
+/** Vitesse du fondu de repositionnement : un quart de seconde pour
+ *  s'effacer, autant pour revenir — assez court pour ne pas laisser la bête
+ *  plantée, assez long pour qu'on ne la voie pas sauter. */
+const FADE = 4
 
 interface LandCfg {
   speed: number
@@ -317,6 +331,8 @@ interface LandCfg {
    *  troupeau disparaissait sous le sol, ne laissant que le dessus de la
    *  toison à ras de terre. */
   sink: number
+  /** Demi-largeur du corps au sol : ce que le cadastre garde hors des murs. */
+  body: number
 }
 
 interface Gull {
@@ -411,6 +427,10 @@ function makeHerd(n: number, spots: Spot[]): Beast[] {
       pitch: 0,
       sleep: 0,
       gait: 0.85 + Math.random() * 0.3,
+      path: [],
+      fade: 1,
+      warp: null,
+      miss: 0,
     })
   }
   return herd
@@ -420,7 +440,7 @@ function makeHerd(n: number, spots: Spot[]): Beast[] {
  *  en tout. Elle ne produit rien — elle est là pour que l'île ait l'air de
  *  vivre sans le joueur, et pour dater chaque époque (gibier, puis troupeaux,
  *  puis basse-cour, chevaux, mouettes des ports). */
-export class Fauna {
+export class Fauna implements GroundSource {
   readonly group = new Group()
   private readonly skin = new MeshToonMaterial({ vertexColors: true })
 
@@ -463,16 +483,21 @@ export class Fauna {
 
   // Les allures sont figées ici plutôt qu'en littéraux dans update : zéro objet
   // construit par frame.
-  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5, sink: 0.05 }
-  private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, bobFreq: 5, sink: 0.02 }
-  private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16, sink: 0.008 }
-  private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8, sink: 0.07 }
+  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5, sink: 0.05, body: 0.3 }
+  private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, bobFreq: 5, sink: 0.02, body: 0.28 }
+  private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16, sink: 0.008, body: 0.12 }
+  private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8, sink: 0.07, body: 0.35 }
 
   /** Un trajet est-il dégagé ? Vrai si le segment ne coupe l'emprise d'aucun
    *  bâtiment ni du camp : les bêtes contournent, elles ne traversent plus. */
   private readonly segClear: (x0: number, z0: number, x1: number, z1: number) => boolean
 
   private readonly island: Island
+  /** Le cadastre au sol (ground.ts) : sans lui, l'ancienne poussée radiale. */
+  private ground: Ground | null = null
+  private groundRev = -1
+  /** Change quand l'enclos ou le poulailler se (re)pose : le cadastre se refait. */
+  revision = 0
   /** Les emprises du bâti, relevées à la construction. */
   private readonly obstacles: Zone[]
 
@@ -792,6 +817,7 @@ export class Fauna {
         if (!clear({ x: b.tx, z: b.tz }, BLOCKER_SPOT)) {
           b.tx = b.x
           b.tz = b.z
+          b.path = []
           b.state = 2
           b.timer = 0.5
         }
@@ -803,6 +829,7 @@ export class Fauna {
    *  cage : les bêtes ne la franchissent jamais puisque toutes leurs cibles
    *  sont dedans — et une cabane à poules près du foyer. */
   private buildPens(): void {
+    this.revision++
     const p: BufferGeometry[] = []
     const wood = new Color('#9a7248')
     const woodDark = new Color('#6d4f31')
@@ -874,11 +901,160 @@ export class Fauna {
     this.group.add(this.pens)
   }
 
+  /** La palissade de l'enclos et la cabane à poules, pour le cadastre au
+   *  sol : ce sont les seules emprises que pose la faune. La géométrie est
+   *  celle que l'on voit (piquets, lisses, cabane, rampe). */
+  groundFootprints(): Footprint[] {
+    // Tant que la clôture est cachée (pas encore d'agriculture), elle
+    // n'existe pas : le colon ne contourne pas un enclos invisible.
+    return this.pens && this.pens.visible ? [{ geo: this.pens.geometry, minY: -Infinity }] : []
+  }
+
+  /** Branche le cadastre au sol : désormais toutes les bêtes le lisent. */
+  setGround(ground: Ground | null): void {
+    this.ground = ground
+    this.groundRev = -1
+  }
+
+  /** La carte a changé : une bête prise sous une nouvelle emprise ou
+   *  enfermée dans une poche est rendue à sa composante (`rehome`), et chaque
+   *  marche en cours se refait sur la carte du jour. Rien n'est tiré au
+   *  hasard ici. */
+  private settle(): void {
+    const g = this.ground
+    if (!g || g.revision === this.groundRev) return
+    // La première carte est lue avant la première image : personne n'a vu
+    // les bêtes, elles naissent directement dans leur composante.
+    const first = this.groundRev === -1
+    this.groundRev = g.revision
+    const herds: [Beast[], LandCfg][] = [
+      [this.deer, this.deerCfg],
+      [this.sheep, this.sheepCfg],
+      [this.hens, this.henCfg],
+      [this.horses, this.horseCfg],
+    ]
+    for (const [herd, cfg] of herds)
+      for (const b of herd) {
+        this.rehome(b, cfg, first)
+        b.path = []
+        if (b.state === 0 || b.state === 3) {
+          b.state = 2
+          b.timer = 0.3
+        }
+      }
+  }
+
+  /** La composante où vit une bête : l'enclos pour un mouton qui s'y
+   *  trouve dès que la palissade est debout (il y est enfermé exprès), la
+   *  composante principale de l'île — celle du bourg — pour tous les autres,
+   *  moutons restés au pré compris : on ne les téléporte pas dans l'enclos. */
+  private homeComp(b: Beast, cfg: LandCfg): number {
+    const g = this.ground!
+    if (cfg === this.sheepCfg && this.penCenter && this.pens?.visible) {
+      const pen = g.componentAt(this.penCenter.x, this.penCenter.z, cfg.body)
+      if (pen >= 0 && g.componentAt(b.x, b.z, cfg.body) === pen) return pen
+    }
+    return g.mainComponent(cfg.body)
+  }
+
+  /** Rend une bête à sa composante. Pourquoi : une bête née ou laissée dans
+   *  une poche (un nœud libre entre un arbre et un rocher, un recoin fermé
+   *  par une pose) n'a aucun chemin pour en sortir — la QA de la PR #15 a vu
+   *  un cerf y rester figé 600 s. Comme la poche est une autre composante,
+   *  il n'existe par définition aucun chemin : la bête est reposée sur le
+   *  nœud le plus proche de sa composante, un saut de quelques dixièmes en
+   *  général. Prise DANS une emprise, elle en sort à l'instant (pas une
+   *  image dans le mur) et réapparaît en fondu ; libre mais enfermée, elle
+   *  s'efface d'abord sur place. */
+  private rehome(b: Beast, cfg: LandCfg, instant: boolean): void {
+    const g = this.ground!
+    const home = this.homeComp(b, cfg)
+    const free = g.free(b.x, b.z, cfg.body)
+    if (free && g.componentAt(b.x, b.z, cfg.body) === home) return
+    const p =
+      g.nearestIn(b.x, b.z, cfg.body, home, 6) ??
+      g.nearestIn(b.x, b.z, cfg.body, home, 20) ??
+      (free ? null : g.nearestFree(b.x, b.z, cfg.body, 10))
+    if (!p) return
+    b.path = []
+    b.state = 1
+    b.timer = 0.8
+    if (instant || !free) {
+      b.x = b.tx = p.x
+      b.z = b.tz = p.z
+      b.warp = null
+      b.fade = instant ? 1 : 0
+    } else b.warp = p
+  }
+
+  /** Le chemin d'une bête jusqu'au point voulu (ramené au point libre le plus
+   *  proche) ; null si on n'y arrive pas, ou si le détour dépasse `maxLen`. */
+  private routeTo(b: Beast, x: number, z: number, cfg: LandCfg, maxLen: number): { x: number; z: number; pts: Pt[] } | null {
+    const g = this.ground!
+    // La cible se prend dans la composante de la bête (`homeComp`) : un
+    // point d'habitat dans une poche n'a pas de chemin, et la bête qui s'y
+    // rendrait « au plus près » n'y entrerait de toute façon pas.
+    const at = g.nearestIn(x, z, cfg.body, this.homeComp(b, cfg), 1.5)
+    if (!at) return null
+    const r = g.route(b.x, b.z, at.x, at.z, cfg.body, 6000)
+    if (!r.reached || r.length > maxLen) return null
+    return { x: at.x, z: at.z, pts: r.pts }
+  }
+
+  /** Le choix d'une étape, sur le cadastre : un point d'habitat proche ET
+   *  joignable sans traverser quoi que ce soit, détour compris. Faute de
+   *  mieux, n'importe quel point de la zone joignable — une bête ne reste
+   *  jamais plantée parce que son pré est coupé en deux par un atelier. */
+  private pickOnGround(b: Beast, spots: Spot[], cfg: LandCfg): void {
+    for (let k = 0; k < 16; k++) {
+      const c = spots[(Math.random() * spots.length) | 0]!
+      const far = k >= 10
+      if (!far && (c.x - b.x) ** 2 + (c.z - b.z) ** 2 > cfg.step * cfg.step) continue
+      const r = this.routeTo(b, c.x + (Math.random() - 0.5) * 0.4, c.z + (Math.random() - 0.5) * 0.4, cfg, far ? 40 : cfg.step * 1.8)
+      // Une étape qui ramène la bête sur place (point d'habitat ramené au
+      // libre juste à côté d'elle) n'en est pas une : elle resterait figée
+      // d'une pause à l'autre.
+      if (!r || Math.hypot(r.x - b.x, r.z - b.z) < 0.3) continue
+      b.tx = r.x
+      b.tz = r.z
+      b.path = r.pts
+      b.state = 0
+      b.miss = 0
+      return
+    }
+    // Aucun point d'habitat joignable (pré coupé par une palissade, bête
+    // repoussée hors de sa zone) : un pas de flânerie autour d'elle, sur la
+    // terre libre, plutôt que de rester plantée à retenter.
+    for (let k = 0; k < 8; k++) {
+      const a = Math.random() * Math.PI * 2
+      const d = cfg.step * (0.4 + Math.random() * 0.6)
+      const r = this.routeTo(b, b.x + Math.sin(a) * d, b.z + Math.cos(a) * d, cfg, cfg.step * 2)
+      if (!r || Math.hypot(r.x - b.x, r.z - b.z) < 0.3) continue
+      b.tx = r.x
+      b.tz = r.z
+      b.path = r.pts
+      b.state = 0
+      b.miss = 0
+      return
+    }
+    b.state = 2
+    b.timer = 0.8 + Math.random() * 1.2
+    // Trois échecs d'affilée : la bête est sans doute hors de sa composante
+    // (garde-fou : `settle` l'y remet déjà à chaque pose).
+    if (++b.miss >= 3) {
+      b.miss = 0
+      this.rehome(b, cfg, false)
+    }
+  }
+
   /** Chaque espèce apparaît avec le savoir qui la fait entrer dans la vie de la
    *  tribu. Appelé chaque frame depuis main — quatre booléens, rien de plus. */
   setKnown(agriculture: boolean, granary: boolean, horsecollar: boolean, sail: boolean): void {
     // Les lieux apparaissent avec leurs bêtes : pas de clôture sans troupeau.
-    if (this.pens) this.pens.visible = agriculture || granary
+    if (this.pens && this.pens.visible !== (agriculture || granary)) {
+      this.pens.visible = agriculture || granary
+      this.revision++
+    }
     this.sheepMesh.visible = agriculture
     this.henMesh.visible = granary
     this.horseMesh.visible = horsecollar
@@ -966,10 +1142,23 @@ export class Fauna {
       const k = d > cap ? cap / d : 1
       b.tx = tx * k
       b.tz = tz * k
+      // Sur le cadastre, la ruée suit un chemin : elle contourne, au plus
+      // près du point visé si la mer ou le bourg l'arrête.
+      if (this.ground) {
+        const at = this.ground.nearestFree(b.tx, b.tz, this.deerCfg.body, 12)
+        const r = at ? this.ground.route(b.x, b.z, at.x, at.z, this.deerCfg.body, 12000) : null
+        b.path = r ? r.pts : []
+        const end = b.path[b.path.length - 1]
+        if (end) {
+          b.tx = end.x
+          b.tz = end.z
+        }
+      }
     }
   }
 
   update(dt: number, time: number, settler: Vector3, night: boolean): void {
+    this.settle()
     this.tickFish(dt, night)
     if (this.deerMesh.visible) this.stepLand(this.deerMesh, this.deer, this.deerSpots, this.deerCfg, dt, time, night, settler)
     if (this.sheepMesh.visible) this.stepLand(this.sheepMesh, this.sheep, this.sheepSpots, this.sheepCfg, dt, time, night, null)
@@ -992,11 +1181,26 @@ export class Fauna {
       const b = herd[i]!
       b.sleep += ((night ? 1 : 0) - b.sleep) * Math.min(1, dt * 1.4)
       const awake = b.sleep < 0.4
+      // Repositionnement en cours (`rehome`) : la bête s'efface sur place,
+      // saute une fois invisible, puis revient.
+      if (b.warp) {
+        b.fade -= dt * FADE
+        b.state = 1
+        b.timer = Math.max(b.timer, 0.3)
+        if (b.fade <= 0) {
+          b.fade = 0
+          b.x = b.tx = b.warp.x
+          b.z = b.tz = b.warp.z
+          b.warp = null
+        }
+      } else if (b.fade < 1) b.fade = Math.min(1, b.fade + dt * FADE)
 
       if (awake) {
         // Le gibier fuit : dès que le colon approche, cap sur le point
         // d'habitat le plus à l'écart de lui.
-        if (threat && b.state !== 3) {
+        // Une bête qui s'efface pour être reposée ne fuit pas : elle sauterait
+        // ensuite au milieu de sa course.
+        if (threat && b.state !== 3 && !b.warp) {
           const dx = b.x - threat.x
           const dz = b.z - threat.z
           if (dx * dx + dz * dz < 16) {
@@ -1013,13 +1217,44 @@ export class Fauna {
             b.state = 3
             b.timer = 5
             b.pitch = 0
+            if (this.ground) {
+              const r = this.routeTo(b, b.tx, b.tz, cfg, 60)
+              b.path = r ? r.pts : []
+              if (r) {
+                b.tx = r.x
+                b.tz = r.z
+              } else {
+                // Pas d'échappée joignable : il se fige plutôt que de fuir
+                // à travers un mur.
+                b.state = 2
+                b.timer = 1
+              }
+            }
             // Sursaut : il se retourne d'un coup — sinon il traverse le colon
             // pendant que son cap tourne.
             b.heading = Math.atan2(b.tx - b.x, b.tz - b.z)
           }
         }
 
-        if (b.state === 0 || b.state === 3) {
+        if ((b.state === 0 || b.state === 3) && this.ground) {
+          // Sur le cadastre : la bête suit son chemin ; le cap tourne vers
+          // le pas suivant, la position ne quitte jamais le chemin.
+          const flee = b.state === 3
+          if (b.path.length === 0) {
+            b.state = Math.random() < cfg.grazeBias ? 2 : 1
+            b.timer = cfg.pauseMin + Math.random() * (cfg.pauseMax - cfg.pauseMin)
+          } else {
+            const sp = cfg.speed * b.gait * (flee ? 2.7 : 1)
+            const nx = b.path[0]!
+            b.heading = turnToward(b.heading, Math.atan2(nx.x - b.x, nx.z - b.z), cfg.turn * (flee ? 2.4 : 1) * dt * 2)
+            follow(b, b.path, sp * dt)
+            b.phase += dt * cfg.bobFreq * (flee ? 1.8 : 1)
+          }
+          if (flee) {
+            b.timer -= dt
+            if (b.timer < 0) b.state = 0
+          }
+        } else if (b.state === 0 || b.state === 3) {
           const flee = b.state === 3
           const dx = b.tx - b.x
           const dz = b.tz - b.z
@@ -1042,13 +1277,18 @@ export class Fauna {
           }
         } else {
           b.timer -= dt
-          if (b.timer < 0) pickTarget(b, spots, cfg, this.segClear)
+          if (b.timer < 0) {
+            if (this.ground) this.pickOnGround(b, spots, cfg)
+            else pickTarget(b, spots, cfg, this.segClear)
+          }
         }
       }
 
       // Jamais dans le bâti : poussée radiale hors de l'emprise RÉELLE de
       // chaque bâtiment — le rayon uniforme laissait entrer dans les grands.
-      for (const o of this.solid) {
+      // Sur le cadastre, les chemins sont déjà dégagés : une poussée radiale
+      // sortirait la bête d'un disque pour la mettre dans un mur voisin.
+      if (!this.ground) for (const o of this.solid) {
         const rr = o.r + 0.3
         const dx = b.x - o.x
         const dz = b.z - o.z
@@ -1059,7 +1299,7 @@ export class Fauna {
           b.z = o.z + (dz / d) * rr
         }
       }
-      for (let k = 0; k < CAMP_BLOCKERS.length; k++) {
+      if (!this.ground) for (let k = 0; k < CAMP_BLOCKERS.length; k++) {
         const bl = CAMP_BLOCKERS[k]!
         const dx = b.x - bl.x
         const dz = b.z - bl.z
@@ -1086,7 +1326,8 @@ export class Fauna {
       )
       dummy.rotation.set(b.pitch, b.heading, moving ? Math.sin(b.phase) * 0.05 : 0)
       // La nuit : couché sur place — tassé, immobile, un peu élargi.
-      dummy.scale.set(1 + b.sleep * 0.12, 1 - b.sleep * 0.55, 1 + b.sleep * 0.06)
+      const k = Math.max(0.001, b.fade)
+      dummy.scale.set((1 + b.sleep * 0.12) * k, (1 - b.sleep * 0.55) * k, (1 + b.sleep * 0.06) * k)
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
     }

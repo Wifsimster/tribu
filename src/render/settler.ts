@@ -23,6 +23,7 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { PALETTE } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE, CAMP_HOME } from './village'
 import { GROUND_Y, type Island } from './island'
+import { follow, type Ground, type Pt } from './ground'
 
 type Phase = 'walkOut' | 'work' | 'walkHome' | 'deposit'
 type Trip = 'none' | 'leaving' | 'away' | 'returning'
@@ -59,6 +60,10 @@ const FIRE_REACH = 5.4
  *  c'est ce qui donne une chance au colon d'être vu chez lui plutôt qu'en train
  *  de traverser un bois. */
 const DEPOSIT = 2.1
+
+/** Demi-largeur du colon au sol (épaules, rig ×1,32) : c'est elle que le
+ *  cadastre garde hors des murs, pas son seul centre. */
+const BODY_R = 0.3
 
 const HIP_Y = 0.44
 const SHOULDER_Y = 0.86
@@ -145,6 +150,18 @@ export class Settler {
   private readonly shore = new Vector3(0, 0, 0)
   private destination = new Vector3(3, 0, 3)
   private speed = 2.9
+  /** Le cadastre au sol (ground.ts). Sans lui (tests anciens), le colon garde
+   *  l'ancienne poussée hors des abris. */
+  private ground: Ground | null = null
+  /** Le chemin en cours : points de passage jusqu'au but `pathGoal`. */
+  private path: Pt[] = []
+  private readonly pathGoal = new Vector3(Number.NaN, 0, Number.NaN)
+  /** La carte sur laquelle le chemin a été tracé : une pose en cours de
+   *  partie la change, et le chemin se refait. */
+  private pathRev = -1
+  /** Où mène le chemin tracé : s'il est épuisé loin d'ici (le colon a été
+   *  replacé, retour d'expédition), on retrace au lieu de croire être arrivé. */
+  private readonly pathEnd = new Vector3()
   private pack!: Mesh
   private tool: Mesh | null = null
 
@@ -447,6 +464,85 @@ export class Settler {
     this.extra = extra
   }
 
+  /** Branche le cadastre au sol : désormais tous les trajets le contournent. */
+  setGround(ground: Ground | null): void {
+    this.ground = ground
+    this.pathRev = -1
+  }
+
+  /** Un pas vers `goal` le long du chemin du cadastre. Rend la distance qui
+   *  reste (0 à l'arrivée) ; le cap suit le dernier pas. Sans cadastre :
+   *  ligne droite, comme avant. */
+  private walkToward(goal: Vector3, step: number, arrive: number): number {
+    const pos = this.group.position
+    const g = this.ground
+    if (!g) {
+      const dx = goal.x - pos.x
+      const dz = goal.z - pos.z
+      const dist = Math.hypot(dx, dz)
+      if (dist < arrive) return 0
+      const k = Math.min(step, dist) / dist
+      pos.x += dx * k
+      pos.z += dz * k
+      this.yaw = Math.atan2(dx, dz)
+      return dist
+    }
+    // Pris DANS une emprise (posé au chargement sur une gare, rendu à la
+    // gare au retour d'expédition, un atelier qui pousse sous ses pieds) : il
+    // en sort au point libre le plus proche avant de marcher, au lieu de
+    // traverser le mur pour s'en extraire.
+    if (g.clearAt(pos.x, pos.z) < 0) {
+      const out = g.nearestFree(pos.x, pos.z, BODY_R, 8)
+      if (out) {
+        pos.x = out.x
+        pos.z = out.z
+        this.pathRev = -1
+      }
+    }
+    // La carte a changé : s'il se retrouve dans une poche (un recoin fermé
+    // par la pose), aucun chemin n'en sort — il serait condamné à travailler
+    // et rentrer sur place. Il est reposé sur le nœud le plus proche de la
+    // composante principale, un pas court (QA PR #15, B2).
+    if (this.pathRev !== g.revision) {
+      const main = g.mainComponent(BODY_R)
+      if (g.componentAt(pos.x, pos.z, BODY_R) !== main) {
+        const out = g.nearestIn(pos.x, pos.z, BODY_R, main, 6) ?? g.nearestIn(pos.x, pos.z, BODY_R, main, 20)
+        if (out) {
+          pos.x = out.x
+          pos.z = out.z
+        }
+      }
+    }
+    const stale =
+      this.pathRev !== g.revision ||
+      goal.x !== this.pathGoal.x ||
+      goal.z !== this.pathGoal.z ||
+      (this.path.length === 0 && Math.hypot(this.pathEnd.x - pos.x, this.pathEnd.z - pos.z) > 0.6)
+    if (stale) {
+      // Une cible DANS une emprise (le tronc qu'on abat, le rocher qu'on
+      // taille, l'aérodrome) se rejoint par son bord : le point libre le plus
+      // proche. On y va par le chemin, jamais à travers un mur.
+      const at = g.nearestFree(goal.x, goal.z, BODY_R, 8) ?? { x: goal.x, z: goal.z }
+      const r = g.route(pos.x, pos.z, at.x, at.z, BODY_R)
+      this.path = r.pts
+      const end = r.pts[r.pts.length - 1]
+      this.pathEnd.set(end ? end.x : pos.x, 0, end ? end.z : pos.z)
+      this.pathGoal.set(goal.x, 0, goal.z)
+      this.pathRev = g.revision
+      // But inaccessible (enclavé) : la route mène au plus près, et le bout
+      // du chemin vaut arrivée — il travaille au bord plutôt que de piétiner
+      // contre un mur.
+    }
+    const left = this.path.length === 0 ? 0 : Math.hypot(this.path[this.path.length - 1]!.x - pos.x, this.path[this.path.length - 1]!.z - pos.z)
+    if (this.path.length === 0 || (this.path.length === 1 && left < arrive)) {
+      this.path.length = 0
+      return 0
+    }
+    const dir = follow(pos, this.path, step)
+    if (dir) this.yaw = Math.atan2(dir.dx, dir.dz)
+    return Math.max(1e-3, left)
+  }
+
   celebrate(): void {
     this.timer = Math.min(this.timer, 0.2)
     this.walkCycle += 3
@@ -461,23 +557,28 @@ export class Settler {
     if (this.wantSleep || this.sleeping || this.lieDown > 0) {
       if (this.updateSleep(dt)) return
     }
+    // Un atelier ou un quai qui pousse sous lui pendant qu'il travaille ou
+    // dépose : il ne marche pas, `walkToward` ne l'en sortirait qu'à la fin
+    // du geste (2,6 s dans le mur, QA PR #15). Il en sort à l'image même.
+    const g = this.ground
+    if (g && g.clearAt(this.group.position.x, this.group.position.z) < 0) {
+      const out = g.nearestFree(this.group.position.x, this.group.position.z, BODY_R, 8)
+      if (out) {
+        this.group.position.x = out.x
+        this.group.position.z = out.z
+        this.pathRev = -1
+      }
+    }
     const speed = this.speed * boost
     switch (this.phase) {
       case 'walkOut':
       case 'walkHome': {
         const goal = this.phase === 'walkOut' ? this.destination : this.home
-        const dx = goal.x - this.group.position.x
-        const dz = goal.z - this.group.position.z
-        const dist = Math.hypot(dx, dz)
-        if (dist < 0.35) {
+        if (this.walkToward(goal, speed * dt, 0.35) === 0) {
           this.phase = this.phase === 'walkOut' ? 'work' : 'deposit'
           this.timer = this.phase === 'work' ? 2.6 : DEPOSIT
           break
         }
-        const step = Math.min(speed * dt, dist)
-        this.group.position.x += (dx / dist) * step
-        this.group.position.z += (dz / dist) * step
-        this.yaw = Math.atan2(dx, dz)
         this.walkCycle += dt * speed * 2.6
         this.animateWalk()
         break
@@ -542,14 +643,7 @@ export class Settler {
     this.clock += dt
 
     if (this.wantSleep && !this.sleeping) {
-      const dx = this.home.x - this.group.position.x
-      const dz = this.home.z - this.group.position.z
-      const dist = Math.hypot(dx, dz)
-      if (dist > 0.45) {
-        const step = Math.min(this.speed * dt, dist)
-        this.group.position.x += (dx / dist) * step
-        this.group.position.z += (dz / dist) * step
-        this.yaw = Math.atan2(dx, dz)
+      if (this.walkToward(this.home, this.speed * dt, 0.45) > 0) {
         this.walkCycle += dt * this.speed * 2.6
         this.animateWalk()
         let d = this.yaw - this.group.rotation.y
@@ -599,12 +693,9 @@ export class Settler {
   private updateTrip(dt: number, boost: number): void {
     if (this.trip === 'away') return
     const goal = this.trip === 'leaving' ? this.board : this.home
-    const dx = goal.x - this.group.position.x
-    const dz = goal.z - this.group.position.z
-    const dist = Math.hypot(dx, dz)
     const speed = this.speed * boost
 
-    if (dist < 0.4) {
+    if (this.walkToward(goal, speed * dt, 0.4) === 0) {
       if (this.trip === 'leaving') {
         this.trip = 'away'
         this.group.visible = false
@@ -616,10 +707,6 @@ export class Settler {
       return
     }
 
-    const step = Math.min(speed * dt, dist)
-    this.group.position.x += (dx / dist) * step
-    this.group.position.z += (dz / dist) * step
-    this.yaw = Math.atan2(dx, dz)
     this.walkCycle += dt * speed * 2.6
     this.animateWalk()
 
@@ -636,6 +723,9 @@ export class Settler {
    *  glisse le long des peaux et les contourne, pour cinq comparaisons par
    *  image. */
   private skirtCamp(): void {
+    // Le cadastre connaît déjà les abris et le quai, à leur forme réelle : la
+    // poussée radiale le ferait sortir d'un disque pour entrer dans un mur.
+    if (this.ground) return
     for (const b of this.extra.length ? [...CAMP_BLOCKERS, ...this.extra] : CAMP_BLOCKERS) {
       const dx = this.group.position.x - b.x
       const dz = this.group.position.z - b.z

@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.58.0',
+    title: 'Chacun fait le tour',
+    items: [
+      "Le colon ne passe plus à travers les maisons, la Merveille, le musée, la gare ni les abris du campement : il les contourne. Il va abattre un arbre ou tailler un rocher en restant à son bord, et rejoint le ponton, la gare ou l'aérodrome par un chemin dégagé.",
+      "Les villageois et les bêtes font de même : chevreuils, moutons, poules et chevaux contournent les bâtiments, la palissade de l'enclos, le poulailler, les troncs et les rochers, et ne mettent plus une patte dans l'eau. Les buissons, les rues et la voie ferrée se traversent toujours à pied.",
+      "Un atelier, un quai ou une Merveille qui apparaît en cours de partie est contourné aussitôt. Si quelqu'un se trouvait à cet endroit, il est reposé juste à côté, sur la terre libre la plus proche. Une bête ou un villageois coincé dans un recoin sans issue s'efface un quart de seconde et réapparaît sur la terre libre la plus proche ; le colon, lui, y est reposé d'un pas.",
+      "Rien de ce qui est construit ne bouge : ta partie se charge comme avant, chaque bâtiment à sa place.",
+    ],
+  },
+  {
     version: '3.57.0',
     title: 'Le train s’allonge',
     items: [

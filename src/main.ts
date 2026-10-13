@@ -45,6 +45,7 @@ import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
 import { GROUND_Y, Island } from './render/island'
+import { Ground } from './render/ground'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
 import { Fauna } from './render/fauna'
@@ -79,6 +80,9 @@ const boat = new ExpeditionBoat()
 let expPhase: 'none' | 'walking' | 'sailed' = 'none'
 
 let island!: Island
+/** Le cadastre au sol : la seule carte de ce qui est plein, lue par le colon,
+ *  les villageois et la faune. Refait avec le monde. */
+let ground!: Ground
 let village!: Village
 let settler!: Settler
 let fauna!: Fauna
@@ -231,6 +235,15 @@ function buildWorld(): void {
   // Ce que le marchand a laissé se voit dès le chargement — APRÈS le relevé
   // des nœuds, que le quai écrème.
   placeGoods()
+  // Le cadastre au sol, une fois TOUT posé : bâtiments, Merveille, musée,
+  // gare, quai, campement, enclos, troncs, rochers et l'eau. Il ne déplace
+  // rien — il lit. Ce qui se pose ensuite (atelier, quai, chantier) change la
+  // révision du village ou de la faune, et la boucle le refait.
+  fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
+  ground = new Ground(island, [village, fauna])
+  settler.setGround(ground)
+  fauna.setGround(ground)
+  villagers.setGround(ground)
 }
 
 buildWorld()
@@ -1686,6 +1699,10 @@ function frame(now: number): void {
     // Galet percuteur, puis pic de cuivre, puis pic de fer.
     settler.setTool('pick', game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('copper') ? 1 : 0)
   }
+  // Une pose depuis la dernière image : la carte se refait avant que
+  // quiconque ne marche.
+  fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
+  ground.refresh()
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
   boat.update(dt, elapsed)
@@ -1707,7 +1724,6 @@ function frame(now: number): void {
     village.setCargo(game.rates)
   }
   village.update(dt, elapsed, lastDaylight)
-  fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
   // Les adultes veillent tant que la lumière le permet ; l'enfant est couché
   // dès la tombée de la nuit.
@@ -1873,6 +1889,7 @@ document.getElementById('photo-save')!.addEventListener('click', () => {
   villagers: () => villagers,
   village: () => village,
   island: () => island,
+  ground: () => ground,
   anchors: () => anchorMarks.anchors,
 }
 

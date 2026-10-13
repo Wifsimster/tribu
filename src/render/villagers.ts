@@ -19,6 +19,11 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GROUND_Y, type Island } from './island'
 import { PALETTE } from './palette'
 import { CAMP_HOME } from './village'
+import { follow, type Ground, type Pt } from './ground'
+
+/** Demi-largeur d'un villageois au sol (la tunique de l'adulte fait 0,26 de
+ *  rayon) : le cadastre garde le corps entier hors des murs. */
+const BODY_R = 0.25
 
 function part(src: BufferGeometry, c: Color, x = 0, y = 0, z = 0): BufferGeometry {
   const g = src.index ? src.toNonIndexed() : src
@@ -119,7 +124,18 @@ interface Soul {
   phase: number
   scale: number
   home: boolean
+  /** Le chemin du cadastre jusqu'à (tx, tz). */
+  path: Pt[]
+  /** Tirages ratés d'affilée : au-delà, il revient vers le foyer. */
+  misses: number
+  /** Taille de repositionnement : 1 normal, 0 effacé (voir `rehome`). */
+  fade: number
+  /** Où il réapparaît une fois effacé ; null hors repositionnement. */
+  warp: Pt | null
 }
+
+/** Un quart de seconde pour s'effacer, autant pour revenir. */
+const FADE = 4
 
 export class Villagers {
   /** Deux corps DISTINCTS : la cueilleuse et l'enfant n'ont pas les mêmes
@@ -138,6 +154,9 @@ export class Villagers {
   /** Le bâti seul, tel que relevé à la construction. */
   private readonly built: { x: number; z: number; r: number }[]
   private readonly island: Island
+  /** Le cadastre au sol : sans lui, l'ancienne poussée radiale. */
+  private ground: Ground | null = null
+  private groundRev = -1
 
   // Champs déclarés à la main et non en propriétés de paramètre : Node, qui
   // ne fait que retirer les types, charge ainsi les villageois dans les tests.
@@ -167,6 +186,10 @@ export class Villagers {
         // Plus de rétrécissement : chaque corps a déjà ses proportions.
         scale: 1,
         home: false,
+        path: [],
+        misses: 0,
+        fade: 1,
+        warp: null,
       })
     this.setPopulation(0)
   }
@@ -177,6 +200,79 @@ export class Villagers {
    *  marchait entre les caisses. Même chemin que la faune et le colon. */
   setBlockers(zones: readonly { x: number; z: number; r: number }[]): void {
     this.obstacles = this.built.concat(zones)
+  }
+
+  /** Branche le cadastre au sol (ground.ts). */
+  setGround(ground: Ground | null): void {
+    this.ground = ground
+    this.groundRev = -1
+  }
+
+  /** La carte a changé (pose en cours de partie, chargement) : une âme prise
+   *  sous la nouvelle emprise en sort par le plus court, avant l'image, et
+   *  chaque chemin se refait sur la carte du jour. */
+  private settle(): void {
+    const g = this.ground
+    if (!g || g.revision === this.groundRev) return
+    // La première carte est lue avant la première image : personne ne les a
+    // encore vus, ils naissent directement là où l'on peut marcher.
+    const first = this.groundRev === -1
+    this.groundRev = g.revision
+    for (const s of this.souls) {
+      this.rehome(s, first)
+      // Chemin impossible sur la nouvelle carte : l'ancien, tracé avant la
+      // pose, traverserait le nouveau bâtiment. On l'abandonne ; la pause
+      // courte fait tirer une nouvelle cible, atteignable, à l'image d'après.
+      if (s.walking && !this.plan(s)) {
+        s.path = []
+        s.walking = false
+        s.timer = 0.4
+      }
+    }
+  }
+
+  /** Rend une âme à la composante principale du cadastre (celle du bourg).
+   *  Pourquoi : la QA de la PR #15 a vu la cueilleuse naître dans une poche
+   *  de 91 nœuds près du campement, d'où aucun chemin ne sort — elle restait
+   *  plantée 21 à 27 s entre deux nuits. Une poche est une autre composante :
+   *  il n'y a pas de chemin, on la repose sur le nœud libre le plus proche de
+   *  la composante principale (un saut court). Prise DANS une emprise, elle
+   *  en sort à l'instant puis réapparaît en fondu ; libre mais enfermée, elle
+   *  s'efface d'abord sur place. */
+  private rehome(s: Soul, instant: boolean): void {
+    const g = this.ground
+    if (!g) return
+    const main = g.mainComponent(BODY_R)
+    const free = g.free(s.x, s.z, BODY_R)
+    if (free && g.componentAt(s.x, s.z, BODY_R) === main) return
+    const p = g.nearestIn(s.x, s.z, BODY_R, main, 6) ?? g.nearestIn(s.x, s.z, BODY_R, main, 20) ?? (free ? null : g.nearestFree(s.x, s.z, BODY_R, 8))
+    if (!p) return
+    s.path = []
+    s.walking = false
+    s.timer = 0.6
+    if (instant || !free) {
+      s.x = p.x
+      s.z = p.z
+      s.warp = null
+      s.fade = instant ? 1 : 0
+    } else s.warp = p
+  }
+
+  /** Trace le chemin jusqu'à (tx, tz), ramené au point le plus proche de la composante principale.
+   *  Faux si la cible n'est pas atteignable. */
+  private plan(s: Soul): boolean {
+    const g = this.ground
+    if (!g) return true
+    // Cible dans la composante principale seulement : un point libre au fond
+    // d'une poche n'a pas de chemin (QA PR #15, B2).
+    const at = g.nearestIn(s.tx, s.tz, BODY_R, g.mainComponent(BODY_R), 3)
+    if (!at) return false
+    const r = g.route(s.x, s.z, at.x, at.z, BODY_R, 12000)
+    if (!r.reached) return false
+    s.tx = at.x
+    s.tz = at.z
+    s.path = r.pts
+    return true
   }
 
   /** Combien d'âmes en plus du colon — le monde le décide selon l'âge. */
@@ -203,12 +299,37 @@ export class Villagers {
     s.tx = tx * k
     s.tz = tz * k
     s.walking = true
+    // Une cible ramenée sur place (point tiré hors d'atteinte, rabattu sur le
+    // nœud où il se tient) n'est pas une promenade : il enchaînerait deux
+    // pauses sans bouger, jusqu'à 13 s plantés (mesure QA PR #15). C'est la
+    // même règle que pour les bêtes : on retente aussitôt.
+    if (this.plan(s) && Math.hypot(s.tx - s.x, s.tz - s.z) >= 0.5) {
+      s.misses = 0
+      return
+    }
+    // Cible enclavée (au fond d'une cour, sur l'eau) : il ne fonce pas dans
+    // le mur, il retente bientôt ; au troisième échec, il rentre au foyer.
+    s.misses++
+    if (s.misses >= 3) {
+      s.misses = 0
+      s.tx = CAMP_HOME.x + 1.2
+      s.tz = CAMP_HOME.z + 1.4
+      if (this.plan(s)) return
+      // Même le foyer est hors d'atteinte : il est dans une poche (garde-fou,
+      // `settle` l'en sort déjà à chaque pose).
+      s.walking = false
+      this.rehome(s, false)
+      if (s.warp) return
+    }
+    s.walking = false
+    s.timer = 0.4
   }
 
   /** `night` est l'heure du coucher des ADULTES — repoussée par la lumière
    *  découverte (veillée). `childNight` est celle de l'ENFANT : la tombée de
    *  la nuit, point. Aucun lampadaire ne fait veiller un enfant. */
   update(dt: number, time: number, night: boolean, childNight = night): void {
+    this.settle()
     for (let i = 0; i < 2; i++) {
       const s = this.souls[i]!
       const active = i < this.count
@@ -218,18 +339,51 @@ export class Villagers {
 
       // La nuit, chacun rentre au camp et s'efface ; l'aube les rend.
       if (asleep && !s.home) {
-        s.tx = CAMP_HOME.x + (i === 0 ? 1.2 : -0.8)
-        s.tz = CAMP_HOME.z + 1.4
-        s.walking = true
-        if (Math.hypot(s.x - s.tx, s.z - s.tz) < 0.4) s.home = true
+        const hx = CAMP_HOME.x + (i === 0 ? 1.2 : -0.8)
+        const hz = CAMP_HOME.z + 1.4
+        // Le chemin du retour se trace une fois, à la tombée de la nuit.
+        if (!s.walking || s.path.length === 0 || s.tx !== hx || s.tz !== hz) {
+          s.tx = hx
+          s.tz = hz
+          s.walking = true
+          if (!this.plan(s)) s.path = []
+          s.tx = hx
+          s.tz = hz
+        }
+        if (Math.hypot(s.x - s.tx, s.z - s.tz) < 0.4 || (this.ground && s.path.length === 0)) s.home = true
       } else if (!asleep && s.home) {
         s.home = false
         s.timer = 1 + Math.random() * 3
         s.walking = false
       }
 
-      if (!s.home) {
-        if (s.walking) {
+      // Repositionnement en cours : il s'efface sur place, saute une fois
+      // invisible, puis revient.
+      if (s.warp) {
+        s.fade -= dt * FADE
+        s.walking = false
+        s.timer = Math.max(s.timer, 0.3)
+        if (s.fade <= 0) {
+          s.fade = 0
+          s.x = s.warp.x
+          s.z = s.warp.z
+          s.warp = null
+        }
+      } else if (s.fade < 1) s.fade = Math.min(1, s.fade + dt * FADE)
+
+      if (!s.home && !s.warp) {
+        if (s.walking && this.ground) {
+          // Sur le cadastre : il suit son chemin, sans jamais le quitter.
+          if (s.path.length === 0) {
+            s.walking = false
+            s.timer = 2.5 + Math.random() * 6
+          } else {
+            const sp = (i === 0 ? 0.62 : 0.95) * (asleep ? 1.4 : 1)
+            const dir = follow(s, s.path, sp * dt)
+            if (dir) s.heading = Math.atan2(dir.dx, dir.dz)
+            s.phase += dt * (i === 0 ? 7 : 11)
+          }
+        } else if (s.walking) {
           const dx = s.tx - s.x
           const dz = s.tz - s.z
           const d = Math.hypot(dx, dz)
@@ -248,8 +402,9 @@ export class Villagers {
           s.timer -= dt
           if (s.timer <= 0) this.pickTarget(s)
         }
-        // Jamais dans les murs : même poussée radiale que la faune.
-        for (const o of this.obstacles) {
+        // Jamais dans les murs : même poussée radiale que la faune. Inutile
+        // sur le cadastre, qui ne trace que des chemins dégagés.
+        if (!this.ground) for (const o of this.obstacles) {
           const rr = o.r + 0.25
           const dx = s.x - o.x
           const dz = s.z - o.z
@@ -266,7 +421,7 @@ export class Villagers {
       const hidden = s.home
       this.dummy.position.set(s.x, GROUND_Y + bob, s.z)
       this.dummy.rotation.set(0, s.heading, s.walking ? Math.sin(s.phase) * 0.06 : 0)
-      this.dummy.scale.setScalar(hidden ? 0.001 : s.scale)
+      this.dummy.scale.setScalar(hidden ? 0.001 : Math.max(0.001, s.scale * s.fade))
       this.dummy.updateMatrix()
       this.bodies[i]!.setMatrixAt(0, this.dummy.matrix)
       this.bodies[i]!.instanceMatrix.needsUpdate = true
