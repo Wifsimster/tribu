@@ -40,6 +40,16 @@ Provenance et licence des ressources graphiques et sonores embarquées dans le j
 | `gratteciel.glb` | Merveille de l'âge 8 — le gratte-ciel, en cinq stades de chantier (attribut `_STAGE`) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `fusee.glb` | Merveille de l'âge 9 — la fusée et sa tour de lancement, en cinq stades de chantier (attribut `_STAGE`) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `fusion.glb` | Merveille de l'âge 10 — le réacteur à fusion, en cinq stades de chantier (attribut `_STAGE`) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `raft.glb` | Barque d'expédition, palier 0 — radeau de rondins liés et sa perche | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `canoe.glb` | Barque d'expédition, palier 1 — pirogue creusée et sa pagaie | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `sailboat.glb` | Barque d'expédition, palier 2 — barque à voile (coque, mât, vergue ; la voile rayée reste dessinée par le jeu) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `caravel.glb` | Barque d'expédition, palier 3 — caravelle à deux mâts | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `steamer.glb` | Barque d'expédition, palier 4 — vapeur à roues à aubes | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `motorboat.glb` | Barque d'expédition, palier 5 — hors-bord | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `merchant.glb` | Barque marchande — coque, cargaison, mât et vergue (la voile rayée reste dessinée par le jeu) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `train.glb` | Train — locomotive à vapeur et son wagon | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `car.glb` | Automobile du garage | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `plane.glb` | Avion de l'aérodrome — monoplan à aile haute | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 
 Aucun asset tiers : ni modèle, ni texture, ni matériau importé. Les couleurs sont
 peintes dans les sommets (attribut `COLOR_0`), sans texture.

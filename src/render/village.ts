@@ -31,6 +31,7 @@ import { GROUND_Y, type Island } from './island'
 import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
+import { headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
 
 /** Le foyer est posé à côté du point de dépôt, pas dessus, et perpendiculairement
  *  à l'axe de la caméra par défaut: sinon le colon rentre dans les flammes et sa
@@ -2068,6 +2069,28 @@ export class Village {
     pivot.add(mesh)
     this.train = pivot
     this.group.add(pivot)
+    this.vehicleModel(mesh, 'train', 0.06)
+  }
+
+  /** Passe un véhicule au modèle Blender : tout de suite s'il est déjà là,
+   *  sinon dès qu'il arrive. Le mesh reste le même (pivot, matériau, ombre) :
+   *  seule sa géométrie change, et le nombre d'appels de dessin aussi. Si le
+   *  fichier manque, la primitive construite juste avant reste en place. */
+  private vehicleModel(mesh: Mesh, id: VehicleId, grainAmount: number): void {
+    const swap = (): boolean => {
+      const geo = vehicleGeometry(id)
+      if (!geo) return false
+      // Le même grain que la primitive : le véhicule ne détonne pas, à côté
+      // du bâti fondu, par des aplats trop lisses.
+      grain(geo, grainAmount)
+      mesh.geometry.dispose()
+      mesh.geometry = geo
+      return true
+    }
+    if (swap()) return
+    void loadModels([id]).then((fresh) => {
+      if (fresh && this.group.parent) swap()
+    })
   }
 
   /** Le va-et-vient : la locomotive parcourt la voie, marque un temps d'arrêt
@@ -4107,6 +4130,7 @@ export class Village {
     this.car = pivot
     this.carHome = { x: pl.x, y: pl.y, z: pl.z }
     this.group.add(pivot)
+    this.vehicleModel(mesh, 'car', 0.05)
   }
 
   /** Où l'on embarque : le quai de la gare, et l'aire de l'aérodrome. Le
@@ -4160,9 +4184,10 @@ export class Village {
     const x = a.x + (b.x - a.x) * t
     const z = a.z + (b.z - a.z) * t
     pivot.position.set(x, GROUND_Y + 0.1, z)
-    // Elle roule sur la voie de droite, comme tout le monde ici.
-    const yaw = Math.atan2(b.x - a.x, b.z - a.z)
-    pivot.rotation.y = (fwd ? yaw : yaw + Math.PI) + Math.PI / 2
+    // Le capot (+X local) dans le sens de la marche : au retour, le trajet
+    // s'inverse, le cap aussi — voir headingYaw.
+    const s = fwd ? 1 : -1
+    pivot.rotation.y = headingYaw((b.x - a.x) * s, (b.z - a.z) * s)
   }
 
   /** L'APPAREIL. Hors de la fusion, parce qu'il doit décoller et se poser :
@@ -4196,18 +4221,25 @@ export class Village {
     mesh.castShadow = true
     const pivot = new Group()
     pivot.add(mesh)
+    // Le cap d'abord, puis le tangage autour de l'envergure (z local) et le
+    // roulis autour du fuselage (x local) : dans l'ordre par défaut (XYZ), le
+    // tangage se faisait autour de l'axe x du MONDE, quel que soit le cap.
+    pivot.rotation.order = 'YZX'
     // Cap de décollage : vers le large, dos à l'île.
     this.planeAt = { x: pl.x, y: pl.y + 0.4, z: pl.z, rot: Math.atan2(pl.x, pl.z) }
     this.plane = pivot
     this.planeRest()
     this.group.add(pivot)
+    this.vehicleModel(mesh, 'plane', 0.05)
   }
 
   private planeRest(): void {
     const a = this.planeAt
     if (!this.plane || !a) return
     this.plane.position.set(a.x, a.y, a.z)
-    this.plane.rotation.set(0, a.rot, 0)
+    // Au repos, le nez (+X local) face à la piste, vers le large. Le code
+    // d'avant tournait l'appareil du cap brut : nez à 90° de la piste.
+    this.plane.rotation.set(0, headingYaw(Math.sin(a.rot), Math.cos(a.rot)), 0)
     this.plane.visible = true
   }
 
@@ -4244,7 +4276,9 @@ export class Village {
     const t = this.flightDir === 1 ? this.flight : 1 - this.flight
     // Roulage sur le premier quart, puis montée : un avion prend son élan
     // avant de quitter le sol.
-    const roll = Math.min(1, t / 0.25)
+    // Au retour, le roulage s'arrête un peu avant le bout (t = 0,1) : le
+    // demi-tour se fait ensuite sur place, pas en reculant.
+    const roll = this.flightDir === 1 ? Math.min(1, t / 0.25) : Math.min(1, Math.max(0, (t - 0.1) / 0.15))
     const climb = Math.max(0, (t - 0.25) / 0.75)
     const d = roll * 3 + climb * climb * 52
     this.plane.visible = true
@@ -4253,7 +4287,14 @@ export class Village {
       a.y + climb * climb * 26,
       a.z + Math.cos(a.rot) * d,
     )
-    this.plane.rotation.set(-climb * 0.22, a.rot, Math.sin(t * Math.PI) * 0.12 * this.flightDir)
+    // Au retour, l'appareil refait le chemin à l'envers : il arrive donc nez
+    // vers l'aérodrome, et pique au lieu de cabrer. Sur le roulage final, il
+    // fait demi-tour pour finir face à la piste, comme au départ : sans quoi
+    // planeRest le retournerait d'un coup, sous les yeux du joueur.
+    const dir = this.flightDir
+    const out = headingYaw(Math.sin(a.rot), Math.cos(a.rot))
+    const yaw = dir === 1 ? out : out + Math.PI * Math.min(1, t / 0.1)
+    this.plane.rotation.set(Math.sin(t * Math.PI) * 0.12, yaw, climb * 0.22 * dir)
   }
 
   /** Le lit de braises de la forge : il respire au rythme du soufflet. */

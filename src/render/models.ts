@@ -39,10 +39,23 @@ import tourUrl from '../assets/models/tour.glb?url'
 import grattecielUrl from '../assets/models/gratteciel.glb?url'
 import fuseeUrl from '../assets/models/fusee.glb?url'
 import fusionUrl from '../assets/models/fusion.glb?url'
+// Les dix véhicules : les six paliers de la barque d'expédition, la barque
+// marchande, le train, l'auto et l'avion. Un maillage chacun, comme les
+// reliques, posé dans le repère de sa primitive par vehicles.ts.
+import raftUrl from '../assets/models/raft.glb?url'
+import canoeUrl from '../assets/models/canoe.glb?url'
+import sailboatUrl from '../assets/models/sailboat.glb?url'
+import caravelUrl from '../assets/models/caravel.glb?url'
+import steamerUrl from '../assets/models/steamer.glb?url'
+import motorboatUrl from '../assets/models/motorboat.glb?url'
+import merchantUrl from '../assets/models/merchant.glb?url'
+import trainUrl from '../assets/models/train.glb?url'
+import carUrl from '../assets/models/car.glb?url'
+import planeUrl from '../assets/models/plane.glb?url'
 import { asPart } from './model-geo'
 
-/** Les modèles faits dans Blender, par identifiant de jeu (relique, outil ou
- *  Merveille). Tout le reste du village reste en primitives. */
+/** Les modèles faits dans Blender, par identifiant de jeu (relique, outil,
+ *  Merveille ou véhicule). Tout le reste du village reste en primitives. */
 const URLS: Record<string, string> = {
   amphore: amphoreUrl,
   disquenebra: nebraUrl,
@@ -78,6 +91,16 @@ const URLS: Record<string, string> = {
   gratteciel: grattecielUrl,
   fusee: fuseeUrl,
   fusion: fusionUrl,
+  raft: raftUrl,
+  canoe: canoeUrl,
+  sailboat: sailboatUrl,
+  caravel: caravelUrl,
+  steamer: steamerUrl,
+  motorboat: motorboatUrl,
+  merchant: merchantUrl,
+  train: trainUrl,
+  car: carUrl,
+  plane: planeUrl,
 }
 
 /** Le maillage tel que livré par le chargeur, attribut `_stage` compris. On
