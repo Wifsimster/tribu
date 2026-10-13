@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.59.0',
+    title: 'Le décor laisse la place',
+    items: [
+      "Plus de rocher, de buisson ni de sapin planté dans un mur. Ce qui chevauchait une maison, un atelier, le phare, la Merveille, le musée, la gare, le quai du marchand, le ponton, les abris du campement, l'enclos ou le poulailler a disparu. Ce qui reste se tient un peu à l'écart des murs.",
+      "Quand un nouvel atelier, la Merveille ou le quai se pose en cours de partie, le décor qui se trouve dessous s'efface aussitôt. Si le colon allait le récolter, il part vers un autre arbre, rocher ou buisson de la même ressource.",
+      "Le décor d'une terre gagnée sur la mer ne touche plus celui qui était déjà là. Seul celui de la nouvelle terre cède : le décor d'une terre gagnée ne pousse jamais celui de l'île.",
+      "Rien d'autre ne bouge : bâtiments, rues, voie ferrée et terres gagnées restent à leur place. En rouvrant une partie en cours, tu verras seulement disparaître les rochers, buissons et sapins qui touchaient un bâtiment.",
+    ],
+  },
+  {
     version: '3.58.0',
     title: 'Chacun fait le tour',
     items: [

@@ -219,31 +219,41 @@ function buildWorld(): void {
   boat.moorAt(village.jettyEnd)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
-  nodeSpots.clear()
-  for (const mesh of island.pickables) {
-    const kind = island.kindFor(mesh)
-    if (!kind) continue
-    const spots: Vector3[] = []
-    // Les arbres abattus par la voie romaine ne sont plus des nœuds de bois :
-    // le colon irait bûcheronner une souche invisible.
-    for (let i = 0; i < mesh.count; i++) {
-      if (island.isFelled(mesh, i)) continue
-      spots.push(island.instancePosition(mesh, i))
-    }
-    nodeSpots.set(kind, spots)
-  }
-  // Ce que le marchand a laissé se voit dès le chargement — APRÈS le relevé
-  // des nœuds, que le quai écrème.
+  // Ce que le marchand a laissé se voit dès le chargement.
   placeGoods()
   // Le cadastre au sol, une fois TOUT posé : bâtiments, Merveille, musée,
   // gare, quai, campement, enclos, troncs, rochers et l'eau. Il ne déplace
-  // rien — il lit. Ce qui se pose ensuite (atelier, quai, chantier) change la
+  // aucun bâtiment — il lit. Il retire seulement le décor qui chevauche une
+  // emprise. Ce qui se pose ensuite (atelier, quai, chantier) change la
   // révision du village ou de la faune, et la boucle le refait.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   ground = new Ground(island, [village, fauna])
   settler.setGround(ground)
   fauna.setGround(ground)
   villagers.setGround(ground)
+  // Le relevé des nœuds APRÈS le cadastre : il vient de retirer le décor
+  // pris sous les bâtiments, et le colon n'irait pas cueillir un buisson
+  // effacé.
+  surveyNodes()
+}
+
+/** Les nœuds de récolte : chaque arbre, rocher et buisson encore debout.
+ *  Les arbres abattus par la voie romaine, et le décor retiré sous une
+ *  emprise, n'en sont plus : le colon irait travailler une souche
+ *  invisible. Le quai écrème le reste. */
+function surveyNodes(): void {
+  nodeSpots.clear()
+  for (const mesh of island.pickables) {
+    const kind = island.kindFor(mesh)
+    if (!kind) continue
+    const spots: Vector3[] = []
+    for (let i = 0; i < mesh.count; i++) {
+      if (island.isFelled(mesh, i)) continue
+      spots.push(island.instancePosition(mesh, i))
+    }
+    nodeSpots.set(kind, spots)
+  }
+  skimGoods(village.blockers)
 }
 
 buildWorld()
@@ -304,11 +314,22 @@ function placeGoods(): void {
   // garderait sinon un cheval à brouter entre les caisses.
   fauna.setBlockers(zones)
   villagers.setBlockers(zones)
+  skimGoods(zones)
+}
+
+/** Aucun nœud de récolte sur le quai du marchand. */
+function skimGoods(zones: { x: number; z: number; r: number }[]): void {
   for (const [kind, spots] of nodeSpots)
     nodeSpots.set(
       kind,
       spots.filter((s) => !zones.some((b) => Math.hypot(s.x - b.x, s.z - b.z) < b.r + 0.6)),
     )
+}
+
+function nodeCount(): number {
+  let n = 0
+  for (const spots of nodeSpots.values()) n += spots.length
+  return n
 }
 
 function spotFor(resource: ResourceId): Vector3 {
@@ -1702,7 +1723,15 @@ function frame(now: number): void {
   // Une pose depuis la dernière image : la carte se refait avant que
   // quiconque ne marche.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
-  ground.refresh()
+  if (ground.refresh()) {
+    // La carte refaite a pu effacer du décor sous la nouvelle pose : les
+    // nœuds de récolte se relèvent, et si le colon marchait vers un buisson
+    // ou un rocher qui n'existe plus, il repart vers un nœud debout.
+    const was = nodeCount()
+    surveyNodes()
+    if (nodeCount() !== was && !fishing && !game.save.expedition && settler.goalGone(nodeSpots))
+      settler.sendTo(spotFor(game.save.focus))
+  }
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))
   boat.update(dt, elapsed)

@@ -12,12 +12,16 @@
  *
  *  La carte ne déplace rien : elle se contente de lire ce qui est posé. Une
  *  sauvegarde se charge donc à l'identique, et les mobiles s'y adaptent.
+ *  Seule exception, le DÉCOR (v3.59.0) : un rocher, un buisson ou un sapin
+ *  qui chevauche une emprise posée est retiré, à chaque reconstruction —
+ *  au chargement comme quand un atelier se pose en cours de partie. Il
+ *  n'est pas sauvegardé : l'île le retire de nouveau au chargement suivant.
  *
  *  Les buissons, les rues et la voie ferrée n'y sont pas : on les traverse à
  *  pied. Train et auto ne la lisent pas (lots suivants). */
 import type { BufferGeometry, InstancedMesh } from 'three'
 import { Matrix4, Quaternion, Vector3 } from 'three'
-import type { Island } from './island'
+import { DECOR_GAP, type Island } from './island'
 
 /** Une emprise : des triangles en coordonnées monde (ou locales, avec une
  *  échelle et un décalage), dont seuls ceux qui dépassent `minY` comptent —
@@ -177,8 +181,19 @@ export class Ground {
   private rebuild(): void {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
     this.seen = this.sources.map((s) => s.revision).join(',')
-    this.occ.set(this.water)
+    // D'abord les seules emprises posées, sans l'eau ni le décor : c'est
+    // contre elles que le décor se mesure. Le rivage n'en fait pas partie —
+    // un rocher les pieds dans l'eau est un rocher de côte, pas un défaut.
+    this.occ.fill(0)
     for (const s of this.sources) for (const f of s.groundFootprints()) this.stampFootprint(f)
+    this.distance()
+    // `clearAt` est une borne basse (SLACK) : ce qui reste est donc à plus
+    // de DECOR_GAP du plein, jamais moins. Le prix : un peu de décor en trop
+    // retiré au ras des murs, compté dans `island.decorRemoved`.
+    this.island.clearUnder((x, z, r) => this.clearAt(x, z) < r + DECOR_GAP)
+    // Puis la carte des mobiles : emprises, eau, troncs et rochers restants.
+    const { occ, water } = this
+    for (let i = 0; i < occ.length; i++) occ[i] = occ[i]! | water[i]!
     this.stampTrunksAndRocks()
     this.distance()
     this.revision++
