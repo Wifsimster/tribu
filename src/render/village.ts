@@ -1997,18 +1997,15 @@ export class Village {
       p.push(part(new BoxGeometry(1.15, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
       // Une traverse par pas de 0,4 u (il y en avait trois par pas de 1,6) :
       // c'est ce qui fait lire « voie ».
-      {
-        const t = 0
-        p.push(
-          part(
-            new BoxGeometry(0.92, 0.07, 0.16).rotateY(yaw),
-            tint(C.woodDark, i * 7, 0.08),
-            mx + sy * seg * t,
-            y + 0.07,
-            mz + cy * seg * t,
-          ),
-        )
-      }
+      p.push(
+        part(
+          new BoxGeometry(0.92, 0.07, 0.16).rotateY(yaw),
+          tint(C.woodDark, i * 7, 0.08),
+          mx,
+          y + 0.07,
+          mz,
+        ),
+      )
       for (const side of [-1, 1])
         p.push(
           part(

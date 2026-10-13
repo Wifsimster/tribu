@@ -197,7 +197,8 @@ export function layConsist(t: Track, head: number, dir: 1 | -1, cars: readonly C
  *  coins arrondis, et sur un tel rayon une loco rigide de 2,43 u a les roues
  *  du milieu à 20 cm du rail. On lisse donc la voie elle-même : rééchantillonnée
  *  finement, moyennée sur une fenêtre glissante de `window` u (`passes` fois :
- *  mesuré, la loco passe de 1,16 u d'écart au rail à ~0,1 u au pire, et la
+ *  mesuré, la loco passe de 1,16 u d'écart au rail à 0,18 u au pire
+ *  (graine 3333, âge 7), et la
  *  voie ne s'écarte du plan que de 0,6 u, sans frôler de parcelle de plus),
  *  puis redécoupée tous les `step` u. Les deux bouts ne bougent pas — la
  *  fenêtre se resserre en approchant des heurtoirs. */

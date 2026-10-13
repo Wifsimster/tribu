@@ -15,7 +15,14 @@ export type VehicleId =
   | 'plane'
 
 /** Les six paliers de la barque d'expédition, dans l'ordre de `setTier`. */
-export const BOAT_MODELS: readonly VehicleId[] = ['raft', 'canoe', 'sailboat', 'caravel', 'steamer', 'motorboat']
+export const BOAT_MODELS: readonly VehicleId[] = [
+  'raft',
+  'canoe',
+  'sailboat',
+  'caravel',
+  'steamer',
+  'motorboat',
+]
 
 /** Les fichiers sont livrés base à y = 0 et centrés en x/z, déjà à leur taille
  *  de jeu. Les primitives, elles, avaient leur origine ailleurs (la quille du
