@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.55.1',
+    title: 'Pas de cheval sur le quai',
+    items: [
+      "Un cheval ou un chevreuil pouvait brouter au milieu des caisses du marchand : les bêtes ne savaient rien du quai quand il apparaissait en cours de partie. Elles le contournent désormais comme les bâtiments, qu'il soit déjà là au chargement ou qu'il s'installe sous tes yeux, et celles qui se trouvaient dessus vont paître un peu plus loin.",
+      "L'enclos et le poulailler ne se posent jamais sur le quai. Sur une île sans quai, rien ne bouge.",
+    ],
+  },
+  {
     version: '3.55.0',
     title: 'Le musée au complet, le quai du marchand',
     items: [

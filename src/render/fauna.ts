@@ -334,6 +334,19 @@ interface Spot {
   z: number
 }
 
+type Zone = { x: number; z: number; r: number }
+
+/** Recul entre le bord d'une emprise posée après coup (le quai du marchand)
+ *  et un point d'habitat : une bête s'y ARRÊTE, et la demi-longueur d'un
+ *  cheval (~0,6), le flou de sa cible (±0,2) et un pas de marge doivent rester
+ *  hors des caisses. C'est aussi le recul que réclame le cheval au bâti. */
+const BLOCKER_SPOT = 1.2
+/** L'enclos palissade comprise (piquets à 3,1) : le rayon que `pen` publie
+ *  au quai, et celui que l'enclos garde face à lui. */
+const PEN_R = 3.3
+/** La cabane à poules, rampe comprise. */
+const COOP_R = 1.0
+
 const dummy = new Object3D()
 dummy.rotation.order = 'YXZ'
 
@@ -414,7 +427,7 @@ export class Fauna {
   /** L'enclos à moutons, palissade comprise (rayon 3,1), pour que le quai du
    *  marchand ne s'y pose pas. */
   get pen(): { x: number; z: number; r: number } | null {
-    return this.penCenter ? { ...this.penCenter, r: 3.3 } : null
+    return this.penCenter ? { ...this.penCenter, r: PEN_R } : null
   }
   private coopAt: { x: number; z: number } | null = null
   /** Décor fixe des zones : la clôture du pré et la cabane à poules. La faune
@@ -427,10 +440,19 @@ export class Fauna {
   private readonly horses: Beast[]
   private readonly gulls: Gull[] = []
 
-  private readonly deerSpots: Spot[]
-  private readonly sheepSpots: Spot[]
-  private readonly henSpots: Spot[]
-  private readonly horseSpots: Spot[]
+  // Les zones d'habitat en vigueur : celles du relevé, moins ce que le quai
+  // couvre (`setBlockers`).
+  private deerSpots: Spot[]
+  private sheepSpots: Spot[]
+  private henSpots: Spot[]
+  private horseSpots: Spot[]
+  /** Les zones telles que relevées à la construction, avant tout quai : le
+   *  quai peut apparaître en cours de partie, et chaque `setBlockers` repart
+   *  d'elles plutôt que de filtrer un filtrage. `sheep` est le pré ENTIER,
+   *  avant le resserrement autour de l'enclos. */
+  private readonly home: { deer: Spot[]; sheep: Spot[]; hen: Spot[]; horse: Spot[] }
+  /** Tout ce que les bêtes contournent : le bâti, et le quai dès qu'il existe. */
+  private solid: Zone[]
 
   // Les allures sont figées ici plutôt qu'en littéraux dans update : zéro objet
   // construit par frame.
@@ -443,10 +465,15 @@ export class Fauna {
    *  bâtiment ni du camp : les bêtes contournent, elles ne traversent plus. */
   private readonly segClear: (x0: number, z0: number, x1: number, z1: number) => boolean
 
-  constructor(
-    private readonly island: Island,
-    private readonly obstacles: { x: number; z: number; r: number }[] = [],
-  ) {
+  private readonly island: Island
+  /** Les emprises du bâti, relevées à la construction. */
+  private readonly obstacles: Zone[]
+
+  // Champs déclarés à la main et non en propriétés de paramètre : Node, qui
+  // ne fait que retirer les types, charge ainsi la faune dans les tests.
+  constructor(island: Island, obstacles: Zone[] = []) {
+    this.island = island
+    this.obstacles = obstacles
     this.group.name = 'fauna'
     // Positions des sapins : la « lisière » se mesure contre eux, pas contre
     // une carte de forêt qui n'existe pas.
@@ -497,7 +524,7 @@ export class Fauna {
         const pz = z0 + dz * t - cz
         return px * px + pz * pz < r * r
       }
-      for (const o of this.obstacles) if (hits(o.x, o.z, o.r + 0.25)) return false
+      for (const o of this.solid) if (hits(o.x, o.z, o.r + 0.25)) return false
       for (const b of CAMP_BLOCKERS) if (hits(b.x, b.z, b.r + 0.2)) return false
       return true
     }
@@ -557,11 +584,13 @@ export class Fauna {
       0.12,
     )
 
+    this.home = { deer: this.deerSpots, sheep: this.sheepSpots, hen: this.henSpots, horse: this.horseSpots }
+    this.solid = this.obstacles
+
     // Le troupeau de moutons reste groupé : ses cibles se limitent au voisinage
     // d'une ancre, tirée là où les prés sont les plus denses.
     const anchor = this.sheepSpots[(Math.random() * this.sheepSpots.length) | 0]!
-    const nearAnchor = this.sheepSpots.filter((s) => Math.hypot(s.x - anchor.x, s.z - anchor.z) < 2.6)
-    if (nearAnchor.length >= 3) this.sheepSpots = nearAnchor
+    this.sheepSpots = this.flock(anchor, this.sheepSpots)
     this.penCenter = { x: anchor.x, z: anchor.z }
     const coop = this.henSpots.reduce(
       (a, s) => ({ x: a.x + s.x / this.henSpots.length, z: a.z + s.z / this.henSpots.length }),
@@ -615,6 +644,116 @@ export class Fauna {
   }
 
 
+  /** Les moutons de l'enclos : le pré dans un rayon de 2,6 autour de l'ancre,
+   *  sauf s'il en reste trop peu pour un troupeau. */
+  private flock(anchor: Spot, meadow: Spot[]): Spot[] {
+    const near = meadow.filter((s) => Math.hypot(s.x - anchor.x, s.z - anchor.z) < 2.6)
+    return near.length >= 3 ? near : meadow
+  }
+
+  /** Les emprises posées APRÈS le relevé des habitats : le quai du marchand.
+   *  Il apparaît au chargement d'une sauvegarde comme au premier achat en
+   *  cours de partie, et la faune construite avant lui l'ignorait — un cheval
+   *  restait brouter entre les caisses. Un seul chemin pour les deux cas :
+   *  `placeGoods` (main.ts) appelle ceci à chaque pose du quai.
+   *
+   *  Sans emprise, rien ne change : ni zone, ni enclos, ni bête, et aucun
+   *  tirage aléatoire. Avec, les points d'habitat couverts sont retirés,
+   *  l'enclos et le poulailler ne bougent que s'ils touchent le quai, et une
+   *  bête prise dessous est reconduite au point libre le plus proche. */
+  setBlockers(zones: readonly Zone[]): void {
+    // Le quai s'ajoute au bâti que contournent les trajets et que repousse
+    // `stepLand`, élargi de 0,6 : la bordure de terre battue déborde de 0,08
+    // le cercle `GOODS_R` aux quatre coins, et la poussée (o.r + 0,3) doit
+    // tenir le CORPS d'un cheval (~0,6 de demi-longueur), pas son seul centre.
+    this.solid = this.obstacles.concat(zones.map((b) => ({ ...b, r: b.r + 0.6 })))
+    const clear = (s: Spot, m: number): boolean =>
+      zones.every((b) => Math.hypot(s.x - b.x, s.z - b.z) >= b.r + m)
+    /** Les points d'une zone hors du quai. Si le quai les couvrait tous (zone
+     *  minuscule), on garde les quatre plus éloignés plutôt qu'une zone vide :
+     *  la poussée tient alors les bêtes au bord. */
+    const keep = (spots: Spot[]): Spot[] => {
+      const k = spots.filter((s) => clear(s, BLOCKER_SPOT))
+      if (k.length > 0 || spots.length === 0) return k
+      const gap = (s: Spot): number => Math.min(...zones.map((b) => Math.hypot(s.x - b.x, s.z - b.z) - b.r))
+      return [...spots].sort((a, b) => gap(b) - gap(a)).slice(0, 4)
+    }
+    const nearest = (spots: Spot[], p: Spot): Spot | null => {
+      let best: Spot | null = null
+      let bd = Infinity
+      for (const s of spots) {
+        const d = Math.hypot(s.x - p.x, s.z - p.z)
+        if (d < bd) {
+          bd = d
+          best = s
+        }
+      }
+      return best
+    }
+
+    // L'enclos : en cours de partie, le quai l'a déjà évité (`goodsAvoid`) ;
+    // au chargement, il a été tiré sans connaître le quai. S'il le touche, il
+    // se déplace au plus près dans le pré — sans tirage, pour que la partie
+    // reste reproductible — et faute de place, il n'y a pas de clôture du
+    // tout plutôt qu'une palissade à travers les caisses. La règle est donc
+    // la même dans les deux sens : centre de l'enclos et centre du quai
+    // jamais à moins de GOODS_R + PEN_R.
+    const meadow = keep(this.home.sheep)
+    const penMoved = !!this.penCenter && !clear(this.penCenter, PEN_R)
+    if (penMoved) {
+      const a = nearest(meadow.filter((s) => clear(s, PEN_R)), this.penCenter!)
+      this.penCenter = a ? { x: a.x, z: a.z } : null
+    }
+    this.sheepSpots = this.penCenter ? this.flock(this.penCenter, meadow) : meadow
+    this.deerSpots = keep(this.home.deer)
+    this.henSpots = keep(this.home.hen)
+    this.horseSpots = keep(this.home.horse)
+    // Le poulailler est près du feu, que le quai n'évite pas : même règle.
+    const coopMoved = !!this.coopAt && !clear(this.coopAt, COOP_R)
+    if (coopMoved) {
+      const c = nearest(this.henSpots.filter((s) => clear(s, COOP_R)), this.coopAt!)
+      this.coopAt = c ? { x: c.x, z: c.z } : null
+    }
+    if (penMoved || coopMoved) this.buildPens()
+    if (penMoved)
+      // Le troupeau suit sa clôture : ses pas sont courts (1,7) et il ne
+      // rejoindrait jamais un enclos tiré loin de lui. Ceci n'arrive qu'au
+      // chargement, avant la première image : en cours de partie, le quai a
+      // déjà évité l'enclos.
+      this.sheep.forEach((b, i) => {
+        const s = this.sheepSpots[i % this.sheepSpots.length]!
+        b.x = b.tx = s.x
+        b.z = b.tz = s.z
+      })
+
+    // Les bêtes déjà là. Prise sous le quai : reconduite au point libre le plus
+    // proche (au chargement, avant la première image ; en direct, au moment où
+    // les caisses apparaissent elles aussi). En route vers lui : elle s'arrête
+    // et choisit une autre cible dans la zone filtrée.
+    const herds: [Beast[], Spot[]][] = [
+      [this.deer, this.deerSpots],
+      [this.sheep, this.sheepSpots],
+      [this.hens, this.henSpots],
+      [this.horses, this.horseSpots],
+    ]
+    for (const [herd, spots] of herds)
+      for (const b of herd) {
+        if (!clear(b, 0.3)) {
+          const s = nearest(spots, b)
+          if (s) {
+            b.x = s.x
+            b.z = s.z
+          }
+        }
+        if (!clear({ x: b.tx, z: b.tz }, BLOCKER_SPOT)) {
+          b.tx = b.x
+          b.tz = b.z
+          b.state = 2
+          b.timer = 0.5
+        }
+      }
+  }
+
   /** Les zones d'habitat DEVIENNENT visibles : une clôture de piquets autour
    *  du pré des moutons — ouverte côté village, c'est une barrière et pas une
    *  cage : les bêtes ne la franchissent jamais puisque toutes leurs cibles
@@ -667,7 +806,25 @@ export class Fauna {
     }
 
     const geo = mergeGeometries(p)
-    if (!geo) return
+    if (!geo) {
+      // Plus d'enclos ni de poulailler (aucune place hors du quai) : la
+      // vieille clôture ne reste pas plantée au milieu des caisses.
+      if (this.pens) {
+        this.group.remove(this.pens)
+        this.pens.geometry.dispose()
+      }
+      this.pens = null
+      return
+    }
+    // Le quai a déplacé l'enclos : le même mesh reçoit la nouvelle clôture,
+    // un seul draw call pour les deux lieux comme avant. Le mesh n'est créé
+    // qu'ici, APRÈS la géométrie : trois tire ses identifiants au hasard, et
+    // un ordre différent décalerait le troupeau des parties sans quai.
+    if (this.pens) {
+      this.pens.geometry.dispose()
+      this.pens.geometry = geo
+      return
+    }
     this.pens = new Mesh(geo, this.skin)
     this.pens.visible = false
     this.group.add(this.pens)
@@ -847,7 +1004,7 @@ export class Fauna {
 
       // Jamais dans le bâti : poussée radiale hors de l'emprise RÉELLE de
       // chaque bâtiment — le rayon uniforme laissait entrer dans les grands.
-      for (const o of this.obstacles) {
+      for (const o of this.solid) {
         const rr = o.r + 0.3
         const dx = b.x - o.x
         const dz = b.z - o.z

@@ -4408,19 +4408,16 @@ export class Village {
     }
   }
 
-  /** Emprises au sol de tout ce qui est posé — la faune les évite. Le rayon
-   *  suit l'emprise réelle du bâtiment : depuis les remises à l'échelle, un
-   *  rayon uniforme laissait les moutons traverser l'aqueduc. */
+  /** Emprises au sol des bâtiments — la faune les évite. Le rayon suit
+   *  l'emprise réelle du bâtiment : depuis les remises à l'échelle, un rayon
+   *  uniforme laissait les moutons traverser l'aqueduc. Le quai du marchand
+   *  n'y est pas : il peut apparaître après coup, et se lit dans `blockers`. */
   get obstaclePoints(): { x: number; z: number; r: number }[] {
-    return [
-      ...this.propPlacements.map((p) => ({
-        x: p.x,
-        z: p.z,
-        r: Math.max(0.9, (Village.FOOTPRINT[p.id] ?? 0.5) + 0.45),
-      })),
-      // Le quai du marchand : la faune ne broute pas entre les caisses.
-      ...this.blockers,
-    ]
+    return this.propPlacements.map((p) => ({
+      x: p.x,
+      z: p.z,
+      r: Math.max(0.9, (Village.FOOTPRINT[p.id] ?? 0.5) + 0.45),
+    }))
   }
 
   /** Quel savoir vit ici ? Le plus proche du point touché, feu compris. */
