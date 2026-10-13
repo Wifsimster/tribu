@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-const { rigPose, gaitUniform, DEER_GAIT, PART } = await import('../src/render/fauna-rig.ts')
+const { rigPose, legCycle, gaitUniform, DEER_GAIT, PART } = await import('../src/render/fauna-rig.ts')
 const { deerGeo, DEER_BODY } = await import('../src/render/fauna.ts')
 
 /** Profondeur d'un point DANS la capsule du corps (positive dedans), mesurée
@@ -53,4 +53,132 @@ test('cerf : pattes et cou pivotent DANS le corps, à 0,02 u au moins de sa surf
     const d = depthInBody(x, y, z)
     assert.ok(d >= 0.02, `pièce ${id} : pivot à ${d.toFixed(3)} u dans le corps`)
   }
+})
+
+// ── A1 : pas de patinage ───────────────────────────────────────────────────
+// On rejoue le vrai `Fauna.update` (hors cadastre, loin de tout obstacle, cap
+// déjà sur la cible : une ligne droite), puis on pose le dessous de chaque
+// sabot comme le shader (`rigPose` + matrice d'instance). Pendant l'appui
+// (cycle < β), sa position au SOL ne doit presque pas bouger.
+
+const { Island } = await import('../src/render/island.ts')
+const { Fauna } = await import('../src/render/fauna.ts')
+const { Matrix4, Vector3 } = await import('three')
+
+const FAR = new Vector3(1e4, 0, 1e4)
+const TAU = Math.PI * 2
+
+/** Le sommet le plus bas de chaque patte (centre du dessous du sabot). */
+function hoofSoles(geo) {
+  const pos = geo.getAttribute('position')
+  const piv = geo.getAttribute('aPivot')
+  const soles = new Map()
+  for (let i = 0; i < pos.count; i++) {
+    const id = Math.round(piv.getW(i))
+    if (id < PART.FL || id > PART.HR) continue
+    const y = pos.getY(i)
+    const cur = soles.get(id)
+    const centred = Math.hypot(pos.getX(i) - piv.getX(i), pos.getZ(i) - piv.getZ(i))
+    if (!cur || y < cur.y - 1e-6 || (Math.abs(y - cur.y) < 1e-6 && centred < cur.c))
+      soles.set(id, { y, c: centred, p: [pos.getX(i), y, pos.getZ(i)], pivot: [piv.getX(i), piv.getY(i), piv.getZ(i), id] })
+  }
+  return soles
+}
+
+function runGait(gait, flee) {
+  const island = new Island(7, 2, [])
+  const f = new Fauna(island, [])
+  const b = f.deer[0]
+  Object.assign(b, { x: 200, z: 200, tx: 400, tz: 200, heading: Math.PI / 2, state: flee ? 3 : 0, timer: 99, gait, path: [], fade: 1, warp: null, sleep: 0 })
+  const mesh = f.deerMesh
+  const u = gaitUniform(DEER_GAIT)
+  const soles = hoofSoles(mesh.geometry)
+  const anim = mesh.geometry.getAttribute('aAnim')
+  const M = new Matrix4()
+  const out = []
+  const v = new Vector3()
+  const DT = 1 / 60
+  // Une seconde de mise en route : les poids lissés atteignent leur régime.
+  for (let k = 0; k < 60; k++) f.update(DT, k * DT, FAR, false)
+  const g = DEER_GAIT
+  const kRad = flee ? g.kTrot : g.kWalk
+  const beta = flee ? { 1: u[3], 2: u[3], 3: u[5], 4: u[5] } : { 1: u[1], 2: u[1], 3: u[1], 4: u[1] }
+  const stride = TAU / kRad
+  const open = new Map()
+  let worst = 0
+  let stances = 0
+  let dist = 0
+  let turned = 0
+  for (let k = 0; k < 600; k++) {
+    const x0 = b.x
+    const z0 = b.z
+    const ph0 = b.phase
+    f.update(DT, 1 + k * DT, FAR, false)
+    dist += Math.hypot(b.x - x0, b.z - z0)
+    turned += ((b.phase - ph0 + TAU) % TAU)
+    mesh.getMatrixAt(0, M)
+    const a = [anim.getX(0), anim.getY(0), anim.getZ(0), anim.getW(0)]
+    for (const [id, s] of soles) {
+      const c = legCycle(id, a[0], flee)
+      if (c < beta[id]) {
+        rigPose(out, s.p, s.pivot, a, u)
+        v.set(out[0], out[1], out[2]).applyMatrix4(M)
+        const o = open.get(id)
+        if (!o) open.set(id, { x: v.x, z: v.z })
+        else worst = Math.max(worst, Math.hypot(v.x - o.x, v.z - o.z))
+      } else if (open.has(id)) {
+        open.delete(id)
+        stances++
+      }
+    }
+  }
+  if (process.env.A1_LOG) console.error(`A1 gait=${gait} fuite=${flee} glissement=${worst.toFixed(4)} foulée=${stride.toFixed(3)} (${((100 * worst) / stride).toFixed(1)} %) cadence=${(turned / dist).toFixed(3)} rad/u appuis=${stances}`)
+  return { worst, stride, stances, cadence: turned / dist, kRad, state: b.state }
+}
+
+for (const [gait, flee] of [[0.85, false], [1.15, false], [0.85, true], [1.15, true]]) {
+  test(`A1 : cerf ${flee ? 'en fuite' : 'au pas'}, gait ${gait} — le sabot en appui glisse ≤ 10 % de la foulée`, () => {
+    const r = runGait(gait, flee)
+    assert.equal(r.state, flee ? 3 : 0, 'la bête a gardé son allure')
+    assert.ok(r.stances >= 8, `${r.stances} appuis observés`)
+    assert.ok(r.worst <= 0.1 * r.stride, `glissement ${r.worst.toFixed(4)} u pour une foulée de ${r.stride.toFixed(3)} u`)
+    assert.ok(Math.abs(r.cadence / r.kRad - 1) <= 0.05, `cadence ${r.cadence.toFixed(2)} rad/u, attendu ${r.kRad}`)
+  })
+}
+
+// ── A5 : pas de pièce détachée ─────────────────────────────────────────────
+// Ce qui, au repos, est caché DANS le corps (le haut des pattes, la base du
+// cou) doit y rester dans toutes les poses extrêmes : sinon un jour s'ouvre à
+// la jonction. Tolérance 0,01 u, mesurée contre la seule capsule du corps
+// (les calottes du dos, du ventre et de la croupe l'épaississent encore).
+
+test('A5 : jonctions du cerf fermées au pas, au trot de fuite et au broutage', () => {
+  const geo = deerGeo()
+  const pos = geo.getAttribute('position')
+  const piv = geo.getAttribute('aPivot')
+  const u = gaitUniform(DEER_GAIT)
+  const poses = []
+  for (let s = 0; s < 64; s++) {
+    const ph = (s / 64) * TAU
+    poses.push([ph, 1, 0, 0], [ph, 1, 0, 1])
+  }
+  const swell = 1 + DEER_GAIT.neckSwell
+  poses.push([0, 0, swell, 0], [0, 0, 1 - DEER_GAIT.neckSwell, 0], [1, 0.4, swell, 0])
+  const out = []
+  let roots = 0
+  let worst = Infinity
+  for (let i = 0; i < pos.count; i++) {
+    const id = Math.round(piv.getW(i))
+    if (id === PART.RIGID) continue
+    const p = [pos.getX(i), pos.getY(i), pos.getZ(i)]
+    if (depthInBody(...p) < 0) continue
+    roots++
+    const pv = [piv.getX(i), piv.getY(i), piv.getZ(i), piv.getW(i)]
+    for (const a of poses) {
+      rigPose(out, p, pv, a, u)
+      worst = Math.min(worst, depthInBody(out[0], out[1], out[2]))
+    }
+  }
+  assert.ok(roots >= 20, `${roots} sommets de jonction`)
+  assert.ok(worst >= -0.01, `un sommet de jonction sort de ${(-worst).toFixed(3)} u`)
 })

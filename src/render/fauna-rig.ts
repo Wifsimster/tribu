@@ -286,6 +286,15 @@ const fract = (v: number): number => v - Math.floor(v)
 const mod = (a: number, b: number): number => a - b * Math.floor(a / b)
 const mix = (a: number, b: number, t: number): number => a * (1 - t) + b * t
 
+/** Où en est la patte `id` (1–4) de son cycle, de 0 (le sabot se pose) à 1 :
+ *  au pas (`trot` faux) ou au trot. Même calcul que `cW`/`cT` du shader ; les
+ *  tests s'en servent pour savoir quand le sabot est en appui (cycle < β). */
+export function legCycle(id: number, phase: number, trot: boolean): number {
+  const k = id - 1
+  const off = trot ? 0.5 * Math.abs(mod(k, 2) - Math.floor(k * 0.5)) : (k < 1.5 ? 0.25 : 0) + mod(k, 2) * 0.5
+  return fract(phase / TAU - off)
+}
+
 /** Pose un point `p` (espace objet) comme le ferait le shader, dans `out`. */
 export function rigPose(
   out: number[],
@@ -308,11 +317,8 @@ export function rigPose(
   ]
   if (id < 4.5) {
     const k = id - 1
-    const offW = (k < 1.5 ? 0.25 : 0) + mod(k, 2) * 0.5
-    const offT = 0.5 * Math.abs(mod(k, 2) - Math.floor(k * 0.5))
-    const ph = anim[0]! / TAU
-    const cW = fract(ph - offW)
-    const cT = fract(ph - offT)
+    const cW = legCycle(id, anim[0]!, false)
+    const cT = legCycle(id, anim[0]!, true)
     const aT = k < 1.5 ? u[2]! : u[4]!
     const bT = k < 1.5 ? u[3]! : u[5]!
     const thW = -Math.atan(sweep(cW, u[1]!) * Math.tan(u[0]!))

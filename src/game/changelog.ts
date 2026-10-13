@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.60.0',
+    title: 'Le chevreuil marche sur ses pattes',
+    items: [
+      "Le chevreuil ne glisse plus sur l'herbe comme une statue : ses quatre pattes avancent l'une après l'autre au pas, et chaque sabot reste posé au sol tant qu'il porte la bête. Plus il va vite, plus ses pas s'allongent.",
+      "Quand le colon l'approche, il part au trot, les pattes croisées deux par deux, la tête portée en avant.",
+      "Pour brouter, il baisse le cou jusqu'à l'herbe au lieu de basculer tout le corps, puis le relève en douceur.",
+    ],
+  },
+  {
     version: '3.59.0',
     title: 'Le décor laisse la place',
     items: [

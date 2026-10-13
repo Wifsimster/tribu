@@ -1401,7 +1401,7 @@ export class Fauna implements GroundSource {
       // petite houle. Une espèce riguée plonge le COU : le corps ne garde que
       // 30 % de la bascule, pour que le museau touche l'herbe.
       const g = cfg.gait
-      const wantPitch = grazing ? cfg.grazePitch * (g ? 0.3 : 1) * (0.82 + 0.18 * Math.sin(time * 2.2 + b.phase)) : 0
+      const wantPitch = grazing ? cfg.grazePitch * (g ? g.bodyPitch : 1) * (0.82 + 0.18 * Math.sin(time * 2.2 + b.phase)) : 0
       b.pitch += (wantPitch - b.pitch) * Math.min(1, dt * 3)
       if (anim && g) {
         // Allure : 0,15 s pour partir ou s'arrêter (une bête qui dort ou
@@ -1419,7 +1419,8 @@ export class Fauna implements GroundSource {
         a[i * 4 + 3] = b.trot
       }
 
-      const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp : 0
+      // Deux rebonds par cycle de pattes ; au trot de fuite, plus appuyés.
+      const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp * (g ? 1 + (g.trotBob - 1) * b.trot : 1) : 0
       dummy.position.set(
         b.x,
         GROUND_Y + bob - (b.pitch + b.sleep) * cfg.sink,
