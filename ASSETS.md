@@ -47,7 +47,16 @@ Provenance et licence des ressources graphiques et sonores embarquées dans le j
 | `steamer.glb` | Barque d'expédition, palier 4 — vapeur à roues à aubes | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `motorboat.glb` | Barque d'expédition, palier 5 — hors-bord | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `merchant.glb` | Barque marchande — coque, cargaison, mât et vergue (la voile rayée reste dessinée par le jeu) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
-| `train.glb` | Train — locomotive à vapeur et son wagon | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `loco.glb` | Train — locomotive à vapeur seule (tête de rame) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_coach.glb` | Train — voiture de voyageurs, juste derrière la locomotive dès l'âge 8 | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_wood.glb` | Train — wagon plat chargé de grumes (bois) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_stone.glb` | Train — tombereau de blocs (pierre) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_food.glb` | Train — bac de grain doré (nourriture) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_fiber.glb` | Train — plateau de balles de paille liées (fibres) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_clay.glb` | Train — plateau de six jarres en terre cuite (argile) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_copper.glb` | Train — trémie de minerai orange (cuivre) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_iron.glb` | Train — plateau chargé de barres gris-bleu (fer) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `wagon_empty.glb` | Train — wagon couvert (wagon sans ressource attitrée) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `car.glb` | Automobile du garage | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `plane.glb` | Avion de l'aérodrome — monoplan à aile haute | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 

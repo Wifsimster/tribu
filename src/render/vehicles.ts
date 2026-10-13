@@ -1,7 +1,8 @@
 import type { BufferGeometry } from 'three'
 import { modelGeometry } from './models'
 
-/** Les dix véhicules modelés dans Blender, par identifiant de modèle. */
+/** Les véhicules modelés dans Blender, par identifiant de modèle. Le train
+ *  n'en est plus : sa rame se compose wagon par wagon (consist.ts). */
 export type VehicleId =
   | 'raft'
   | 'canoe'
@@ -10,17 +11,22 @@ export type VehicleId =
   | 'steamer'
   | 'motorboat'
   | 'merchant'
-  | 'train'
   | 'car'
   | 'plane'
 
 /** Les six paliers de la barque d'expédition, dans l'ordre de `setTier`. */
-export const BOAT_MODELS: readonly VehicleId[] = ['raft', 'canoe', 'sailboat', 'caravel', 'steamer', 'motorboat']
+export const BOAT_MODELS: readonly VehicleId[] = [
+  'raft',
+  'canoe',
+  'sailboat',
+  'caravel',
+  'steamer',
+  'motorboat',
+]
 
 /** Les fichiers sont livrés base à y = 0 et centrés en x/z, déjà à leur taille
  *  de jeu. Les primitives, elles, avaient leur origine ailleurs (la quille du
- *  radeau sous zéro, la caravelle décalée vers sa proue, le train centré sur
- *  la locomotive…). Ce décalage remet le modèle dans le repère de la
+ *  radeau sous zéro, la caravelle décalée vers sa proue…). Ce décalage remet le modèle dans le repère de la
  *  primitive : passager, voile, pivot d'animation et hauteur sur l'eau
  *  restent là où ils étaient réglés. Relevé par l'artiste sur les deux
  *  boîtes englobantes, en unités du MONDE. */
@@ -34,7 +40,6 @@ const OFFSET: Record<VehicleId, readonly [number, number, number]> = {
   // Mesuré : la vergue tombe sur celle de la primitive (2,925 au-dessus de
   // l'eau) avec ce décalage pris APRÈS le ×1,5 du groupe, pas avant.
   merchant: [0.002, 0.04, 0.008],
-  train: [0, 0, -0.605],
   car: [0.01, 0.04, 0],
   plane: [0.04, -0.34, 0],
 }

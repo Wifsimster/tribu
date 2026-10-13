@@ -22,6 +22,7 @@ import {
   TetrahedronGeometry,
   TorusGeometry,
   SpriteMaterial,
+  Sphere,
   Vector3,
 } from 'three'
 import type { DataTexture } from 'three'
@@ -32,6 +33,19 @@ import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
 import { headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
+import {
+  CAR_LENGTH,
+  CAR_MODEL,
+  consistFor,
+  consistLength,
+  layConsist,
+  nearestAbscissa,
+  rankCargo,
+  smoothPath,
+  type CarKind,
+  type CarPose,
+  type Cargo,
+} from './consist'
 
 /** Le foyer est posé à côté du point de dépôt, pas dessus, et perpendiculairement
  *  à l'axe de la caméra par défaut: sinon le colon rentre dans les flammes et sa
@@ -160,6 +174,39 @@ function part(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): Buffer
   }
   geo.setAttribute('color', new BufferAttribute(rgb, 3))
   return geo
+}
+
+/** Le dessus du rail : la base des modèles de la rame (dessous des roues).
+ *  Ballast à GROUND_Y + 0,05, rails de 0,07 centrés 0,13 plus haut. L'ancien
+ *  train était posé à GROUND_Y + 0,06 : ses roues s'enfonçaient dans le rail. */
+const RAIL_TOP = GROUND_Y + 0.05 + 0.13 + 0.035
+
+/** Un véhicule de la rame en primitives, au repère de son modèle (base à 0,
+ *  avant en +Z, centré, sa longueur d'attelage à attelage). Ne sert que si le
+ *  fichier manque : la rame reste entière et attelée. */
+function primitiveCar(kind: CarKind): BufferGeometry {
+  const iron = new Color('#3b4149')
+  const wheel = new Color('#5a6068')
+  const len = CAR_LENGTH[kind]
+  const p: BufferGeometry[] = []
+  const axles = kind === 'loco' ? [0.6, 0, -0.7] : kind === 'coach' ? [0.52, -0.52] : [0.4, -0.4]
+  for (const s of [-1, 1])
+    for (const z of axles)
+      p.push(part(new CylinderGeometry(0.15, 0.15, 0.06, 8).rotateZ(Math.PI / 2), wheel, s * 0.34, 0.15, z))
+  if (kind === 'loco') {
+    p.push(part(new BoxGeometry(0.8, 0.14, 2.0), iron, 0, 0.27, -0.1))
+    p.push(part(new CylinderGeometry(0.3, 0.3, 1.3, 10).rotateX(Math.PI / 2), new Color('#7d2f28'), 0, 0.62, 0.35))
+    p.push(part(new BoxGeometry(0.66, 0.7, 0.62), iron, 0, 0.7, -0.75))
+    p.push(part(new CylinderGeometry(0.13, 0.17, 0.42, 8), iron, 0, 1.0, 0.8))
+  } else {
+    const body =
+      kind === 'coach' ? new Color('#2f5d46') : kind === 'empty' ? tint(C.woodDark, 4, 0.06) : C.wood
+    p.push(part(new BoxGeometry(0.8, 0.1, len - 0.2), iron, 0, 0.27, 0))
+    p.push(part(new BoxGeometry(0.74, kind === 'coach' ? 0.55 : 0.4, len - 0.3), body, 0, kind === 'coach' ? 0.6 : 0.52, 0))
+  }
+  // La barre d'attelage, de bout en bout : c'est elle qui touche le voisin.
+  p.push(part(new BoxGeometry(0.08, 0.06, len), iron, 0, 0.21, 0))
+  return mergeGeometries(p)!
 }
 
 /** Chaque pièce du campement est construite autour de son propre axe, porte
@@ -1924,10 +1971,21 @@ export class Village {
       this.railCum.push(
         this.railCum[i - 1]! + Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.z - pts[i - 1]!.z),
       )
+    // Les RAILS suivent un tracé adouci : le plan de la voie tourne de 30° d'un
+    // pas à l'autre, et un wagon rigide posé à cheval sur un tel angle a les
+    // roues à côté du rail (voir smoothPath). Gare, parcelles et couloir
+    // restent calés sur le plan (`railPath`) : rien ne bouge au sol.
+    const track = smoothPath(pts)
+    this.trackPath = track
+    this.trackCum = [0]
+    for (let i = 1; i < track.length; i++)
+      this.trackCum.push(
+        this.trackCum[i - 1]! + Math.hypot(track[i]!.x - track[i - 1]!.x, track[i]!.z - track[i - 1]!.z),
+      )
     const ballast = tint(C.stoneDark, 5, 0.05)
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i]!
-      const b = pts[i + 1]!
+    for (let i = 0; i < track.length - 1; i++) {
+      const a = track[i]!
+      const b = track[i + 1]!
       const mx = (a.x + b.x) / 2
       const mz = (a.z + b.z) / 2
       const seg = Math.hypot(b.x - a.x, b.z - a.z)
@@ -1937,17 +1995,17 @@ export class Village {
       const sy = Math.sin(yaw)
       const y = GROUND_Y + 0.05
       p.push(part(new BoxGeometry(1.15, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
-      // Traverses : trois par segment, c'est ce qui fait lire « voie ».
-      for (const t of [-0.3, 0, 0.3])
-        p.push(
-          part(
-            new BoxGeometry(0.92, 0.07, 0.16).rotateY(yaw),
-            tint(C.woodDark, i * 7, 0.08),
-            mx + sy * seg * t,
-            y + 0.07,
-            mz + cy * seg * t,
-          ),
-        )
+      // Une traverse par pas de 0,4 u (il y en avait trois par pas de 1,6) :
+      // c'est ce qui fait lire « voie ».
+      p.push(
+        part(
+          new BoxGeometry(0.92, 0.07, 0.16).rotateY(yaw),
+          tint(C.woodDark, i * 7, 0.08),
+          mx,
+          y + 0.07,
+          mz,
+        ),
+      )
       for (const side of [-1, 1])
         p.push(
           part(
@@ -1994,7 +2052,8 @@ export class Village {
         best = i
       }
     }
-    this.railStop = this.railCum[best] ?? 0
+    // L'arrêt se compte sur le tracé adouci, celui où roule la rame.
+    this.railStop = nearestAbscissa({ pts: this.trackPath, cum: this.trackCum }, pts[best]!)
     this.stationAt = { x: pts[best]!.x, z: pts[best]!.z }
     // La gare n'est pas un bâtiment du plan : sans réservation, un atelier
     // pouvait se poser sur son quai. Même traitement que le phare.
@@ -2033,43 +2092,221 @@ export class Village {
     put(new BoxGeometry(0.06, 0.3, 0.8), C.plaster, 1.0, 1.0, 1.7)
   }
 
-  /** La locomotive et son wagon : un seul mesh, monté sur un pivot que la
-   *  boucle d'animation déplace le long de la voie. */
+  /** LA RAME : la locomotive, la voiture de voyageurs dès l'Ère moderne, et
+   *  un wagon par ressource que la tribu produit le plus (consist.ts).
+   *
+   *  UN SEUL mesh pour toute la rame, comme l'ancien train : les véhicules
+   *  sont fondus bout à bout et c'est le processeur qui repose leurs sommets
+   *  à chaque image (quelques milliers, un rien), chacun sur la voie à sa
+   *  propre abscisse. Un mesh par wagon aurait coûté jusqu'à six appels de
+   *  dessin de plus — douze avec l'ombre. */
   private buildTrain(): void {
     if (this.train) {
       this.group.remove(this.train)
+      this.train.geometry.dispose()
       this.train = null
     }
-    const iron = new Color('#3b4149')
-    const brass = new Color('#b9863a')
-    const p: BufferGeometry[] = []
-    // Chaudière, cabine, cheminée, tampon.
-    p.push(part(new CylinderGeometry(0.3, 0.3, 1.5, 10).rotateX(Math.PI / 2), new Color('#7d2f28'), 0, 0.44, 0.25))
-    p.push(part(new CylinderGeometry(0.33, 0.33, 0.1, 10).rotateX(Math.PI / 2), brass, 0, 0.44, 1.0))
-    p.push(part(new BoxGeometry(0.66, 0.7, 0.62), iron, 0, 0.58, -0.75))
-    p.push(part(new BoxGeometry(0.72, 0.09, 0.68), new Color('#2a2f36'), 0, 0.96, -0.75))
-    p.push(part(new CylinderGeometry(0.13, 0.17, 0.42, 8), iron, 0, 0.82, 0.78))
-    p.push(part(new BoxGeometry(0.8, 0.14, 1.9), iron, 0, 0.2, 0.1))
-    // Roues.
-    for (const s2 of [-1, 1])
-      for (const z2 of [0.62, 0.02, -0.7])
-        p.push(part(new CylinderGeometry(0.19, 0.19, 0.07, 10).rotateZ(Math.PI / 2), new Color('#5a6068'), s2 * 0.36, 0.19, z2))
-    // Le wagon derrière.
-    p.push(part(new BoxGeometry(0.74, 0.5, 1.1), tint(C.woodDark, 4, 0.06), 0, 0.46, -1.85))
-    p.push(part(new BoxGeometry(0.8, 0.1, 1.2), iron, 0, 0.18, -1.85))
-    for (const s2 of [-1, 1])
-      for (const z2 of [-1.45, -2.25])
-        p.push(part(new CylinderGeometry(0.15, 0.15, 0.06, 8).rotateZ(Math.PI / 2), new Color('#5a6068'), s2 * 0.34, 0.16, z2))
-    const geo = mergeGeometries(p)
+    const total = this.trackCum[this.trackCum.length - 1] ?? 0
+    // Une île minuscule n'aurait pas la voie pour la rame entière : on dételle
+    // par la queue plutôt que de la faire dépasser des heurtoirs.
+    this.trainCars = consistFor(this.age, this.cargoRank, total - 2 * Village.TRAIN_MARGIN - 1)
+    this.trainBounds()
+    this.trainGeometry()
+    if (!this.train) return
+    this.trainHead = -1
+    this.trainLeg = -1
+    this.poseTrain(this.trainMin)
+    // Les dix fichiers d'un coup, et seulement maintenant que la voie existe :
+    // une composition qui change en gare trouve son wagon déjà là, il n'y a
+    // pas de wagon qui change de tête en pleine voie. Fichier absent : le
+    // wagon couvert, puis la primitive, tiennent la place sans un mot.
+    const ids = Object.values(CAR_MODEL)
+    if (ids.every((id) => modelGeometryReady(id))) return
+    void loadModels(ids).then((fresh) => {
+      if (fresh && this.train && this.group.parent) {
+        this.trainGeometry()
+        this.poseTrain(this.trainHead, true)
+      }
+    })
+  }
+
+  /** Fond les véhicules de la composition courante en une géométrie, et garde
+   *  leurs sommets d'origine (repère du modèle) pour les reposer ensuite. */
+  private trainGeometry(): void {
+    const parts: BufferGeometry[] = []
+    const ranges: { start: number; count: number }[] = []
+    let start = 0
+    for (const kind of this.trainCars) {
+      const geo =
+        modelGeometry(CAR_MODEL[kind]) ??
+        // Un wagon de marchandises sans son fichier prend le wagon couvert :
+        // il garde la bonne longueur, les attelages se touchent toujours.
+        (kind !== 'loco' && kind !== 'coach' ? modelGeometry(CAR_MODEL.empty) : null) ??
+        primitiveCar(kind)
+      // Le même grain que le reste du village : pas d'aplats trop lisses.
+      grain(geo, 0.06)
+      const count = geo.attributes.position!.count
+      ranges.push({ start, count })
+      start += count
+      parts.push(geo)
+    }
+    const geo = mergeGeometries(parts)
+    for (const g of parts) g.dispose()
     if (!geo) return
-    grain(geo, 0.06)
-    const mesh = new Mesh(geo, this.solid)
-    mesh.castShadow = true
-    const pivot = new Group()
-    pivot.add(mesh)
-    this.train = pivot
-    this.group.add(pivot)
-    this.vehicleModel(mesh, 'train', 0.06)
+    this.trainRanges = ranges
+    this.trainBase = Float32Array.from(geo.attributes.position!.array as Float32Array)
+    this.trainBaseN = Float32Array.from(geo.attributes.normal!.array as Float32Array)
+    if (this.train) {
+      this.train.geometry.dispose()
+      this.train.geometry = geo
+    } else {
+      this.train = new Mesh(geo, this.solid)
+      this.train.castShadow = true
+      this.group.add(this.train)
+    }
+  }
+
+  /** Les bornes du trajet de la TÊTE (chasse-pierres de la loco) : la queue ne
+   *  dépasse pas le heurtoir de départ, la tête s'arrête avant celui
+   *  d'arrivée. Et l'arrêt en gare : la voiture de voyageurs (ou, sans elle,
+   *  le milieu de la rame) devant l'abri du quai. */
+  private trainBounds(): void {
+    const track = { pts: this.trackPath, cum: this.trackCum }
+    const total = this.trackCum[this.trackCum.length - 1] ?? 0
+    const m = Village.TRAIN_MARGIN
+    const cars = this.trainCars
+    // La corde d'un wagon est plus courte que l'arc qu'il couvre : la queue
+    // est un peu plus loin que « tête − longueur ». Quelques passes suffisent.
+    let h = consistLength(cars) + m
+    for (let k = 0; k < 6; k++) {
+      const tail = layConsist(track, h, 1, cars).at(-1)!.sBack
+      h += m - tail
+    }
+    this.trainMin = Math.min(h, total - m)
+    this.trainMax = Math.max(this.trainMin, total - m)
+    const target = cars.indexOf('coach')
+    const mid = (p: CarPose[]): number =>
+      target >= 0
+        ? (p[target]!.sFront + p[target]!.sBack) / 2
+        : (p[0]!.sFront + p[p.length - 1]!.sBack) / 2
+    let s = this.railStop + (this.railStop - mid(layConsist(track, this.railStop, 1, cars)))
+    for (let k = 0; k < 4; k++) s += this.railStop - mid(layConsist(track, s, 1, cars))
+    this.trainStop = Math.min(this.trainMax, Math.max(this.trainMin, s))
+  }
+
+  /** Pose chaque véhicule sur la voie : ses deux attelages sur l'axe, l'un à
+   *  sa longueur de l'autre, le suivant accroché au même point. Les roues
+   *  sont à la cote du dessus du rail. */
+  private poseTrain(head: number, force = false): void {
+    const mesh = this.train
+    if (!mesh || (!force && head === this.trainHead)) return
+    this.trainHead = head
+    const poses = layConsist({ pts: this.trackPath, cum: this.trackCum }, head, 1, this.trainCars)
+    this.trainPoses = poses
+    const pos = mesh.geometry.attributes.position!
+    const nor = mesh.geometry.attributes.normal!
+    const P = pos.array as Float32Array
+    const N = nor.array as Float32Array
+    const B = this.trainBase
+    const BN = this.trainBaseN
+    let cx = 0
+    let cz = 0
+    for (let k = 0; k < poses.length; k++) {
+      const c = poses[k]!
+      cx += c.x / poses.length
+      cz += c.z / poses.length
+      const co = Math.cos(c.yaw)
+      const si = Math.sin(c.yaw)
+      const { start, count } = this.trainRanges[k]!
+      for (let i = start * 3, end = (start + count) * 3; i < end; i += 3) {
+        // La rotation de three autour de Y : +Z local part vers (sin, cos).
+        const x = B[i]!
+        const z = B[i + 2]!
+        P[i] = c.x + co * x + si * z
+        P[i + 1] = RAIL_TOP + B[i + 1]!
+        P[i + 2] = c.z - si * x + co * z
+        const nx = BN[i]!
+        const nz = BN[i + 2]!
+        N[i] = co * nx + si * nz
+        N[i + 1] = BN[i + 1]!
+        N[i + 2] = -si * nx + co * nz
+      }
+    }
+    pos.needsUpdate = true
+    nor.needsUpdate = true
+    // La sphère englobante suit la rame : sans elle, le tri hors champ de
+    // three garderait celle de la première pose et ferait disparaître le train.
+    let r = 0
+    for (const c of poses) r = Math.max(r, Math.hypot(c.x - cx, c.z - cz) + CAR_LENGTH[c.kind] / 2 + 0.6)
+    const sphere = (mesh.geometry.boundingSphere ??= new Sphere())
+    sphere.center.set(cx, RAIL_TOP + 0.5, cz)
+    sphere.radius = r
+  }
+
+  /** Les ressources produites, par ordre décroissant : main.ts les donne
+   *  régulièrement, la rame les CHARGE à son prochain arrêt en gare. */
+  setCargo(rates: Partial<Record<string, number>>): void {
+    const rank = rankCargo(rates)
+    // En expédition, la tribu ne produit plus rien : la rame garde son
+    // chargement plutôt que de repartir à vide.
+    if (rank.length === 0) return
+    this.cargoRank = rank
+  }
+
+  /** Le va-et-vient : la rame parcourt la voie, s'arrête en gare dans chaque
+   *  sens, marque un temps d'arrêt à chaque terminus et repart en sens
+   *  inverse — en RÉVERSIBLE : la loco reste au même bout et pousse la rame au
+   *  retour. L'ancien demi-tour pivotait le train d'un coup sur lui-même ;
+   *  avec dix mètres de wagons, ce pivot les aurait fait passer à travers la
+   *  loco, ou par-delà le heurtoir. */
+  private tickTrain(dt: number): void {
+    if (!this.train || this.trackCum.length < 2) return
+    const lo = this.trainMin
+    const hi = this.trainMax
+    if (hi - lo < 0.5) return
+    this.railT += dt * 2.2
+    const STOP = 5
+    const s1 = this.trainStop
+    const legs: [number, number][] = [
+      [lo, s1],
+      [s1, s1],
+      [s1, hi],
+      [hi, hi],
+      [hi, s1],
+      [s1, s1],
+      [s1, lo],
+      [lo, lo],
+    ]
+    const dur = legs.map(([f, t2], k) => (k % 2 === 1 ? STOP : Math.abs(t2 - f)))
+    const period = dur.reduce((m, v) => m + v, 0)
+    let u = this.railT % period
+    let leg = 0
+    while (leg < legs.length - 1 && u > dur[leg]!) {
+      u -= dur[leg]!
+      leg++
+    }
+    // En gare, et une seule fois par arrêt : la rame charge ce que la tribu
+    // produit le plus en ce moment. C'est le seul endroit où sa composition
+    // change — jamais un wagon qui saute en pleine voie.
+    if (leg !== this.trainLeg) {
+      this.trainLeg = leg
+      if (leg === 1 || leg === 5) this.reloadTrain()
+    }
+    const [from, to] = legs[leg]!
+    const k = dur[leg]! > 0 ? Math.min(1, u / dur[leg]!) : 1
+    this.poseTrain(from + (to - from) * k)
+  }
+
+  /** Recompose la rame en gare si la production a changé d'ordre. Même âge,
+   *  même nombre de wagons : seules les cargaisons changent, la rame garde sa
+   *  longueur et sa place le long du quai. */
+  private reloadTrain(): void {
+    const total = this.trackCum[this.trackCum.length - 1] ?? 0
+    const next = consistFor(this.age, this.cargoRank, total - 2 * Village.TRAIN_MARGIN - 1)
+    if (next.join() === this.trainCars.join()) return
+    this.trainCars = next
+    this.trainGeometry()
+    this.poseTrain(this.trainHead, true)
   }
 
   /** Passe un véhicule au modèle Blender : tout de suite s'il est déjà là,
@@ -2091,52 +2328,6 @@ export class Village {
     void loadModels([id]).then((fresh) => {
       if (fresh && this.group.parent) swap()
     })
-  }
-
-  /** Le va-et-vient : la locomotive parcourt la voie, marque un temps d'arrêt
-   *  à chaque terminus et repart en sens inverse. */
-  private tickTrain(dt: number): void {
-    const pivot = this.train
-    if (!pivot || this.railCum.length < 2) return
-    const total = this.railCum[this.railCum.length - 1]!
-    if (total < 1) return
-    this.railT += dt * 2.2
-    // Aller, arrêt au terminus, retour, arrêt : et un arrêt EN GARE dans
-    // chaque sens. C'est la gare qui fait d'une voie un service.
-    const STOP = 5
-    const s1 = Math.max(0, Math.min(total, this.railStop))
-    const legs: [number, number, boolean][] = [
-      [0, s1, true],
-      [s1, s1, true],
-      [s1, total, true],
-      [total, total, true],
-      [total, s1, false],
-      [s1, s1, false],
-      [s1, 0, false],
-      [0, 0, true],
-    ]
-    const dur = legs.map(([f, t2], k) => (k % 2 === 1 ? STOP : Math.abs(t2 - f) / 1))
-    const period = dur.reduce((m, v) => m + v, 0)
-    let u = this.railT % period
-    let leg = 0
-    while (leg < legs.length - 1 && u > dur[leg]!) {
-      u -= dur[leg]!
-      leg++
-    }
-    const [from, to, fwd] = legs[leg]!
-    const k = dur[leg]! > 0 ? Math.min(1, u / dur[leg]!) : 1
-    const d = from + (to - from) * k
-    let i = 1
-    while (i < this.railCum.length - 1 && this.railCum[i]! < d) i++
-    const a = this.railPath[i - 1]!
-    const b = this.railPath[i]!
-    const segLen = Math.max(1e-3, this.railCum[i]! - this.railCum[i - 1]!)
-    const t = Math.min(1, Math.max(0, (d - this.railCum[i - 1]!) / segLen))
-    const x = a.x + (b.x - a.x) * t
-    const z = a.z + (b.z - a.z) * t
-    pivot.position.set(x, GROUND_Y + 0.06, z)
-    const yaw = Math.atan2(b.x - a.x, b.z - a.z)
-    pivot.rotation.y = fwd ? yaw : yaw + Math.PI
   }
 
   /** Le phare ne se pose pas au village : il lui faut une pointe face au large,
@@ -2834,10 +3025,32 @@ export class Village {
   private roadCum: number[] = []
   private railPath: { x: number; z: number }[] = []
   private railCum: number[] = []
-  private train: Group | null = null
+  /** Le tracé adouci que suivent rails et rame (voir railway). */
+  private trackPath: { x: number; z: number }[] = []
+  private trackCum: number[] = []
+  /** La rame entière, un seul mesh (voir buildTrain). */
+  private train: Mesh | null = null
   private railT = 0
   /** Abscisse de la gare sur la voie : le train y marque l'arrêt. */
   private railStop = 0
+  /** La composition roulante, de la loco à la queue. */
+  private trainCars: CarKind[] = []
+  /** Les ressources de la tribu, de la plus produite à la moins produite. */
+  private cargoRank: Cargo[] = []
+  /** Les sommets de chaque véhicule dans la géométrie fondue. */
+  private trainRanges: { start: number; count: number }[] = []
+  private trainBase = new Float32Array(0)
+  private trainBaseN = new Float32Array(0)
+  /** Abscisses de la tête : départ, arrivée, arrêt en gare, position. */
+  private trainMin = 0
+  private trainMax = 0
+  private trainStop = 0
+  private trainHead = -1
+  private trainLeg = -1
+  /** La dernière pose de chaque véhicule — lue par le harnais de mesure. */
+  trainPoses: CarPose[] = []
+  /** Garde entre la rame et les heurtoirs, aux deux bouts de la voie. */
+  private static readonly TRAIN_MARGIN = 0.35
   /** La lueur du phare, hors fusion : elle est additive et doit respirer. */
   private beaconHalo: Sprite | null = null
 

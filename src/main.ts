@@ -60,6 +60,8 @@ import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, liv
  *  destination avant d'émettre la fin, on ne peut plus la lire à ce
  *  moment-là. */
 let tripKind: 'sea' | 'rail' | 'air' = 'sea'
+/** Compte à rebours avant de redonner la production au train. */
+let cargoClock = 0
 
 /** Le seul endroit du jeu où le calendrier RÉEL entre : la semaine de Noël.
  *  Lu une fois au chargement — une partie ne dure pas d'un jour à l'autre. */
@@ -143,6 +145,10 @@ function buildWorld(): void {
   // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
   // brasero, lampadaire dès que l'électricité est sue.
   village = new Village(island, game.save.age, game.knows('electricity'), yule !== 'none')
+  // La rame charge les ressources que la tribu produit le plus : à donner
+  // AVANT que la voie ne se pose (plan adopté ci-dessous), pour qu'elle parte
+  // déjà chargée et non avec des wagons vides.
+  village.setCargo(game.rates)
   // Le plan sauvegardé d'abord : ce qui est bâti ne se redéplace pas.
   // Plan d'une version antérieure : il est retracé selon les règles du jour.
   // Un plan tracé sur une île plus grande que celle d'aujourd'hui (avant les
@@ -1692,6 +1698,13 @@ function frame(now: number): void {
   if (boat.consumeDocked()) {
     settler.returnFromExpedition()
     expPhase = 'none'
+  }
+  // La production bouge (focus, saison, nuit) : la rame l'apprend une fois par
+  // seconde et ne recompose ses wagons qu'à son prochain arrêt en gare.
+  cargoClock -= dt
+  if (cargoClock <= 0) {
+    cargoClock = 1
+    village.setCargo(game.rates)
   }
   village.update(dt, elapsed, lastDaylight)
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
