@@ -440,6 +440,16 @@ export class Settler {
     this.home.set(CAMP_HOME.x, GROUND_Y, CAMP_HOME.z)
   }
 
+  /** Vrai si la cible du colon est un nœud qui n'existe plus : à moins de
+   *  1 cm d'aucun nœud relevé. Toutes les phases comptent : après le dépôt,
+   *  il repart vers la MÊME cible. En voyage, la cible est l'embarquement. */
+  goalGone(nodes: ReadonlyMap<string, readonly { x: number; z: number }[]>): boolean {
+    if (this.trip !== 'none') return false
+    for (const spots of nodes.values())
+      for (const s of spots) if (Math.hypot(s.x - this.destination.x, s.z - this.destination.z) < 0.01) return false
+    return true
+  }
+
   /** Sent by a tap on a resource node, or by the focus buttons. */
   sendTo(p: Vector3): void {
     this.destination.set(p.x, 0, p.z)

@@ -368,7 +368,22 @@ interface Scatter {
   /** Posé à plat, sans bascule : un bloc taillé, pas un rocher roulé. */
   block?: boolean
   tones?: readonly Color[]
+  /** D'où vient ce décor : −1 pour l'île de base, sinon le rang de la
+   *  parcelle dans `land`. Sert à écarter le décor d'une terre gagnée de
+   *  celui qui était déjà là (voir `separatePlotDecor`). */
+  src?: number
 }
+
+/** Rayon au sol du décor, à l'échelle 1 de l'instance : le tronc d'un sapin
+ *  (le houppier passe au-dessus des toits bas, c'est le pied qui se plante
+ *  dans un mur), le dodécaèdre d'un rocher, l'icosaèdre d'un buisson. Ce sont
+ *  les rayons des maillages eux-mêmes. */
+const DECOR_R: Record<NodeKind, number> = { wood: 0.16, stone: 0.42, food: 0.34 }
+/** L'écart visé entre deux emprises (incrément 1, lot 2). La ruelle de la
+ *  conception vaut 0,6 u ; pour le décor on vise 0,3 u : un buisson qui
+ *  frôle un mur se lit comme planté au pied, un buisson dans le mur comme
+ *  un défaut. */
+export const DECOR_GAP = 0.3
 
 /** Plafond de la pinède de l'île de base. */
 const TREE_MAX = 46
@@ -614,6 +629,16 @@ export class Island {
   private leavesMesh: InstancedMesh | null = null
   /** Arbres abattus (index d'instance) : ils ne sont plus des nœuds de récolte. */
   private readonly felledTrees = new Set<number>()
+  /** Rochers et buissons retirés parce qu'une emprise les recouvre : comme
+   *  les arbres abattus, ils gardent leur rang (réduits à un millième). */
+  private readonly clearedOf = new Map<InstancedMesh, Set<number>>()
+  /** Provenance de chaque instance de décor (−1 : île de base, sinon rang de
+   *  la parcelle). */
+  private readonly srcOf = new Map<InstancedMesh, Int16Array>()
+  /** Décor retiré par la règle d'écart (sous un objet posé, ou trop près du
+   *  décor déjà là pour celui d'une parcelle), par ressource. Les arbres
+   *  abattus par les rues et la voie n'y sont pas : ils l'étaient déjà. */
+  readonly decorRemoved: Record<NodeKind, number> = { wood: 0, stone: 0, food: 0 }
   /** Les premières instances de la pinède sont celles de l'île de base. */
   private baseTrees = 0
   private leafBase: Float32Array | null = null
@@ -1818,6 +1843,97 @@ export class Island {
       },
       ...decor.bushes,
     ])
+    this.separatePlotDecor()
+  }
+
+  /** Le décor d'une terre gagnée sur la mer est tiré avec son propre hasard,
+   *  sans rien savoir de ce qui pousse à côté : un bloc de carrière pouvait
+   *  frôler le buisson d'une parcelle voisine ou un rocher de la côte. On ne
+   *  retire QUE le décor de la parcelle, jamais celui qui était déjà là :
+   *  le joueur ne voit pas disparaître un arbre qu'il connaissait. Les
+   *  parcelles passent dans l'ordre de pose, chacune contre tout ce qui la
+   *  précède. Le décor d'une même parcelle peut se toucher : un bosquet est
+   *  fait d'arbres serrés. */
+  private separatePlotDecor(): void {
+    if (this.land.length === 0) return
+    const m = new Matrix4()
+    const p = new Vector3()
+    const q = new Quaternion()
+    const s = new Vector3()
+    const all: { mesh: InstancedMesh; i: number; src: number; x: number; z: number; r: number }[] = []
+    for (const mesh of this.pickables) {
+      const src = this.srcOf.get(mesh)
+      const kind = this.kindOf.get(mesh)
+      if (!src || !kind) continue
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m)
+        m.decompose(p, q, s)
+        all.push({ mesh, i, src: src[i]!, x: p.x, z: p.z, r: DECOR_R[kind] * s.x })
+      }
+    }
+    // Tri stable par provenance : l'île de base d'abord, puis les parcelles
+    // dans l'ordre où elles ont été posées.
+    all.sort((a, b) => a.src - b.src)
+    const kept: typeof all = []
+    for (const d of all) {
+      const clash =
+        d.src >= 0 &&
+        kept.some((k) => k.src !== d.src && Math.hypot(k.x - d.x, k.z - d.z) - k.r - d.r < DECOR_GAP)
+      if (clash) this.hideDecor(d.mesh, d.i)
+      else kept.push(d)
+    }
+  }
+
+  /** Retire une instance de décor sans recompacter le maillage (même raison
+   *  que `clearCorridor` : teintes de saison et tirages suivent le rang). */
+  private hideDecor(mesh: InstancedMesh, i: number): void {
+    if (this.isFelled(mesh, i)) return
+    const m = new Matrix4()
+    const p = new Vector3()
+    const q = new Quaternion()
+    const s = new Vector3()
+    mesh.getMatrixAt(i, m)
+    m.decompose(p, q, s)
+    mesh.setMatrixAt(i, m.compose(p, q, s.setScalar(1e-3)))
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh === this.leavesMesh) this.felledTrees.add(i)
+    else {
+      let set = this.clearedOf.get(mesh)
+      if (!set) this.clearedOf.set(mesh, (set = new Set()))
+      set.add(i)
+    }
+    const kind = this.kindOf.get(mesh)
+    if (kind) this.decorRemoved[kind]++
+  }
+
+  /** Le décor ne pousse pas DANS ce qui est posé. Le décor est tiré avant le
+   *  village (et les parcelles après lui) : jusqu'ici seuls les sapins étaient
+   *  abattus, à la louche, et rochers et buissons restaient plantés dans les
+   *  murs (audit du 2026-10-13 : 22 villages sur 24 avec un rocher dans un
+   *  bâtiment, 24 sur 24 avec un buisson). `blocked(x, z, r)` dit si un
+   *  disque de rayon r centré là touche une emprise posée, marge comprise ;
+   *  c'est le cadastre au sol qui le mesure, sur la géométrie réelle. Ce qui
+   *  touche disparaît ; rien ne se déplace. Rend le nombre d'instances
+   *  retirées à cet appel. */
+  clearUnder(blocked: (x: number, z: number, r: number) => boolean): number {
+    const m = new Matrix4()
+    const p = new Vector3()
+    const q = new Quaternion()
+    const s = new Vector3()
+    let n = 0
+    for (const mesh of this.pickables) {
+      const kind = this.kindOf.get(mesh)
+      if (!kind) continue
+      for (let i = 0; i < mesh.count; i++) {
+        if (this.isFelled(mesh, i)) continue
+        mesh.getMatrixAt(i, m)
+        m.decompose(p, q, s)
+        if (!blocked(p.x, p.z, DECOR_R[kind] * s.x)) continue
+        this.hideDecor(mesh, i)
+        n++
+      }
+    }
+    return n
   }
 
   /** Le décor de chaque parcelle, tiré avec SON hasard (graine de l'île mêlée
@@ -1830,7 +1946,7 @@ export class Island {
    *  roseaux). Crique : deux galets sur le sable. */
   private plotDecor(): { trees: Scatter[]; rocks: Scatter[]; bushes: Scatter[] } {
     const out = { trees: [] as Scatter[], rocks: [] as Scatter[], bushes: [] as Scatter[] }
-    for (const p of this.land) {
+    for (const [src, p] of this.land.entries()) {
       const rnd = plotRandom(this.seed, p, 0x7ee5)
       const mine = this.cells.filter((c) => c.plotOf === p)
       const ring = mine.filter((c) => !c.plotCenter)
@@ -1841,13 +1957,13 @@ export class Island {
           .sort((a, b) => a.k - b.k)
           .slice(0, n)
           .map((e) => e.c)
-      if (p.kind === 'foret') out.trees.push({ cells: some(mine, 6), rnd })
+      if (p.kind === 'foret') out.trees.push({ cells: some(mine, 6), rnd, src })
       else if (p.kind === 'carriere')
-        out.rocks.push({ cells: some(ring, 4), rnd, scale: 1.25, block: true, tones: [PALETTE.rock, PALETTE.rockDark] })
+        out.rocks.push({ cells: some(ring, 4), rnd, scale: 1.25, block: true, tones: [PALETTE.rock, PALETTE.rockDark], src })
       else if (p.kind === 'affleurement')
-        out.rocks.push({ cells: [...center, ...center, ...some(ring, 3)], rnd, scale: 1.2, tones: ORE_TONES })
-      else if (p.kind === 'prairie') out.bushes.push({ cells: some(ring, 2), rnd })
-      else if (p.kind === 'crique') out.rocks.push({ cells: some(ring, 2), rnd, scale: 0.6, tones: [PALETTE.rock] })
+        out.rocks.push({ cells: [...center, ...center, ...some(ring, 3)], rnd, scale: 1.2, tones: ORE_TONES, src })
+      else if (p.kind === 'prairie') out.bushes.push({ cells: some(ring, 2), rnd, src })
+      else if (p.kind === 'crique') out.rocks.push({ cells: some(ring, 2), rnd, scale: 0.6, tones: [PALETTE.rock], src })
     }
     return out
   }
@@ -1932,7 +2048,9 @@ export class Island {
     const leafColors = [PALETTE.leafA, PALETTE.leafB, PALETTE.leafC]
     const { TREE_H, TREE_R } = Island
     let i = 0
-    for (const { cells: list, rnd } of groups) for (const c of list) {
+    const srcs = new Int16Array(cells.length)
+    for (const { cells: list, rnd, src = -1 } of groups) for (const c of list) {
+      srcs[i] = src
       // Variance élargie (0,72–1,27) : à cette échelle, un semis uniforme se
       // lirait comme une plantation. Même nombre d'appels à rnd() qu'avant
       // pour garder les positions (jitter, faune, treeDist) stables.
@@ -1956,6 +2074,7 @@ export class Island {
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
     this.group.add(leaves)
     this.registerPickable(leaves, 'wood')
+    this.srcOf.set(leaves, srcs)
     // Les saisons repeignent le feuillage : garder la teinte de base.
     this.leavesMesh = leaves
     this.leafBase = leaves.instanceColor ? new Float32Array(leaves.instanceColor.array) : null
@@ -1970,7 +2089,9 @@ export class Island {
 
     const d = new Object3D()
     let i = 0
-    for (const { cells, rnd, scale = 1, block = false, tones } of groups) for (const c of cells) {
+    const srcs = new Int16Array(mesh.count)
+    for (const { cells, rnd, scale = 1, block = false, tones, src = -1 } of groups) for (const c of cells) {
+      srcs[i] = src
       // Amplitude resserrée (0,5–0,95 au lieu de 0,55–1,25) : les plus gros
       // blocs atteignaient la taille d'une hutte et mangeaient le sol autour
       // d'eux. Même tirage aléatoire, seule l'échelle change.
@@ -1992,6 +2113,7 @@ export class Island {
     this.bushMesh = mesh
     this.bushBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
     this.registerPickable(mesh, 'stone')
+    this.srcOf.set(mesh, srcs)
   }
 
   private addBushes(groups: Scatter[]): void {
@@ -2003,7 +2125,9 @@ export class Island {
     const d = new Object3D()
     const berry = new Color('#4a7340')
     let i = 0
-    for (const { cells, rnd } of groups) for (const c of cells) {
+    const srcs = new Int16Array(mesh.count)
+    for (const { cells, rnd, src = -1 } of groups) for (const c of cells) {
+      srcs[i] = src
       // Audit échelles : ×1,5 pour viser ~1 m réel (le colon = 1,5 u ≙ 1,75 m).
       // Amplitude resserrée par le haut (0,7–1,05 au lieu de 0,7–1,2) : les
       // plus gros buissons montaient à 1,44 unité, soit la hauteur d'un
@@ -2023,6 +2147,7 @@ export class Island {
     this.bushMesh = mesh
     this.bushBase = mesh.instanceColor ? new Float32Array(mesh.instanceColor.array) : null
     this.registerPickable(mesh, 'food')
+    this.srcOf.set(mesh, srcs)
   }
 
   /** Abattre les arbres d'un couloir — ce que fait une voie romaine. On ne
@@ -2094,9 +2219,11 @@ export class Island {
     if (doomed.length > 0) this.clearCorridor(doomed, 0.4, this.baseTrees)
   }
 
-  /** Un arbre abattu n'est plus un nœud de bois : main.ts l'écarte du relevé. */
+  /** Un arbre abattu n'est plus un nœud de bois : main.ts l'écarte du relevé.
+   *  Vaut aussi pour un rocher ou un buisson retiré sous une emprise. */
   isFelled(mesh: InstancedMesh, index: number): boolean {
-    return mesh === this.leavesMesh && this.felledTrees.has(index)
+    if (mesh === this.leavesMesh) return this.felledTrees.has(index)
+    return this.clearedOf.get(mesh)?.has(index) ?? false
   }
 
   private registerPickable(mesh: InstancedMesh, kind: NodeKind): void {
