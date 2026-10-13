@@ -176,7 +176,9 @@ function buildWorld(): void {
     return ambience.work('pierre')
   }
   fishing = false
-  villagers = new Villagers(island, village.obstaclePoints.concat(village.blockers))
+  // Le quai n'y entre pas ici : `placeGoods` le donne aux villageois comme à
+  // la faune, qu'il vienne de la sauvegarde ou d'un achat en cours de partie.
+  villagers = new Villagers(island, village.obstaclePoints)
   // La tribu s'étoffe avec les âges : une cueilleuse au Néolithique, un
   // enfant à l'Antiquité. Le colon n'est plus seul.
   villagers.setPopulation(game.save.age >= 4 ? 2 : game.save.age >= 1 ? 1 : 0)
@@ -282,6 +284,7 @@ function placeGoods(): void {
   // Les bêtes aussi : la faune a relevé ses habitats avant le quai, et
   // garderait sinon un cheval à brouter entre les caisses.
   fauna.setBlockers(zones)
+  villagers.setBlockers(zones)
   for (const [kind, spots] of nodeSpots)
     nodeSpots.set(
       kind,

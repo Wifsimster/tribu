@@ -207,3 +207,34 @@ test('l’enclos ne plante jamais sa palissade dans un bâtiment ni sur le quai'
     }
   }
 })
+
+test('les villageois contournent un quai posé après eux', async () => {
+  // Les villageois recevaient le quai seulement à la construction du monde :
+  // un quai acheté ensuite restait invisible pour eux (QA PR #12, graine 42 :
+  // une cueilleuse à 0,33 à l'intérieur des caisses). `placeGoods` le leur
+  // donne désormais par `setBlockers`, comme à la faune. On pose chaque âme
+  // au milieu du quai : elle doit en être repoussée dès le premier pas.
+  const { Villagers } = await import('../src/render/villagers.ts')
+  for (const [seed, age] of CASES) {
+    const { island, village } = town(seed, age)
+    village.setTools(TOOLS.slice(0, age - 1))
+    const g = village.goodsAt
+    assert.ok(g, `graine ${seed} : pas de quai`)
+    seeded(1, () => {
+      const v = new Villagers(island, village.obstaclePoints)
+      v.setBlockers(village.blockers)
+      v.setPopulation(2)
+      for (const s of v.souls) {
+        s.x = g.x + 0.3
+        s.z = g.z - 0.2
+      }
+      let worst = -Infinity
+      for (let i = 0; i < 400; i++) {
+        v.update(0.05, i * 0.05, false)
+        if (i === 0) for (const s of v.souls) assert.ok(quayDist(g, s.x, s.z) > 0, `graine ${seed} : âme laissée sur le quai`)
+        for (const s of v.souls) worst = Math.max(worst, -quayDist(g, s.x, s.z))
+      }
+      assert.ok(worst < 0, `graine ${seed} : villageois à ${worst.toFixed(2)} dans le quai`)
+    })
+  }
+})
