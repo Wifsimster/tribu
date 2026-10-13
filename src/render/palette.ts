@@ -66,7 +66,7 @@ export const PALETTE = {
   roofLight: new Color('#6d87dd'),
 } as const
 
-/** Lumière de jour, réglée avec la palette (v3.61.0, « variante A » validée
+/** Lumière de jour, réglée avec la palette (v3.60.0, « variante A » validée
  *  sur planche d'ambiance). Rangée ici plutôt que dans `scene.ts` pour qu'un
  *  test sans navigateur puisse la figer : la scène a besoin du DOM.
  *  - Soleil plus chaud et un peu plus fort : les faces éclairées dorent.

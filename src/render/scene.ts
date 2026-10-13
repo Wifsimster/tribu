@@ -118,7 +118,7 @@ const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
 const SUN_DAY = LIGHT.sunDay
 const SUN_LOW = new Color('#ffb36b')
-/** Ciel et brume de temps couvert. Depuis la v3.61.0, le ciel ne prend plus la
+/** Ciel et brume de temps couvert. Depuis la v3.60.0, le ciel ne prend plus la
  *  teinte d'âge, qui le grisait aussi par beau temps : sans ce gris, la pluie
  *  tombait d'un ciel bleu franc. */
 const STORM_SKY = new Color('#8d9eab')
@@ -168,7 +168,7 @@ export class Stage {
     // Moins de ciel diffus, plus de soleil : c'est le rapport entre les deux qui
     // creuse les contre-marches. À 0,82 l'ambiante remplissait tous les creux et
     // les paliers se lisaient comme un aplat.
-    // v3.61.0 : sol chaud (#7d7d5c) au lieu de bleu-gris — les ombres tirent
+    // v3.60.0 : sol chaud (#7d7d5c) au lieu de bleu-gris — les ombres tirent
     // vers le vert doré au lieu de ternir l'herbe.
     this.hemi = new HemisphereLight(LIGHT.hemiSky, LIGHT.hemiGround, LIGHT.hemiIntensity)
     this.scene.add(this.hemi)

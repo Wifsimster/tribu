@@ -1,4 +1,4 @@
-// La palette A (v3.61.0) figée : un changement de couleur doit être voulu,
+// La palette A (v3.60.0) figée : un changement de couleur doit être voulu,
 // donc passer par ce test, pas glisser au détour d'un autre chantier.
 //   corepack pnpm test
 import { test } from 'node:test'

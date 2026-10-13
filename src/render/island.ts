@@ -1265,7 +1265,7 @@ export class Island {
      *  la couronne de la référence culmine à +130 de luminance sur l'eau
      *  voisine, la nôtre à +102 — le trait s'élargit d'un demi-pixel pour que
      *  le pic survive au lissage de l'écran, il ne devient pas un glow. */
-    // v3.61.0 : 0,16 → 0,2. Posé sur le haut-fond turquoise, plus clair qu'avant,
+    // v3.60.0 : 0,16 → 0,2. Posé sur le haut-fond turquoise, plus clair qu'avant,
     // le trait perdait son contraste ; un poil plus large et plus plein, il
     // redevient le liseré d'écume net qui dessine la côte.
     const W = 0.2
@@ -1392,7 +1392,7 @@ export class Island {
       const d = shoreDist(x, z)
       // Nappe d'une seule couleur : c'est la brume qui creuse la distance. Le
       // dégradé radial d'avant faisait exactement le halo qu'on nous reproche.
-      // v3.61.0 : la mer fonce franchement vers le large (eau profonde de la
+      // v3.60.0 : la mer fonce franchement vers le large (eau profonde de la
       // palette), au lieu de 10 % d'assombrissement. C'est cette pente, du
       // turquoise de la berge au bleu profond, qui dit « on voit le fond près
       // du rivage, plus au large ». La pente DOIT être finie avant 3 cellules :
@@ -1475,7 +1475,7 @@ export class Island {
     this.group.add(bed, surface)
   }
 
-  /** Caustiques douces sur le fond du lagon (v3.61.0, inspirées de l'eau
+  /** Caustiques douces sur le fond du lagon (v3.60.0, inspirées de l'eau
    *  translucide d'un jeu de pêche cosy) : un réseau de lignes claires qui
    *  ondule sur le haut-fond, là où l'on « voit le fond ».
    *  - Aucune texture : le motif est une somme de sinus déformés, calculée
@@ -1484,8 +1484,8 @@ export class Island {
    *    berge, 1 au large. Pas de caustiques au large, où l'eau est opaque.
    *  - Elles multiplient la couleur du fond : la teinte de nuit des `unlit`
    *    les éteint d'elle-même, aucun réglage jour/nuit à tenir à part.
-   *  Coût : un programme shader de plus (le fond ne partage plus celui de la
-   *  surface). */
+   *  Coût mesuré : aucun programme shader de plus (le fond avait déjà le sien),
+   *  aucun draw call, aucune texture. */
   private addCaustics(mat: MeshBasicMaterial, span: number): void {
     const uTime = { value: 0 }
     mat.onBeforeCompile = (shader) => {
