@@ -31,7 +31,7 @@ import type { PhotoFx } from './photo'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
-import { PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
+import { AGE_HAZE_MIX, AGE_SKY_MIX, LIGHT, PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
 
 /** Phones get one pixel of DPR headroom, not three. This single clamp is the
  *  difference between 60 fps and 25 fps on a mid-range Android. */
@@ -116,8 +116,13 @@ function skyPart(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): Buf
 
 const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
-const SUN_DAY = new Color('#fff1d8')
+const SUN_DAY = LIGHT.sunDay
 const SUN_LOW = new Color('#ffb36b')
+/** Ciel et brume de temps couvert. Depuis la v3.60.0, le ciel ne prend plus la
+ *  teinte d'âge, qui le grisait aussi par beau temps : sans ce gris, la pluie
+ *  tombait d'un ciel bleu franc. */
+const STORM_SKY = new Color('#8d9eab')
+const STORM_HAZE = new Color('#b9c4cb')
 
 export class Stage {
   readonly renderer: WebGLRenderer
@@ -149,7 +154,7 @@ export class Stage {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = PCFSoftShadowMap
     this.renderer.toneMapping = ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.05
+    this.renderer.toneMappingExposure = LIGHT.exposure
 
     this.scene = new Scene()
     const age = AGES[0]!
@@ -163,12 +168,14 @@ export class Stage {
     // Moins de ciel diffus, plus de soleil : c'est le rapport entre les deux qui
     // creuse les contre-marches. À 0,82 l'ambiante remplissait tous les creux et
     // les paliers se lisaient comme un aplat.
-    this.hemi = new HemisphereLight(0xdfeef2, 0x53757f, 0.66)
+    // v3.60.0 : sol chaud (#7d7d5c) au lieu de bleu-gris — les ombres tirent
+    // vers le vert doré au lieu de ternir l'herbe.
+    this.hemi = new HemisphereLight(LIGHT.hemiSky, LIGHT.hemiGround, LIGHT.hemiIntensity)
     this.scene.add(this.hemi)
 
     // Le soleil vient de la gauche et de derrière l'épaule gauche : sur le
     // cadrage par défaut, une face est éclairée, l'autre tombe dans l'ombre.
-    this.sun = new DirectionalLight(0xfff1d8, 2.35)
+    this.sun = new DirectionalLight(SUN_DAY, LIGHT.sunIntensity)
     this.sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z)
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(1024, 1024)
@@ -1112,7 +1119,7 @@ export class Stage {
   /** Le ciel n'apparaît qu'en vue rasante : un dégradé vertical suffit, et sa
    *  base est exactement la couleur de brume pour que l'horizon disparaisse. */
   private paintSky(sky: number): DataTexture {
-    const top = PALETTE.sky.clone().lerp(new Color(sky), 0.35)
+    const top = PALETTE.sky.clone().lerp(new Color(sky), AGE_SKY_MIX)
     const bottom = this.hazeFor(sky)
     return rampTexture(2, 64, (_u, v, out) => {
       // v=0 est rendu EN HAUT de l'écran (convention DataTexture en fond de
@@ -1124,7 +1131,7 @@ export class Stage {
   }
 
   private hazeFor(fog: number): Color {
-    return PALETTE.haze.clone().lerp(new Color(fog), 0.18)
+    return PALETTE.haze.clone().lerp(new Color(fog), AGE_HAZE_MIX)
   }
 
   /** Sky, fog and light temperature drift with the age so progress is visible
@@ -1137,6 +1144,7 @@ export class Stage {
   private ageId = 0
   private lastDaylight = -1
   private lastWarmth = -1
+  private lastStorm = -1
 
   /** La course du soleil : u ∈ [0,1), lever à 0, zénith à 0,25, coucher à 0,5.
    *  Tout le reste — couleur, intensité, ciel, brume — découle de l'élévation.
@@ -1188,22 +1196,35 @@ export class Stage {
     // Les étoiles s'allument au crépuscule, pleines en nuit noire.
     this.starsBase = (1 - k) * 0.95
     this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
-    this.sun.intensity = 2.35 * k * this.wCur.sun
+    this.sun.intensity = LIGHT.sunIntensity * k * this.wCur.sun
     // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
     // rendu de profondeur payé pour rien.
     this.sun.castShadow = k > 0.02
-    this.hemi.intensity = (0.16 + 0.6 * k) * (0.82 + 0.18 * this.wCur.sun)
+    this.hemi.intensity = (0.16 + LIGHT.hemiDay * k) * (0.82 + 0.18 * this.wCur.sun)
 
-    const haze = this.hazeFor(age.fog).lerp(NIGHT_HAZE, 1 - k)
+    // Le gris ne vient qu'avec le temps couvert et la pluie (grey de 0,65 à
+    // 0,85) : par temps clair (0,05) ou voilé (0,2), il vaut zéro et la
+    // palette validée reste intacte.
+    const storm = smoothstep(0.25, 0.85, this.wCur.grey) * 0.6
+    const haze = this.hazeFor(age.fog).lerp(STORM_HAZE, storm).lerp(NIGHT_HAZE, 1 - k)
     this.fog.color.copy(haze)
 
     // Le ciel n'est repeint que quand l'ambiance change vraiment : une aube
     // entière n'écrit la texture qu'une cinquantaine de fois.
-    if (Math.abs(k - this.lastDaylight) > 0.02 || Math.abs(w - this.lastWarmth) > 0.02) {
+    if (
+      Math.abs(k - this.lastDaylight) > 0.02 ||
+      Math.abs(w - this.lastWarmth) > 0.02 ||
+      Math.abs(storm - this.lastStorm) > 0.02
+    ) {
       this.lastDaylight = k
       this.lastWarmth = w
+      this.lastStorm = storm
       this.sky.dispose()
-      const top = PALETTE.sky.clone().lerp(new Color(age.sky), 0.35).lerp(NIGHT_SKY, 1 - k)
+      const top = PALETTE.sky
+        .clone()
+        .lerp(new Color(age.sky), AGE_SKY_MIX)
+        .lerp(STORM_SKY, storm)
+        .lerp(NIGHT_SKY, 1 - k)
       // L'horizon s'embrase davantage aux heures basses : le halo directionnel
       // fait le point chaud, le dégradé fait la nappe.
       const bottom = haze.clone().lerp(SUN_LOW, w * 0.62)
