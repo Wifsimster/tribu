@@ -277,7 +277,17 @@ function announceTracing(grand: boolean, moved: string[], goods: boolean, stuck:
     if (grand) game.note('age', 'Le grand tracé : la voie fait désormais le tour de l’île, sans rien déplacer')
     return
   }
-  const what = n > 1 ? `${n} bâtiments ont été reposés` : 'un bâtiment a été reposé'
+  // Le quai du marchand n'est pas un bâtiment : il est nommé à part.
+  const nb = moved.length
+  const built = nb > 1 ? `${nb} bâtiments` : 'un bâtiment'
+  const what =
+    nb === 0
+      ? 'le quai du marchand a été reposé'
+      : goods
+        ? `${built} et le quai du marchand ont été reposés`
+        : nb > 1
+          ? `${built} ont été reposés`
+          : `${built} a été reposé`
   game.note('age', `Le grand tracé : ${what} ailleurs sur l’île pour laisser passer la voie`)
   if (!grand) {
     hud.toast(`La voie s’éloigne vers la mer : ${what} ailleurs sur l’île`)
