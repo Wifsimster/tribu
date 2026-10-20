@@ -88,13 +88,13 @@ const SOUNDS = [
     id: 'nuit',
     kind: 'bed',
     seconds: 12,
-    text: 'Summer night field ambience, sparse crickets chirping at a distance, very quiet, no birds, no wind, no music, clean field recording',
+    text: 'Warm summer night in the countryside, steady continuous chorus of field crickets chirping in the grass, even and seamless, no voices, no speech, no birds, no frogs, no wind, no music, clean field recording',
   },
   {
     id: 'oiseaux',
     kind: 'bed',
     seconds: 12,
-    text: 'Early morning forest birdsong, a few small birds at a distance, sparse and calm, no wind, no water, no music, clean field recording',
+    text: 'Morning dawn chorus in the countryside, many small songbirds singing continuously from hedges and trees at a medium distance, even and seamless, no voices, no speech, no wind, no water, no music, clean field recording',
   },
   {
     id: 'bourdon',
