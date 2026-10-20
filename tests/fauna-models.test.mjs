@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { SPECIES, adoptAll, model } from './fauna-body.mjs'
+import { SPECIES, adoptAll, bodyDepth, model } from './fauna-body.mjs'
 
 const RIG = await import('../src/render/fauna-rig.ts')
 const { PART, gaitUniform, rigPose } = RIG
@@ -12,14 +12,15 @@ const FAUNA = await import('../src/render/fauna.ts')
 const { Fauna, faunaModel } = FAUNA
 const { faunaGeometry } = await import('../src/render/fauna-glb.ts')
 const { Island, GROUND_Y } = await import('../src/render/island.ts')
-const { Matrix4, Vector3 } = await import('three')
+const { BufferAttribute, BufferGeometry, Matrix4, Vector3 } = await import('three')
 
 const FAR = new Vector3(1e4, 0, 1e4)
 const MESH = { deer: 'deerMesh', sheep: 'sheepMesh', hen: 'henMesh', horse: 'horseMesh', gull: 'gullMesh' }
 const HERD = { deer: 'deer', sheep: 'sheep', hen: 'hens', horse: 'horses' }
 const GAIT = { deer: RIG.DEER_GAIT, sheep: RIG.SHEEP_GAIT, hen: RIG.HEN_GAIT, horse: RIG.HORSE_GAIT }
-/** Triangles livrés (contrat de rig de l'artiste, faune-blender-20261020). */
-const TRIS = { deer: 776, sheep: 1252, hen: 688, horse: 1046, gull: 392 }
+/** Triangles livrés (contrat de rig de l'artiste, faune-blender-20261020 ;
+ *  cheval et cerf : faune-blender-v2-20261020). */
+const TRIS = { deer: 1632, sheep: 1252, hen: 688, horse: 1812, gull: 392 }
 
 const tris = (g) => g.index.count / 3
 
@@ -92,6 +93,9 @@ test('contrat : chaque glb a les pièces et les pivots de la silhouette qu’il 
     assert.ok(c.every((v) => v >= 0 && v <= 1) && c.some((v) => v > 0.05), `${sp} : couleurs en 0–1`)
     const want = pivotsOf(FAUNA[`${sp}Geo`]())
     const got = pivotsOf(geo)
+    // La tête articulée (HEAD) n'existe pas dans la silhouette : son pivot est
+    // la nuque du modèle, vérifiée par le broutage.
+    got.delete(PART.HEAD)
     assert.deepEqual([...got.keys()].sort((a, b) => a - b), [...want.keys()].sort((a, b) => a - b), `${sp} : pièces`)
     for (const [id, p] of want) assert.ok(p.every((v, k) => Math.abs(v - got.get(id)[k]) < 1e-4), `${sp} : pivot de la pièce ${id} ${got.get(id)} ≠ ${p}`)
   }
@@ -151,7 +155,7 @@ function grazeLow(sp) {
   const re = geo.getAttribute('aRest')
   const head = []
   for (let i = 0; i < pos.count; i++)
-    if (Math.round(piv.getW(i)) === PART.NECK) head.push([[pos.getX(i), pos.getY(i), pos.getZ(i)], [piv.getX(i), piv.getY(i), piv.getZ(i), piv.getW(i)]])
+    if (Math.round(piv.getW(i)) === PART.NECK || Math.round(piv.getW(i)) === PART.HEAD) head.push([[pos.getX(i), pos.getY(i), pos.getZ(i)], [piv.getX(i), piv.getY(i), piv.getZ(i), piv.getW(i)]])
   const u = gaitUniform(GAIT[sp])
   const M = new Matrix4()
   const v = new Vector3()
@@ -176,6 +180,62 @@ function grazeLow(sp) {
   }
   return { lowest, highest, graze: herd[0].graze }
 }
+
+// ── Tête articulée (v2 du cheval et du cerf) ──────────────────────────────
+// La tête (HEAD) tourne à la nuque à contre-sens du cou, puis suit le cou.
+// Sa nuque doit rester DANS le cou (volume fermé, posé comme le GPU) dans
+// toutes les poses, sinon la tête se décroche. Seules ces deux bêtes l'ont.
+
+/** Profondeur dans le cou (pièce NECK, posée) d'une espèce, pour une pose. */
+function neckDepth(geo, a, u, r) {
+  const pos = geo.getAttribute('position')
+  const piv = geo.getAttribute('aPivot')
+  const idx = geo.index.array
+  const tri = []
+  for (let t = 0; t < idx.length; t += 3) if ([0, 1, 2].every((k) => Math.round(piv.getW(idx[t + k])) === PART.NECK)) tri.push(idx[t], idx[t + 1], idx[t + 2])
+  const P = new Float32Array(tri.length * 3)
+  const out = []
+  tri.forEach((i, k) => {
+    rigPose(out, [pos.getX(i), pos.getY(i), pos.getZ(i)], [piv.getX(i), piv.getY(i), piv.getZ(i), piv.getW(i)], a, u, r)
+    P.set([out[0], out[1], out[2]], k * 3)
+  })
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(P, 3))
+  g.setAttribute('aPivot', new BufferAttribute(new Float32Array(tri.length * 4), 4))
+  g.setIndex([...tri.keys()])
+  return bodyDepth(g)
+}
+
+test('tête articulée : seuls le cheval et le cerf ont une pièce HEAD', () => {
+  for (const sp of SPECIES) {
+    const has = pivotsOf(model(sp)).has(PART.HEAD)
+    assert.equal(has, sp === 'horse' || sp === 'deer', `${sp} : pièce HEAD`)
+  }
+  assert.equal(gaitUniform(RIG.HORSE_GAIT).length, 24, 'uRig : 6 × vec4')
+})
+
+for (const sp of ['horse', 'deer'])
+  test(`tête articulée : ${sp} — la nuque reste dans le cou au pas, au trot, au broutage, couché`, () => {
+    const geo = model(sp)
+    const g = GAIT[sp]
+    const u = gaitUniform(g)
+    const nape = [...pivotsOf(geo).get(PART.HEAD), PART.HEAD]
+    const poses = []
+    for (let s = 0; s < 16; s++) {
+      const ph = (s / 16) * Math.PI * 2
+      poses.push([[ph, 1, 0, 0]], [[ph, 1, 0, 1]])
+    }
+    poses.push([[0, 0, 1, 0]], [[0, 0, 1 + g.neckSwell, 0]], [[0, 0, 1 - g.neckSwell, 0]], [[1, 0.4, 1, 0]])
+    for (const z of [0.5, 1]) poses.push([[0, 0, 0, 0], [z, 0, 0, 0]])
+    const out = []
+    let worst = Infinity
+    for (const [a, r] of poses) {
+      rigPose(out, nape, nape, a, u, r)
+      worst = Math.min(worst, neckDepth(geo, a, u, r)(out[0], out[1], out[2]))
+    }
+    if (process.env.A1_LOG) console.error(`nuque ${sp} ${worst.toFixed(4)}`)
+    assert.ok(worst >= 0.02, `nuque à ${worst.toFixed(3)} u dans le cou au pire`)
+  })
 
 for (const sp of ['deer', 'sheep', 'hen', 'horse'])
   test(`broutage : ${sp} — le museau va à l’herbe et y reste, sans s’y enfoncer`, () => {

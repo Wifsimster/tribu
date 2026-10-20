@@ -21,7 +21,7 @@ interface Node {
   mesh?: number
   translation?: number[]
   children?: number[]
-  extras?: { rig_id?: number }
+  extras?: { rig_id?: number; head_rig_id?: number; head_pivot?: number[] }
 }
 interface Gltf {
   accessors: Accessor[]
@@ -69,7 +69,9 @@ export function faunaGeometry(glb: ArrayBuffer): BufferGeometry {
     const prims = json.meshes[n.mesh!]!.primitives
     if (prims.length !== 1 || (prims[0]!.mode ?? 4) !== 4 || prims[0]!.indices === undefined) throw new Error(`${n.name} : une primitive de triangles indexée attendue`)
     const p = prims[0]!
-    const id = n.extras?.rig_id
+    // Une tête articulée (v2) porte son pivot de nuque et sa pièce HEAD dans
+    // ses extras ; sa translation reste le pivot du cou (positions inchangées).
+    const id = n.extras?.head_rig_id ?? n.extras?.rig_id
     if (typeof id !== 'number') throw new Error(`${n.name} : rig_id absent`)
     const part = {
       pos: read(p.attributes.POSITION!, FLOAT, 'VEC3') as Float32Array,
@@ -77,6 +79,7 @@ export function faunaGeometry(glb: ArrayBuffer): BufferGeometry {
       col: read(p.attributes.COLOR_0!, FLOAT, 'VEC3') as Float32Array,
       idx: read(p.indices!, USHORT, 'SCALAR') as Uint16Array,
       t: n.translation ?? [0, 0, 0],
+      pv: n.extras?.head_pivot ?? n.translation ?? [0, 0, 0],
       id,
     }
     verts += part.pos.length / 3
@@ -95,6 +98,7 @@ export function faunaGeometry(glb: ArrayBuffer): BufferGeometry {
   for (const p of parts) {
     const n = p.pos.length / 3
     const [tx, ty, tz] = p.t as [number, number, number]
+    const [px, py, pz] = p.pv as [number, number, number]
     // Le corps (pièce 0) ne tourne autour de rien : pivot nul, comme `RIGID`.
     const rigid = p.id === 0
     for (let i = 0; i < n; i++) {
@@ -103,9 +107,9 @@ export function faunaGeometry(glb: ArrayBuffer): BufferGeometry {
       pos[o + 1] = p.pos[i * 3 + 1]! + ty
       pos[o + 2] = p.pos[i * 3 + 2]! + tz
       const w = (v + i) * 4
-      piv[w] = rigid ? 0 : tx
-      piv[w + 1] = rigid ? 0 : ty
-      piv[w + 2] = rigid ? 0 : tz
+      piv[w] = rigid ? 0 : px
+      piv[w + 1] = rigid ? 0 : py
+      piv[w + 2] = rigid ? 0 : pz
       piv[w + 3] = p.id
     }
     nor.set(p.nor, v * 3)

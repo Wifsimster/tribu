@@ -45,7 +45,8 @@ test('cerf : pattes et cou pivotent DANS le corps, à 0,02 u au moins de sa surf
   const seen = new Map()
   for (let i = 0; i < piv.count; i++) {
     const id = Math.round(piv.getW(i))
-    if (id === PART.RIGID) continue
+    // La tête (HEAD) tourne à la nuque, hors du corps : elle suit le cou.
+    if (id === PART.RIGID || id === PART.HEAD) continue
     seen.set(id, [piv.getX(i), piv.getY(i), piv.getZ(i)])
   }
   assert.deepEqual([...seen.keys()].sort(), [PART.FL, PART.FR, PART.HL, PART.HR, PART.NECK])
@@ -290,7 +291,7 @@ for (const [species, B] of Object.entries(BODIES)) {
       const pv = [piv.getX(i), piv.getY(i), piv.getZ(i), piv.getW(i)]
       rigPose(out, p, pv, [2.1, 0, 0, 0], u, [0, 0, 1, 0])
       for (let k = 0; k < 3; k++) assert.ok(Math.abs(out[k] - p[k]) < 1e-6, `sommet ${i}`)
-      if (Math.round(pv[3]) !== PART.RIGID) seen.set(Math.round(pv[3]), pv)
+      if (Math.round(pv[3]) !== PART.RIGID && Math.round(pv[3]) !== PART.HEAD) seen.set(Math.round(pv[3]), pv)
     }
     for (const [id, [x, y, z]] of seen) {
       const d = B.depth(x, y, z)

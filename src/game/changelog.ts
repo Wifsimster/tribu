@@ -14,8 +14,9 @@ export const CHANGELOG: Release[] = [
     title: 'Des bêtes mieux dessinées',
     items: [
       "Le chevreuil, le mouton, la poule, le cheval et la mouette ont été redessinés un par un. Le cheval a une tête allongée marquée de sa liste blanche, une crinière et une longue queue noire ; le chevreuil un cou et un museau plus fins ; le mouton une toison en boucles et une tête plus longue ; la poule des cuisses emplumées sous le ventre ; la mouette des ailes plus effilées.",
-      "Ils marchent, broutent, picorent, battent des ailes et dorment exactement comme avant.",
-      "Le chevreuil baisse maintenant le cou assez bas pour que son museau touche l'herbe quand il broute.",
+      "Le cheval et le chevreuil ont eu droit à une seconde version, plus fine : le cheval a une crinière dressée, une tête plus marquée et des balzanes blanches ; le chevreuil des bois ramifiés plus grands.",
+      "Leur tête plie maintenant à la nuque : quand ils broutent, le chanfrein descend droit vers l'herbe et le museau la touche, au lieu de partir en arrière. Couchés, ils gardent la tête relevée.",
+      "Ils marchent, broutent, picorent, battent des ailes et dorment comme avant.",
       "Ta partie, tes bâtiments et ta production restent tels quels.",
     ],
   },
