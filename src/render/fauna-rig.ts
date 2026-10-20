@@ -14,17 +14,18 @@ import { MeshToonMaterial } from 'three'
 // TS, il faut donc qu'elle calcule EXACTEMENT ce que fait le shader.
 
 /** Identifiant de pièce, stocké en `aPivot.w`. 0 = rigide : le sommet n'est
- *  pas touché (mouton, poule, cheval en entier dans la 3.61.0). */
+ *  pas touché. */
 export const PART = {
   RIGID: 0,
   /** Pattes avant gauche, avant droite, arrière gauche, arrière droite. La
-   *  gauche de la bête est +x (elle regarde +z). */
+   *  gauche de la bête est +x (elle regarde +z). La poule n'a que FL et FR. */
   FL: 1,
   FR: 2,
   HL: 3,
   HR: 4,
+  /** Cou et tête (de la poule : tête seule, le cou se cisaille). */
   NECK: 5,
-  /** Réservé (queue du cheval, incrément 3) : rigide pour l'instant. */
+  /** Queue du cheval : balance d'un côté à l'autre avec la foulée. */
   TAIL: 6,
   /** Aile gauche/droite, du corps au coude : tourne à l'épaule. */
   ARM_L: 7,
@@ -32,6 +33,9 @@ export const PART = {
   /** Main gauche/droite, du coude au bout : tourne au coude, puis à l'épaule. */
   HAND_L: 9,
   HAND_R: 10,
+  /** Aile repliée de la poule, gauche/droite : s'écarte du flanc. */
+  WING_L: 11,
+  WING_R: 12,
 } as const
 
 const TAU = Math.PI * 2
@@ -66,7 +70,29 @@ export interface Gait {
   bodyPitch: number
   /** Rebond en fuite, en multiple de `bobAmp`. */
   trotBob: number
+  /** Roulis du corps à la marche (rad, crête). */
+  roll: number
+  /** Couchée (v3.62.0) : de combien le corps descend (u). Les pattes se
+   *  replient d'autant — `drop / leg` de leur longueur — et le sabot reste
+   *  au sol pendant toute la descente. */
+  drop: number
+  /** Cou baissé dans le sommeil (rad, même sens que le broutage). */
+  neckSleep: number
+  /** Poule : tête rentrée dans le sommeil (u, recul de la tête sur z). */
+  tuck: number
+  /** Poule : part du pas où la tête reste fixe dans l'espace avant de
+   *  repartir d'un coup. 0 : pas de hochement. */
+  bobHold: number
+  /** Hauteur au-dessus du pivot du cou où le cisaillement de la tête est
+   *  entier (u) ; dessous, le cou s'incline. 0 : pas de cisaillement. */
+  headH: number
+  /** Poule : ouverture de l'aile au battement (rad). */
+  wingLift: number
+  /** Cheval : balancement de la queue à la marche (rad, crête). */
+  tailSwing: number
 }
+
+const NO_EXTRA = { tuck: 0, bobHold: 0, headH: 0, wingLift: 0, tailSwing: 0 }
 
 /** Fraction du cycle où le sabot est au sol. Pendant l'appui le pied recule
  *  en ligne droite à vitesse constante (voir `sweep`) — 2·L·tan(A) en β de
@@ -101,14 +127,111 @@ export const DEER_GAIT: Gait = {
   swellHz: 0.35,
   bodyPitch: 0.3,
   trotBob: 1.6,
+  roll: 0.05,
+  // Couché : le ventre (0,47) descend à 3 cm de l'herbe, la tête s'incline.
+  drop: 0.44,
+  neckSleep: 30 * DEG,
+  ...NO_EXTRA,
 }
 
+/** Le mouton, en unités APRÈS sa réduction à 0,62 : hanche (0,36 × 0,62)
+ *  → dessous du sabot (0,005 × 0,62). Petits pas pressés, et la toison qui
+ *  roule plus que le cerf. Il ne fuit jamais (aucune menace ne le vise) : le
+ *  trot est réglé pour rester juste si un jour il en a besoin. */
+export const SHEEP_GAIT: Gait = {
+  leg: 0.355 * 0.62,
+  kWalk: 27,
+  kTrot: 16,
+  aWalk: 22 * DEG,
+  aTrotFront: 28 * DEG,
+  aTrotHind: 32 * DEG,
+  liftWalk: 0.015,
+  liftTrot: 0.025,
+  neckGraze: 80 * DEG,
+  neckWalk: 5 * DEG,
+  neckTrot: 6 * DEG,
+  neckSwell: 0.06,
+  swellHz: 0.5,
+  bodyPitch: 0.5,
+  trotBob: 1.5,
+  roll: 0.08,
+  drop: 0.16 * 0.62,
+  neckSleep: 35 * DEG,
+  ...NO_EXTRA,
+}
+
+/** Le cheval bai : hanche (0,85) → dessous du sabot (0,01). Grand pas lent,
+ *  trot diagonal, la tête qui hoche avec la foulée et la queue qui balance.
+ *  Comme le mouton, rien ne le fait fuir aujourd'hui. */
+export const HORSE_GAIT: Gait = {
+  leg: 0.84,
+  kWalk: 7.5,
+  kTrot: 4.5,
+  aWalk: 18 * DEG,
+  aTrotFront: 25 * DEG,
+  aTrotHind: 28 * DEG,
+  liftWalk: 0.07,
+  liftTrot: 0.1,
+  neckGraze: 100 * DEG,
+  neckWalk: 6 * DEG,
+  neckTrot: 10 * DEG,
+  neckSwell: 0.05,
+  swellHz: 0.3,
+  bodyPitch: 0.5,
+  trotBob: 1.5,
+  roll: 0.03,
+  drop: 0.6,
+  neckSleep: 40 * DEG,
+  ...NO_EXTRA,
+  tailSwing: 12 * DEG,
+}
+
+/** La poule : deux pattes (FL, FR), hanche (0,10) → dessous du tarse (0).
+ *  Petits pas rapides, et la tête qui reste en place pendant le pas puis
+ *  rattrape le corps d'un coup. Picore par petits coups secs. */
+export const HEN_GAIT: Gait = {
+  leg: 0.1,
+  kWalk: 32,
+  kTrot: 20,
+  aWalk: 30 * DEG,
+  aTrotFront: 35 * DEG,
+  aTrotHind: 35 * DEG,
+  liftWalk: 0.012,
+  liftTrot: 0.016,
+  neckGraze: 110 * DEG,
+  neckWalk: 0,
+  neckTrot: 0,
+  neckSwell: 0.3,
+  swellHz: 2.5,
+  bodyPitch: 0.65,
+  trotBob: 1,
+  roll: 0.06,
+  drop: 0.045,
+  neckSleep: 20 * DEG,
+  tuck: -0.035,
+  bobHold: 0.65,
+  headH: 0.03,
+  wingLift: 50 * DEG,
+  tailSwing: 0,
+}
+
+/** Battement d'ailes de la poule : fréquence (Hz), durée (s), et l'attente
+ *  entre deux battements (min, étendue), tirée de la graine de la poule. */
+export const HEN_FLAP = { hz: 5, dur: 0.6, waitMin: 7, waitSpan: 10 }
+
+/** Sommeil : vitesse de la transition (part par seconde, puis lissée en
+ *  smoothstep), retards d'endormissement et de réveil (s, au plus) tirés de
+ *  la graine de chaque bête, respiration (Hz, amplitude d'échelle). */
+export const SLEEP = { rate: 1 / 1.8, fallMax: 6, wakeMax: 4, breathHz: 0.28, breath: 0.035 }
+
 /** La mouette : 2,6 battements par seconde à l'horloge (elle vole, la
- *  distance n'y fait rien), la main en retard sur l'épaule. */
+ *  distance n'y fait rien), la main en retard sur l'épaule. Amplitude ±45°
+ *  (±30° en 3.61.0) : sur un téléphone, l'oiseau fait une vingtaine de pixels
+ *  et un battement de ±30° ne s'y lisait pas. */
 export const GULL_WING = {
   hz: 2.6,
-  shoulder: 30 * DEG,
-  hand: 18 * DEG,
+  shoulder: 45 * DEG,
+  hand: 26 * DEG,
   /** Retard de la main, en part de cycle. */
   lag: 0.12,
   glideShoulder: 8 * DEG,
@@ -124,17 +247,27 @@ export const GULL_WING = {
   climb: 0.25,
   maxDrop: 0.5,
   /** Corps en opposition aux ailes (u), et ce qui reste de son roulis (rad). */
-  bodyBob: 0.015,
+  bodyBob: 0.02,
   bodyRoll: 0.05,
 }
 
-/** Les 12 flottants de `uRig` (3 × vec4). Leur sens dépend des pièces que
- *  porte l'espèce : pattes et cou pour un quadrupède, ailes pour un oiseau. */
+/** Amplitude du hochement de tête de la poule (u) : pendant `bobHold` du
+ *  pas, la tête recule dans le corps exactement de ce dont le corps avance
+ *  (un demi-cycle = π/k unités), et reste donc immobile dans l'espace. */
+export function headBobAmp(g: Gait): number {
+  return (g.bobHold * Math.PI) / g.kWalk
+}
+
+/** Les 20 flottants de `uRig` (5 × vec4). Leur sens dépend des pièces que
+ *  porte l'espèce : pattes et cou pour un quadrupède (et la poule), ailes
+ *  pour la mouette. */
 export function gaitUniform(g: Gait): Float32Array {
   return new Float32Array([
     g.aWalk, stance(g.leg, g.kWalk, g.aWalk), g.aTrotFront, stance(g.leg, g.kTrot, g.aTrotFront),
     g.aTrotHind, stance(g.leg, g.kTrot, g.aTrotHind), g.liftWalk, g.liftTrot,
-    g.neckGraze, g.neckWalk, g.neckTrot, 0,
+    g.neckGraze, g.neckWalk, g.neckTrot, headBobAmp(g),
+    g.drop / g.leg, g.neckSleep, g.tuck, g.bobHold,
+    g.headH, g.wingLift, g.tailSwing, 0,
   ])
 }
 
@@ -143,19 +276,24 @@ export function wingUniform(w: typeof GULL_WING): Float32Array {
     w.shoulder, w.hand, w.lag, 0,
     w.glideShoulder, w.glideHand, 0, 0,
     w.shoulderAt[0], w.shoulderAt[1], w.shoulderAt[2], 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
   ])
 }
 
 // ── Le shader ──────────────────────────────────────────────────────────────
 // `aAnim` = (phase, allure 0–1, broutage, trot 0–1) pour un quadrupède ;
-// (phase du battement, –, –, battu 0–1) pour un oiseau. La déformation se fait
-// dans l'espace OBJET, avant `instanceMatrix` : le fondu de repositionnement
-// (échelle → 0, v3.58.0) écrase donc aussi les pièces pliées.
+// (phase du battement, –, –, battu 0–1) pour un oiseau. `aRest` = (sommeil
+// 0–1 déjà lissé, phase du battement d'ailes de la poule, son poids 0–1, –).
+// La déformation se fait dans l'espace OBJET, avant `instanceMatrix` : le
+// fondu de repositionnement (échelle → 0, v3.58.0) écrase donc aussi les
+// pièces pliées.
 
 export const RIG_PARS = /* glsl */ `
 attribute vec4 aPivot;
 attribute vec4 aAnim;
-uniform vec4 uRig[3];
+attribute vec4 aRest;
+uniform vec4 uRig[5];
 // Pied le long de la foulée, de +1 (devant) à -1 (derrière). Au sol pendant
 // beta : recul linéaire, donc à vitesse constante — le sabot reste planté.
 // Puis retour en demi-cosinus, sans à-coup de position.
@@ -170,10 +308,31 @@ vec2 rigRot(vec2 v, float a) {
   float s = sin(a);
   return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
+// Hochement de la poule, de +0,5 à -0,5 pendant la tenue (la tête recule
+// dans le corps à la vitesse où il avance), puis rattrapage en smoothstep. Le
+// pas commence quand une patte se pose : phase π/2 (patte FL, décalage 0,25).
+float rigBob(float ph, float hold) {
+  float s = fract(ph / PI + 0.5);
+  return s < hold ? 0.5 - s / hold : smoothstep(0.0, 1.0, (s - hold) / (1.0 - hold)) - 0.5;
+}
 vec3 rigPose(vec3 p, inout vec3 n) {
   float id = floor(aPivot.w + 0.5);
-  if (id < 0.5 || id == 6.0) return p;
+  if (id < 0.5) return p;
   vec3 q = p - aPivot.xyz;
+  if (id > 10.5) {
+    // Aile de la poule : elle s'écarte du flanc et revient, à chaque battement.
+    float side = id < 11.5 ? 1.0 : -1.0;
+    float a = side * uRig[4].y * aRest.z * (0.5 - 0.5 * cos(aRest.y));
+    q.xy = rigRot(q.xy, a);
+    n.xy = rigRot(n.xy, a);
+    return q + aPivot.xyz;
+  }
+  if (id > 5.5 && id < 6.5) {
+    float a = uRig[4].z * aAnim.y * sin(aAnim.x);
+    q.xy = rigRot(q.xy, a);
+    n.xy = rigRot(n.xy, a);
+    return q + aPivot.xyz;
+  }
   if (id < 4.5) {
     float k = id - 1.0;
     // Décalage = instant où la patte se pose, en part de cycle. Pas latéral
@@ -190,12 +349,19 @@ vec3 rigPose(vec3 p, inout vec3 n) {
     float th = aAnim.y * mix(thW, thT, aAnim.w);
     // La patte s'allonge de 1/cos θ : le sabot reste sur l'horizontale du sol.
     q.y = q.y / cos(th) + aAnim.y * mix(uRig[1].z * rigLift(cW, uRig[0].y), uRig[1].w * rigLift(cT, bT), aAnim.w);
+    // Couchée : la patte se replie dans le corps d'autant que le corps descend.
+    q.y *= 1.0 - uRig[3].x * aRest.x;
     q.yz = rigRot(q.yz, th);
     n.yz = rigRot(n.yz, th);
     return q + aPivot.xyz;
   }
   if (id < 5.5) {
-    float a = uRig[2].x * aAnim.z + aAnim.y * mix(uRig[2].y * sin(2.0 * aAnim.x), uRig[2].z, aAnim.w);
+    float a = uRig[2].x * aAnim.z + aAnim.y * mix(uRig[2].y * sin(2.0 * aAnim.x), uRig[2].z, aAnim.w) + uRig[3].y * aRest.x;
+    if (uRig[4].x > 0.0) {
+      // Poule : la tête glisse sur z, le cou se cisaille sous elle.
+      float o = uRig[2].w * aAnim.y * rigBob(aAnim.x, uRig[3].w) + uRig[3].z * aRest.x;
+      q.z += o * clamp(q.y / uRig[4].x, 0.0, 1.0);
+    }
     q.yz = rigRot(q.yz, a);
     n.yz = rigRot(n.yz, a);
     return q + aPivot.xyz;
@@ -304,19 +470,35 @@ export function legCycle(id: number, phase: number, trot: boolean): number {
   return fract(phase / TAU - off)
 }
 
-/** Pose un point `p` (espace objet) comme le ferait le shader, dans `out`. */
+const smooth = (t: number): number => {
+  const c = Math.min(1, Math.max(0, t))
+  return c * c * (3 - 2 * c)
+}
+
+/** Le hochement de la poule (`rigBob` du shader), de +0,5 à -0,5. */
+export function headBob(phase: number, hold: number): number {
+  const s = fract(phase / Math.PI + 0.5)
+  return s < hold ? 0.5 - s / hold : smooth((s - hold) / (1 - hold)) - 0.5
+}
+
+const REST0 = [0, 0, 0, 0]
+
+/** Pose un point `p` (espace objet) comme le ferait le shader, dans `out`.
+ *  `rest` = `aRest` (sommeil, battement d'ailes de la poule) ; absent : la
+ *  bête est éveillée, ailes au corps. */
 export function rigPose(
   out: number[],
   p: ArrayLike<number>,
   pivot: ArrayLike<number>,
   anim: ArrayLike<number>,
   u: ArrayLike<number>,
+  rest: ArrayLike<number> = REST0,
 ): number[] {
   const id = Math.floor(pivot[3]! + 0.5)
   out[0] = p[0]!
   out[1] = p[1]!
   out[2] = p[2]!
-  if (id < 0.5 || id === 6) return out
+  if (id < 0.5) return out
   let qx = p[0]! - pivot[0]!
   let qy = p[1]! - pivot[1]!
   let qz = p[2]! - pivot[2]!
@@ -324,6 +506,17 @@ export function rigPose(
     Math.cos(t) * a - Math.sin(t) * b,
     Math.sin(t) * a + Math.cos(t) * b,
   ]
+  if (id > 10.5 || (id > 5.5 && id < 6.5)) {
+    const a =
+      id > 10.5
+        ? (id < 11.5 ? 1 : -1) * u[17]! * rest[2]! * (0.5 - 0.5 * Math.cos(rest[1]!))
+        : u[18]! * anim[1]! * Math.sin(anim[0]!)
+    ;[qx, qy] = rot(qx, qy, a)
+    out[0] = qx + pivot[0]!
+    out[1] = qy + pivot[1]!
+    out[2] = qz + pivot[2]!
+    return out
+  }
   if (id < 4.5) {
     const k = id - 1
     const cW = legCycle(id, anim[0]!, false)
@@ -334,6 +527,7 @@ export function rigPose(
     const thT = -Math.atan(sweep(cT, bT) * Math.tan(aT))
     const th = anim[1]! * mix(thW, thT, anim[3]!)
     qy = qy / Math.cos(th) + anim[1]! * mix(u[6]! * lift(cW, u[1]!), u[7]! * lift(cT, bT), anim[3]!)
+    qy *= 1 - u[12]! * rest[0]!
     ;[qy, qz] = rot(qy, qz, th)
     out[0] = qx + pivot[0]!
     out[1] = qy + pivot[1]!
@@ -341,7 +535,11 @@ export function rigPose(
     return out
   }
   if (id < 5.5) {
-    const a = u[8]! * anim[2]! + anim[1]! * mix(u[9]! * Math.sin(2 * anim[0]!), u[10]!, anim[3]!)
+    const a = u[8]! * anim[2]! + anim[1]! * mix(u[9]! * Math.sin(2 * anim[0]!), u[10]!, anim[3]!) + u[13]! * rest[0]!
+    if (u[16]! > 0) {
+      const o = u[11]! * anim[1]! * headBob(anim[0]!, u[15]!) + u[14]! * rest[0]!
+      qz += o * Math.min(1, Math.max(0, qy / u[16]!))
+    }
     ;[qy, qz] = rot(qy, qz, a)
     out[0] = qx + pivot[0]!
     out[1] = qy + pivot[1]!

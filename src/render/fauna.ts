@@ -23,7 +23,7 @@ import { tint } from './palette'
 import { CAMP_BLOCKERS, CAMP_FIRE } from './village'
 import { GROUND_Y, type Island } from './island'
 import { follow, type Footprint, type Ground, type GroundSource, type Pt } from './ground'
-import { DEER_GAIT, GULL_WING, PART, gaitUniform, rigMaterial, wingUniform, type Gait } from './fauna-rig'
+import { DEER_GAIT, GULL_WING, HEN_FLAP, HEN_GAIT, HORSE_GAIT, PART, SHEEP_GAIT, SLEEP, gaitUniform, rigMaterial, wingUniform, type Gait } from './fauna-rig'
 
 /** Pièce animée : identifiant (`PART`) et pivot (x, y, z) en espace objet. */
 type Rig = readonly [number, number, number, number]
@@ -62,8 +62,8 @@ const RIGID: Rig = [PART.RIGID, 0, 0, 0]
 
 /** Soude les pièces. Dès qu'une pièce est animée, les autres reçoivent un
  *  `aPivot` nul (pièce 0, rigide) : la fusion exige les mêmes attributs
- *  partout. Une espèce sans pièce animée (mouton, poule, cheval en 3.61.0)
- *  n'en porte aucun — pas un octet de plus sur ce qui ne bouge pas. */
+ *  partout. Ce qui n'a aucune pièce animée (le poisson, l'enclos) n'en porte
+ *  aucun — pas un octet de plus sur ce qui ne bouge pas. */
 function weld(parts: BufferGeometry[]): BufferGeometry {
   if (parts.some((g) => g.getAttribute('aPivot')))
     for (const g of parts)
@@ -144,7 +144,26 @@ export function deerGeo(): BufferGeometry {
 export const DEER_HIP_Y = 0.6
 export const DEER_NECK: Rig = [PART.NECK, 0, 0.7, 0.18]
 
-function sheepGeo(): BufferGeometry {
+/** Réduit une bête soudée, pivots compris : `aPivot` n'est pas une position
+ *  pour three, `scale` ne le touche pas. */
+function shrink(geo: BufferGeometry, k: number): BufferGeometry {
+  geo.scale(k, k, k)
+  const pv = geo.getAttribute('aPivot')
+  if (pv) for (let i = 0; i < pv.count; i++) pv.setXYZ(i, pv.getX(i) * k, pv.getY(i) * k, pv.getZ(i) * k)
+  return geo
+}
+
+/** Le mouton est construit à l'échelle 1 puis réduit (`SHEEP_SCALE`). */
+export const SHEEP_SCALE = 0.62
+/** Hanche du mouton (avant réduction), dans la toison ; base du cou, au
+ *  poitrail, dans la toison aussi. */
+const SHEEP_HIP_Y = 0.36
+const SHEEP_NECK: Rig = [PART.NECK, 0, 0.38, 0.14]
+/** La toison du mouton, après réduction (ellipsoïde) : la référence de ses
+ *  jonctions. */
+export const SHEEP_BODY = { x: 0, y: 0.4 * SHEEP_SCALE, z: -0.02 * SHEEP_SCALE, rx: 0.24 * 1.28 * SHEEP_SCALE, ry: 0.24 * 0.95 * SHEEP_SCALE, rz: 0.24 * SHEEP_SCALE } as const
+
+export function sheepGeo(): BufferGeometry {
   const fleece = new Color('#e9e2cf')
   // Une toison n'est pas blanche : elle est crème sur le dessus et grise
   // dessous, là où elle traîne. Sans cet écart, la bête lisait comme un galet.
@@ -174,30 +193,40 @@ function sheepGeo(): BufferGeometry {
 
   // Tête noire — le mouton de face n'est PAS de la même couleur que sa laine,
   // et c'est le contraste qui le rend lisible de loin.
-  p.push(part(new CapsuleGeometry(0.055, 0.09, 1, 6).rotateX(Math.PI / 2 - 0.35), face, 0, 0.46, 0.3))
-  p.push(part(new SphereGeometry(0.042, 6, 5).scale(1, 0.9, 1.1), dark, 0, 0.44, 0.37))
-  p.push(part(new IcosahedronGeometry(0.075, 0), fleece, 0, 0.56, 0.24))
+  // Toute la tête tourne au poitrail (`SHEEP_NECK`) : elle plonge dans l'herbe.
+  const N = SHEEP_NECK
+  p.push(part(new CapsuleGeometry(0.055, 0.09, 1, 6).rotateX(Math.PI / 2 - 0.35), face, 0, 0.46, 0.3, N))
+  p.push(part(new SphereGeometry(0.042, 6, 5).scale(1, 0.9, 1.1), dark, 0, 0.44, 0.37, N))
+  p.push(part(new IcosahedronGeometry(0.075, 0), fleece, 0, 0.56, 0.24, N))
   // Toupet de laine entre les oreilles : le détail qui dit « mouton » d'un trait.
-  p.push(part(new IcosahedronGeometry(0.05, 0), fleece, 0, 0.56, 0.31))
+  p.push(part(new IcosahedronGeometry(0.05, 0), fleece, 0, 0.56, 0.31, N))
   for (const s of [-1, 1]) {
     // Oreilles tombantes, et un œil sombre de part et d'autre du chanfrein.
-    p.push(part(new BoxGeometry(0.09, 0.03, 0.055).rotateZ(s * -0.35), face, s * 0.085, 0.475, 0.28))
-    p.push(part(new SphereGeometry(0.014, 5, 4), eye, s * 0.04, 0.485, 0.35))
+    p.push(part(new BoxGeometry(0.09, 0.03, 0.055).rotateZ(s * -0.35), face, s * 0.085, 0.475, 0.28, N))
+    p.push(part(new SphereGeometry(0.014, 5, 4), eye, s * 0.04, 0.485, 0.35, N))
   }
 
   // Pattes fines, sabot plus sombre encore : quatre bâtons identiques
-  // faisaient un tabouret, pas une bête.
+  // faisaient un tabouret, pas une bête. Chaque patte pivote à la hanche
+  // (0,36), dans la toison : le fût y monte (0,37 au lieu de 0,28), caché au
+  // repos, pour qu'une patte en arrière ne laisse pas de jour.
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
-      p.push(part(new CylinderGeometry(0.024, 0.028, 0.24, 5), face, sx * 0.1, 0.16, sz * 0.15))
-      p.push(part(new CylinderGeometry(0.028, 0.024, 0.05, 5), hoof, sx * 0.1, 0.03, sz * 0.15))
+      const rig: Rig = [sz > 0 ? (sx > 0 ? PART.FL : PART.FR) : sx > 0 ? PART.HL : PART.HR, sx * 0.1, SHEEP_HIP_Y, sz * 0.15]
+      p.push(part(new CylinderGeometry(0.024, 0.028, 0.33, 5), face, sx * 0.1, 0.205, sz * 0.15, rig))
+      p.push(part(new CylinderGeometry(0.028, 0.024, 0.05, 5), hoof, sx * 0.1, 0.03, sz * 0.15, rig))
     }
   // Round 2 : à 0,63 u la toison arrivait à la taille du colon — un mouton
   // s'arrête au genou. ×0.62 → ~0,39 u, et le troupeau redevient du bétail.
-  return weld(p).scale(0.62, 0.62, 0.62)
+  return shrink(weld(p), SHEEP_SCALE)
 }
 
-function henGeo(): BufferGeometry {
+/** Hanche de la poule, base du cou, et l'ellipsoïde de son corps. */
+const HEN_HIP_Y = 0.1
+const HEN_NECK: Rig = [PART.NECK, 0, 0.18, 0.04]
+export const HEN_BODY = { x: 0, y: 0.13, z: 0, rx: 0.085, ry: 0.085 * 0.95, rz: 0.085 * 1.25 } as const
+
+export function henGeo(): BufferGeometry {
   const body = new Color('#f2efe4')
   // Une poule blanche n'est pas uniforme : son dos est plus chaud, ses
   // rémiges plus grises, et sa queue franchement plus sombre. À quarante
@@ -216,9 +245,10 @@ function henGeo(): BufferGeometry {
   p.push(part(new SphereGeometry(0.085, 7, 5).scale(1, 0.95, 1.25), body, 0, 0.13, 0))
   p.push(part(new SphereGeometry(0.07, 7, 5).scale(1, 0.6, 1.1), backWarm, 0, 0.18, -0.01))
   // Ailes plaquées : deux écailles sur les flancs, la marque la plus lisible
-  // d'un oiseau posé.
+  // d'un oiseau posé. Elles s'écartent au battement, articulées en haut du
+  // flanc, dans le corps.
   for (const s of [-1, 1])
-    p.push(part(new SphereGeometry(0.055, 6, 5).scale(0.45, 0.85, 1.35).rotateY(s * 0.18), wing, s * 0.07, 0.14, -0.01))
+    p.push(part(new SphereGeometry(0.055, 6, 5).scale(0.45, 0.85, 1.35).rotateY(s * 0.18), wing, s * 0.07, 0.14, -0.01, [s > 0 ? PART.WING_L : PART.WING_R, s * 0.035, 0.165, -0.01]))
 
   // Queue relevée : le triangle qui fait « poule » de profil, plus deux
   // rectrices qui en débordent.
@@ -226,26 +256,38 @@ function henGeo(): BufferGeometry {
   for (const s of [-1, 1])
     p.push(part(new BoxGeometry(0.012, 0.075, 0.035).rotateX(-1.0).rotateZ(s * 0.25), tail, s * 0.022, 0.235, -0.155))
 
-  // Tête, crête dentelée, barbillon et bec.
-  p.push(part(new SphereGeometry(0.045, 6, 4), body, 0, 0.24, 0.08))
-  p.push(part(new CylinderGeometry(0.028, 0.032, 0.05, 6), body, 0, 0.205, 0.06))
+  // Tête, crête dentelée, barbillon et bec. Le tout tourne à la base du cou
+  // (`HEN_NECK`) pour picorer ; la tête glisse en plus d'avant en arrière, et
+  // le cou se cisaille sous elle.
+  const N = HEN_NECK
+  p.push(part(new SphereGeometry(0.045, 6, 4), body, 0, 0.24, 0.08, N))
+  p.push(part(new CylinderGeometry(0.028, 0.032, 0.05, 6), body, 0, 0.205, 0.06, N))
   for (let i = 0; i < 3; i++)
-    p.push(part(new BoxGeometry(0.013, 0.03 + i * 0.012, 0.016), red, 0, 0.295 + i * 0.004, 0.095 - i * 0.028))
-  p.push(part(new SphereGeometry(0.016, 4, 3), redDark, 0, 0.21, 0.11))
-  p.push(part(new ConeGeometry(0.015, 0.05, 4).rotateX(Math.PI / 2), beak, 0, 0.24, 0.13))
-  for (const s of [-1, 1]) p.push(part(new SphereGeometry(0.009, 4, 3), eye, s * 0.03, 0.253, 0.105))
+    p.push(part(new BoxGeometry(0.013, 0.03 + i * 0.012, 0.016), red, 0, 0.295 + i * 0.004, 0.095 - i * 0.028, N))
+  p.push(part(new SphereGeometry(0.016, 4, 3), redDark, 0, 0.21, 0.11, N))
+  p.push(part(new ConeGeometry(0.015, 0.05, 4).rotateX(Math.PI / 2), beak, 0, 0.24, 0.13, N))
+  for (const s of [-1, 1]) p.push(part(new SphereGeometry(0.009, 4, 3), eye, s * 0.03, 0.253, 0.105, N))
 
   // Pattes : le tarse orange, et trois doigts posés au sol — sans eux la
-  // poule flottait au-dessus de son ombre.
+  // poule flottait au-dessus de son ombre. Le tarse monte jusqu'à la hanche
+  // (0,10), dans le corps ; les doigts suivent la patte.
   for (const s of [-1, 1]) {
-    p.push(part(new CylinderGeometry(0.008, 0.008, 0.09, 4), leg, s * 0.03, 0.045, 0.01))
+    const rig: Rig = [s > 0 ? PART.FL : PART.FR, s * 0.03, HEN_HIP_Y, 0.01]
+    p.push(part(new CylinderGeometry(0.008, 0.008, 0.11, 4), leg, s * 0.03, 0.055, 0.01, rig))
     for (const [tx, tz] of [[0, 0.035], [0.022, 0.018], [-0.022, 0.018]] as [number, number][])
-      p.push(part(new BoxGeometry(0.009, 0.007, 0.03).rotateY(tx * 8), leg, s * 0.03 + tx, 0.006, 0.01 + tz))
+      p.push(part(new BoxGeometry(0.009, 0.007, 0.03).rotateY(tx * 8), leg, s * 0.03 + tx, 0.006, 0.01 + tz, rig))
   }
   return weld(p)
 }
 
-function horseGeo(): BufferGeometry {
+/** Hanche du cheval, base de l'encolure (au garrot) et racine de la queue
+ *  (dans la croupe), et la capsule de son tronc. */
+const HORSE_HIP_Y = 0.85
+const HORSE_NECK: Rig = [PART.NECK, 0, 1.0, 0.2]
+const HORSE_TAIL: Rig = [PART.TAIL, 0, 1.0, -0.42]
+export const HORSE_BODY = { y: 0.95, z: -0.02, r: 0.22, half: 0.31, sy: 1.05 } as const
+
+export function horseGeo(): BufferGeometry {
   const coat = new Color('#6b4630')
   // Un cheval bai : robe brune, extrémités et crinière noires, ventre plus
   // clair. Sans ces trois valeurs, la bête lisait comme une caisse sur pieds.
@@ -263,30 +305,35 @@ function horseGeo(): BufferGeometry {
   p.push(part(new CapsuleGeometry(0.17, 0.44, 2, 7).rotateX(Math.PI / 2).scale(1, 0.45, 1), belly, 0, 0.8, -0.02))
   // Croupe arrondie et queue tombante.
   p.push(part(new SphereGeometry(0.22, 8, 6).scale(1, 1, 0.85), coat, 0, 0.97, -0.34))
-  p.push(part(new CapsuleGeometry(0.045, 0.36, 1, 5).rotateX(0.25), mane, 0, 0.82, -0.5))
+  p.push(part(new CapsuleGeometry(0.045, 0.36, 1, 5).rotateX(0.25), mane, 0, 0.82, -0.5, HORSE_TAIL))
 
-  // Encolure, tête et chanfrein — c'est le profil qui fait le cheval.
-  p.push(part(new CylinderGeometry(0.1, 0.16, 0.5, 7).rotateX(0.42), coat, 0, 1.24, 0.3))
-  p.push(part(new CapsuleGeometry(0.085, 0.2, 1, 6).rotateX(Math.PI / 2 - 0.5), coat, 0, 1.5, 0.46))
-  p.push(part(new CapsuleGeometry(0.06, 0.14, 1, 6).rotateX(Math.PI / 2 - 0.6), coatLight, 0, 1.44, 0.56))
-  p.push(part(new SphereGeometry(0.055, 6, 5).scale(1.1, 0.9, 1), mane, 0, 1.38, 0.64))
+  // Encolure, tête et chanfrein — c'est le profil qui fait le cheval. Le tout
+  // tourne au garrot (`HORSE_NECK`), dans le tronc.
+  const N = HORSE_NECK
+  p.push(part(new CylinderGeometry(0.1, 0.16, 0.5, 7).rotateX(0.42), coat, 0, 1.24, 0.3, N))
+  p.push(part(new CapsuleGeometry(0.085, 0.2, 1, 6).rotateX(Math.PI / 2 - 0.5), coat, 0, 1.5, 0.46, N))
+  p.push(part(new CapsuleGeometry(0.06, 0.14, 1, 6).rotateX(Math.PI / 2 - 0.6), coatLight, 0, 1.44, 0.56, N))
+  p.push(part(new SphereGeometry(0.055, 6, 5).scale(1.1, 0.9, 1), mane, 0, 1.38, 0.64, N))
   // Liste blanche sur le chanfrein : la marque la plus reconnaissable.
-  p.push(part(new BoxGeometry(0.045, 0.02, 0.2).rotateX(-0.55), sock, 0, 1.47, 0.55))
+  p.push(part(new BoxGeometry(0.045, 0.02, 0.2).rotateX(-0.55), sock, 0, 1.47, 0.55, N))
   // Crinière en épis le long de l'encolure.
   for (let i = 0; i < 5; i++)
-    p.push(part(new BoxGeometry(0.045, 0.12 - i * 0.012, 0.09), mane, 0, 1.28 + i * 0.06, 0.2 + i * 0.075))
+    p.push(part(new BoxGeometry(0.045, 0.12 - i * 0.012, 0.09), mane, 0, 1.28 + i * 0.06, 0.2 + i * 0.075, N))
   for (const s of [-1, 1]) {
-    p.push(part(new ConeGeometry(0.032, 0.11, 5).rotateZ(s * 0.3), coat, s * 0.055, 1.58, 0.42))
-    p.push(part(new SphereGeometry(0.02, 5, 4), eye, s * 0.065, 1.5, 0.5))
+    p.push(part(new ConeGeometry(0.032, 0.11, 5).rotateZ(s * 0.3), coat, s * 0.055, 1.58, 0.42, N))
+    p.push(part(new SphereGeometry(0.02, 5, 4), eye, s * 0.065, 1.5, 0.5, N))
   }
 
   // Jambes : avant-bras épais, canon fin, un balzane blanche et un sabot noir.
+  // Pivot à la hanche (0,85), dans le tronc : l'avant-bras y monte (0,87 au
+  // lieu de 0,83), caché au repos.
   const legs: [number, number][] = [[-0.13, 0.26], [0.13, 0.26], [-0.13, -0.24], [0.13, -0.24]]
   legs.forEach(([lx, lz], i) => {
-    p.push(part(new CylinderGeometry(0.055, 0.04, 0.42, 6), coat, lx, 0.62, lz))
-    p.push(part(new CylinderGeometry(0.035, 0.032, 0.34, 5), coat, lx, 0.27, lz))
-    if (i % 3 === 0) p.push(part(new CylinderGeometry(0.037, 0.037, 0.1, 5), sock, lx, 0.14, lz))
-    p.push(part(new CylinderGeometry(0.042, 0.036, 0.08, 6), hoof, lx, 0.05, lz))
+    const rig: Rig = [lz > 0 ? (lx > 0 ? PART.FL : PART.FR) : lx > 0 ? PART.HL : PART.HR, lx, HORSE_HIP_Y, lz]
+    p.push(part(new CylinderGeometry(0.055, 0.04, 0.46, 6), coat, lx, 0.64, lz, rig))
+    p.push(part(new CylinderGeometry(0.035, 0.032, 0.34, 5), coat, lx, 0.27, lz, rig))
+    if (i % 3 === 0) p.push(part(new CylinderGeometry(0.037, 0.037, 0.1, 5), sock, lx, 0.14, lz, rig))
+    p.push(part(new CylinderGeometry(0.042, 0.036, 0.08, 6), hoof, lx, 0.05, lz, rig))
   })
   return weld(p)
 }
@@ -363,6 +410,25 @@ interface Beast {
   amp: number
   graze: number
   trot: number
+  /** Graine de la bête (0–1), tirée de son rang et de son espèce, pas de
+   *  `Math.random` : le hasard des trajets reste celui de la 3.61.0. Elle
+   *  déphase l'endormissement, le réveil, le souffle et les battements. */
+  seed: number
+  /** Nuit ou jour, tel que la bête l'a vu en dernier, et depuis combien de
+   *  secondes : elle ne se couche (se lève) qu'après son propre retard. */
+  dark: boolean
+  lull: number
+  /** Poule : phase du battement d'ailes (`FLAP_END` au repos), temps avant
+   *  le prochain (s), et combien de battements déjà. */
+  beat: number
+  flapIn: number
+  flaps: number
+}
+
+/** Un nombre pseudo-aléatoire stable dans [0, 1) — même recette que
+ *  `gullSpell`. */
+function hash(a: number, b: number): number {
+  return Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1
 }
 
 /** Vitesse du fondu de repositionnement : un quart de seconde pour
@@ -380,7 +446,6 @@ interface LandCfg {
   pauseMin: number
   pauseMax: number
   bobAmp: number
-  bobFreq: number
   /** De combien la bête s'enfonce dans l'herbe quand elle broute ou dort.
    *  DOIT être proportionnel à sa taille : un décalage fixe de 0,1 unité, ce
    *  n'est rien sous un cheval et c'est le quart d'un mouton — la nuit, le
@@ -389,10 +454,10 @@ interface LandCfg {
   sink: number
   /** Demi-largeur du corps au sol : ce que le cadastre garde hors des murs. */
   body: number
-  /** Espèce riguée (v3.61.0) : la phase avance avec la DISTANCE parcourue, à
-   *  la cadence de l'allure, et le cou broute à la place du corps entier.
-   *  Absente : l'ancien rebond à l'horloge, corps rigide. */
-  gait?: Gait
+  /** Le squelette de l'espèce (v3.61.0 pour le cerf, v3.62.0 pour les
+   *  autres) : la phase avance avec la DISTANCE parcourue, à la cadence de
+   *  l'allure, et le cou broute à la place du corps entier. */
+  gait: Gait
 }
 
 /** Lissage exponentiel vers `want`, τ en secondes (63 % du chemin). */
@@ -401,17 +466,16 @@ function ease(v: number, want: number, dt: number, tau: number): number {
 }
 
 const TAU = Math.PI * 2
+/** Phase de fin d'un battement d'ailes de la poule : un nombre entier de
+ *  battements, l'aile revient au corps. */
+const FLAP_END = TAU * HEN_FLAP.hz * HEN_FLAP.dur
 
-/** Avance la phase de marche. Espèce riguée : à la DISTANCE réellement
- *  parcourue (`d`), à la cadence de l'allure en cours — c'est ce qui garde le
- *  sabot planté, quel que soit `gait` ou la fuite. Ramenée dans [0, 2π) : le
- *  shader la lit en flottant 32 bits. Sinon : l'ancien rebond à l'horloge. */
-function stride(b: Beast, cfg: LandCfg, d: number, dt: number, flee: boolean): void {
+/** Avance la phase de marche : à la DISTANCE réellement parcourue (`d`), à
+ *  la cadence de l'allure en cours — c'est ce qui garde le sabot planté, quel
+ *  que soit `gait` ou la fuite. Ramenée dans [0, 2π) : le shader la lit en
+ *  flottant 32 bits. */
+function stride(b: Beast, cfg: LandCfg, d: number): void {
   const g = cfg.gait
-  if (!g) {
-    b.phase += dt * cfg.bobFreq * (flee ? 1.8 : 1)
-    return
-  }
   b.phase += d * (g.kWalk + (g.kTrot - g.kWalk) * b.trot)
   if (b.phase >= TAU) b.phase -= TAU * Math.floor(b.phase / TAU)
 }
@@ -509,7 +573,9 @@ function pickTarget(
   b.state = 0
 }
 
-function makeHerd(n: number, spots: Spot[]): Beast[] {
+/** `salt` distingue les espèces : deux bêtes de même rang n'ont pas la même
+ *  graine. */
+function makeHerd(n: number, spots: Spot[], salt: number): Beast[] {
   const herd: Beast[] = []
   for (let i = 0; i < n; i++) {
     const s = spots[(Math.random() * spots.length) | 0]!
@@ -532,7 +598,17 @@ function makeHerd(n: number, spots: Spot[]): Beast[] {
       amp: 0,
       graze: 0,
       trot: 0,
+      seed: hash(i + 1, salt),
+      dark: false,
+      // Une partie qui s'ouvre de jour : debout tout de suite ; de nuit :
+      // couchée en se chargeant.
+      lull: Infinity,
+      beat: FLAP_END,
+      flapIn: 0,
+      flaps: 0,
     })
+    const b = herd[i]!
+    b.flapIn = HEN_FLAP.waitMin * 0.5 + HEN_FLAP.waitSpan * b.seed
   }
   return herd
 }
@@ -584,10 +660,10 @@ export class Fauna implements GroundSource {
 
   // Les allures sont figées ici plutôt qu'en littéraux dans update : zéro objet
   // construit par frame.
-  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, bobFreq: 6.5, sink: 0.05, body: 0.3, gait: DEER_GAIT }
-  private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, bobFreq: 5, sink: 0.02, body: 0.28 }
-  private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, bobFreq: 16, sink: 0.008, body: 0.12 }
-  private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, bobFreq: 3.8, sink: 0.07, body: 0.35 }
+  private readonly deerCfg: LandCfg = { speed: 0.55, turn: 2.4, step: 3.4, grazeBias: 0.6, grazePitch: 0.3, pauseMin: 2, pauseMax: 5, bobAmp: 0.03, sink: 0.05, body: 0.3, gait: DEER_GAIT }
+  private readonly sheepCfg: LandCfg = { speed: 0.32, turn: 1.8, step: 1.7, grazeBias: 0.8, grazePitch: 0.26, pauseMin: 2.5, pauseMax: 6, bobAmp: 0.02, sink: 0.02, body: 0.28, gait: SHEEP_GAIT }
+  private readonly henCfg: LandCfg = { speed: 0.85, turn: 9, step: 1.5, grazeBias: 0.75, grazePitch: 0.5, pauseMin: 0.6, pauseMax: 1.8, bobAmp: 0.014, sink: 0.008, body: 0.12, gait: HEN_GAIT }
+  private readonly horseCfg: LandCfg = { speed: 0.48, turn: 1.3, step: 4.5, grazeBias: 0.7, grazePitch: 0.24, pauseMin: 3, pauseMax: 7, bobAmp: 0.035, sink: 0.07, body: 0.35, gait: HORSE_GAIT }
 
   /** Un trajet est-il dégagé ? Vrai si le segment ne coupe l'emprise d'aucun
    *  bâtiment ni du camp : les bêtes contournent, elles ne traversent plus. */
@@ -740,10 +816,12 @@ export class Fauna implements GroundSource {
     this.coopAt = { x: coop.x, z: coop.z }
 
     const build = (geo: BufferGeometry, n: number, spread: number, skin: Material = this.skin): InstancedMesh => {
-      // Espèce riguée : quatre nombres d'état par bête (`aAnim`), réécrits à
-      // chaque image comme la matrice.
-      if (geo.getAttribute('aPivot'))
+      // Espèce riguée : huit nombres d'état par bête (`aAnim`, `aRest`),
+      // réécrits à chaque image comme la matrice.
+      if (geo.getAttribute('aPivot')) {
         geo.setAttribute('aAnim', new InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(DynamicDrawUsage))
+        geo.setAttribute('aRest', new InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(DynamicDrawUsage))
+      }
       const mesh = new InstancedMesh(geo, skin, n)
       mesh.instanceMatrix.setUsage(DynamicDrawUsage)
       // Les instances vivent loin de la géométrie d'origine : le culling par
@@ -755,9 +833,9 @@ export class Fauna implements GroundSource {
       return mesh
     }
     this.deerMesh = build(deerGeo(), 3, 0.07, rigMaterial(gaitUniform(DEER_GAIT)))
-    this.sheepMesh = build(sheepGeo(), 4, 0.05)
-    this.henMesh = build(henGeo(), 3, 0.04)
-    this.horseMesh = build(horseGeo(), 2, 0.09)
+    this.sheepMesh = build(sheepGeo(), 4, 0.05, rigMaterial(gaitUniform(SHEEP_GAIT)))
+    this.henMesh = build(henGeo(), 3, 0.04, rigMaterial(gaitUniform(HEN_GAIT)))
+    this.horseMesh = build(horseGeo(), 2, 0.09, rigMaterial(gaitUniform(HORSE_GAIT)))
     this.gullMesh = build(gullGeo(), 3, 0.03, rigMaterial(wingUniform(GULL_WING)))
     this.sheepMesh.visible = false
     this.henMesh.visible = false
@@ -766,10 +844,10 @@ export class Fauna implements GroundSource {
 
     this.buildPens()
 
-    this.deer = makeHerd(3, this.deerSpots)
-    this.sheep = makeHerd(4, this.sheepSpots)
-    this.hens = makeHerd(3, this.henSpots)
-    this.horses = makeHerd(2, this.horseSpots)
+    this.deer = makeHerd(3, this.deerSpots, 1)
+    this.sheep = makeHerd(4, this.sheepSpots, 2)
+    this.hens = makeHerd(3, this.henSpots, 3)
+    this.horses = makeHerd(2, this.horseSpots, 4)
 
     // Mouettes : centres AU LARGE de l'enveloppe de l'île — l'orbite entière
     // reste au-dessus de l'eau, près du rivage.
@@ -1291,11 +1369,22 @@ export class Fauna implements GroundSource {
     night: boolean,
     threat: Vector3 | null,
   ): void {
-    const anim = cfg.gait ? (mesh.geometry.getAttribute('aAnim') as InstancedBufferAttribute | undefined) : undefined
+    const anim = mesh.geometry.getAttribute('aAnim') as InstancedBufferAttribute
+    const rest = mesh.geometry.getAttribute('aRest') as InstancedBufferAttribute
+    const g = cfg.gait
     for (let i = 0; i < herd.length; i++) {
       const b = herd[i]!
-      b.sleep += ((night ? 1 : 0) - b.sleep) * Math.min(1, dt * 1.4)
-      const awake = b.sleep < 0.4
+      // Chaque bête se couche à son heure : 0–6 s après la tombée de la nuit,
+      // se lève 0–4 s après le jour, selon sa graine. Couchée, elle ne bouge
+      // plus ; elle ne repart qu'une fois debout.
+      if (b.dark !== night) {
+        b.dark = night
+        b.lull = 0
+      }
+      b.lull += dt
+      const bed = night ? b.lull >= b.seed * SLEEP.fallMax : b.lull < hash(b.seed, 7) * SLEEP.wakeMax
+      b.sleep = Math.max(0, Math.min(1, b.sleep + (bed ? dt : -dt) * SLEEP.rate))
+      const awake = !bed && b.sleep === 0
       // Repositionnement en cours (`rehome`) : la bête s'efface sur place,
       // saute une fois invisible, puis revient.
       if (b.warp) {
@@ -1365,7 +1454,7 @@ export class Fauna implements GroundSource {
             const x0 = b.x
             const z0 = b.z
             follow(b, b.path, sp * dt)
-            stride(b, cfg, Math.hypot(b.x - x0, b.z - z0), dt, flee)
+            stride(b, cfg, Math.hypot(b.x - x0, b.z - z0))
           }
           if (flee) {
             b.timer -= dt
@@ -1386,7 +1475,7 @@ export class Fauna implements GroundSource {
             // se lit au lieu d'un glissement latéral.
             b.x += Math.sin(b.heading) * sp * dt
             b.z += Math.cos(b.heading) * sp * dt
-            stride(b, cfg, sp * dt, dt, flee)
+            stride(b, cfg, sp * dt)
           }
           if (flee) {
             b.timer -= dt
@@ -1430,44 +1519,58 @@ export class Fauna implements GroundSource {
 
       const moving = awake && (b.state === 0 || b.state === 3)
       const grazing = awake && b.state === 2
-      // Brouter = tout le corps qui bascule, museau vers l'herbe, avec une
-      // petite houle. Une espèce riguée plonge le COU : le corps ne garde que
-      // 30 % de la bascule, pour que le museau touche l'herbe.
-      const g = cfg.gait
-      const wantPitch = grazing ? cfg.grazePitch * (g ? g.bodyPitch : 1) * (0.82 + 0.18 * Math.sin(time * 2.2 + b.phase)) : 0
+      // Brouter = le COU qui plonge, avec une petite houle (la poule : des
+      // coups de bec) ; le corps ne garde qu'une part (`bodyPitch`) de la
+      // bascule, pour que le museau touche l'herbe.
+      const wantPitch = grazing ? cfg.grazePitch * g.bodyPitch * (0.82 + 0.18 * Math.sin(time * 2.2 + b.phase)) : 0
       b.pitch += (wantPitch - b.pitch) * Math.min(1, dt * 3)
-      if (anim && g) {
-        // Allure : 0,15 s pour partir ou s'arrêter (une bête qui dort ou
-        // s'efface n'avance pas : ses pattes reviennent au repos). Trot :
-        // sursaut en 0,08 s, retour au pas en 0,4 s. Cou : 0,35 s pour
-        // plonger, 0,25 s pour remonter.
-        b.amp = ease(b.amp, moving ? 1 : 0, dt, 0.15)
-        const flee = moving && b.state === 3
-        b.trot = ease(b.trot, flee ? 1 : 0, dt, flee ? 0.08 : 0.4)
-        b.graze = ease(b.graze, grazing ? 1 : 0, dt, grazing ? 0.35 : 0.25)
-        const a = anim.array as Float32Array
-        a[i * 4] = b.phase
-        a[i * 4 + 1] = b.amp
-        a[i * 4 + 2] = b.graze * (1 + g.neckSwell * Math.sin(time * TAU * g.swellHz + b.phase))
-        a[i * 4 + 3] = b.trot
+      // Allure : 0,15 s pour partir ou s'arrêter (une bête qui dort ou
+      // s'efface n'avance pas : ses pattes reviennent au repos). Trot :
+      // sursaut en 0,08 s, retour au pas en 0,4 s. Cou : 0,35 s pour
+      // plonger, 0,25 s pour remonter.
+      b.amp = ease(b.amp, moving ? 1 : 0, dt, 0.15)
+      const flee = moving && b.state === 3
+      b.trot = ease(b.trot, flee ? 1 : 0, dt, flee ? 0.08 : 0.4)
+      b.graze = ease(b.graze, grazing ? 1 : 0, dt, grazing ? 0.35 : 0.25)
+      // La poule bat parfois des ailes, éveillée : trois battements, puis
+      // 7–17 s d'attente tirées de sa graine. Le battement part et finit ailes
+      // au corps : il n'a pas besoin de fondu.
+      if (g.wingLift > 0) {
+        if (b.beat < FLAP_END) b.beat = Math.min(FLAP_END, b.beat + dt * TAU * HEN_FLAP.hz)
+        else if (awake && (b.flapIn -= dt) <= 0) {
+          b.flaps++
+          b.flapIn = HEN_FLAP.waitMin + HEN_FLAP.waitSpan * hash(b.seed, b.flaps)
+          b.beat = 0
+        }
       }
+      // Couchée : smoothstep de la progression, pour partir et arriver sans
+      // à-coup.
+      const z = b.sleep * b.sleep * (3 - 2 * b.sleep)
+      const a = anim.array as Float32Array
+      a[i * 4] = b.phase
+      a[i * 4 + 1] = b.amp
+      a[i * 4 + 2] = b.graze * (1 + g.neckSwell * Math.sin(time * TAU * g.swellHz + b.phase))
+      a[i * 4 + 3] = b.trot
+      const r = rest.array as Float32Array
+      r[i * 4] = z
+      r[i * 4 + 1] = b.beat
+      r[i * 4 + 2] = g.wingLift > 0 ? 1 : 0
 
       // Deux rebonds par cycle de pattes ; au trot de fuite, plus appuyés.
-      const bob = moving ? Math.abs(Math.sin(b.phase)) * cfg.bobAmp * (g ? 1 + (g.trotBob - 1) * b.trot : 1) : 0
-      dummy.position.set(
-        b.x,
-        GROUND_Y + bob - (b.pitch + b.sleep) * cfg.sink,
-        b.z,
-      )
-      dummy.rotation.set(b.pitch, b.heading, moving ? Math.sin(b.phase) * 0.05 : 0)
-      // La nuit : couché sur place — tassé, immobile, un peu élargi.
+      // Ils suivent l'allure lissée : la bête qui s'arrête retombe en douceur.
+      const bob = Math.abs(Math.sin(b.phase)) * cfg.bobAmp * b.amp * (1 + (g.trotBob - 1) * b.trot)
+      // Le souffle du dormeur : le corps se gonfle lentement, depuis le sol.
+      const sy = 1 + z * SLEEP.breath * Math.sin(time * TAU * SLEEP.breathHz + b.seed * TAU)
+      dummy.position.set(b.x, GROUND_Y + bob - b.pitch * cfg.sink - z * g.drop * sy, b.z)
+      dummy.rotation.set(b.pitch, b.heading, Math.sin(b.phase) * g.roll * b.amp)
       const k = Math.max(0.001, b.fade)
-      dummy.scale.set((1 + b.sleep * 0.12) * k, (1 - b.sleep * 0.55) * k, (1 + b.sleep * 0.06) * k)
+      dummy.scale.set((1 + (sy - 1) * 0.5) * k, sy * k, k)
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
     }
     mesh.instanceMatrix.needsUpdate = true
-    if (anim) anim.needsUpdate = true
+    anim.needsUpdate = true
+    rest.needsUpdate = true
   }
 
   private stepGulls(dt: number, time: number): void {
