@@ -28,6 +28,7 @@ import {
 } from 'three'
 import type { DataTexture } from 'three'
 import type { PhotoFx } from './photo'
+import { ORBIT, zoomMin } from './orbit'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
@@ -77,8 +78,8 @@ const STAR_Y = -14
 /** Résolution de la texture de la voûte. */
 const STAR_TEX_W = 256
 /** Valeur historique de `distance` : le zoom du doigt reste un multiplicateur
- *  autour du cadrage nominal, sans jamais sortir des bornes de controls.ts. */
-const BASE_ZOOM = 34
+ *  autour du cadrage nominal, sans jamais sortir des bornes d'orbit.ts. */
+const BASE_ZOOM = ORBIT.baseZoom
 /** Part de l'écran que l'île a le droit d'occuper. Le reste, c'est de l'eau. */
 const FILL_WIDTH = 0.76
 const FILL_HEIGHT = 0.5
@@ -140,7 +141,7 @@ export class Stage {
   // Orbit state, driven by the custom touch controller in controls.ts.
   azimuth = Math.PI * 0.25
   polar = Math.PI * 0.38
-  distance = BASE_ZOOM
+  distance: number = BASE_ZOOM
   readonly target = new Vector3(0, 1, 0)
 
   constructor(canvas: HTMLCanvasElement) {
@@ -1319,9 +1320,21 @@ export class Stage {
     return tmpHorizon.project(this.camera).y
   }
 
+  /** Zoom relatif le plus proche pour le cadrage courant (écran, inclinaison,
+   *  focale) : 8 sur un écran large, moins en portrait. Le doigt, la molette
+   *  et le clavier s'y arrêtent. */
+  get zoomMin(): number {
+    return zoomMin(this.frameDistance(), this.islandRadius)
+  }
+
   updateCamera(): void {
     this.easeLens()
-    const d =this.frameDistance() * (this.distance / BASE_ZOOM)
+    const frame = this.frameDistance()
+    // Le plancher dépend de l'écran et de la focale : s'il remonte sous un zoom
+    // déjà au plus près (téléphone passé en paysage), la caméra s'y arrête sans
+    // toucher à `distance` — revenu en portrait, on retrouve le zoom d'avant.
+    const zoom = Math.max(this.distance, zoomMin(frame, this.islandRadius))
+    const d = frame * (zoom / BASE_ZOOM)
     const sinP = Math.sin(this.polar)
     this.camera.position.set(
       this.target.x + d * sinP * Math.sin(this.azimuth),

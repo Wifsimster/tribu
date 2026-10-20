@@ -5,9 +5,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 const K = await import('../src/render/keyboard.ts')
-const C = await import('../src/render/controls.ts')
+const { ORBIT } = await import('../src/render/orbit.ts')
 
-const rig = () => ({ azimuth: 1, polar: Math.PI * 0.38, distance: 21 })
+const rig = (zoomMin = ORBIT.minZoom) => ({ azimuth: 1, polar: Math.PI * 0.38, distance: 21, zoomMin })
 
 /** Déplacement attendu après `T` s touche tenue depuis l'arrêt : la vitesse
  *  rejoint V en exp(-t/RAMP), d'où V·(T − RAMP·(1 − e^(−T/RAMP))). */
@@ -64,11 +64,11 @@ test('↑ / ↓ restent dans les bornes de l\'inclinaison', () => {
   const o = new K.KeyOrbit(r)
   o.press('ArrowUp', 'ArrowUp')
   hold(o, 5, 1 / 60)
-  assert.equal(r.polar, C.MIN_POLAR)
+  assert.equal(r.polar, ORBIT.minPolar)
   o.releaseAll()
   o.press('ArrowDown', 'ArrowDown')
   hold(o, 5, 1 / 60)
-  assert.equal(r.polar, C.MAX_POLAR)
+  assert.equal(r.polar, ORBIT.maxPolar)
 })
 
 test('+ / - et le pavé numérique zooment dans les bornes 8–58', () => {
@@ -78,16 +78,32 @@ test('+ / - et le pavé numérique zooment dans les bornes 8–58', () => {
   hold(o, 0.5, 1 / 60)
   assert.ok(r.distance < 21)
   hold(o, 5, 1 / 60)
-  assert.equal(r.distance, C.MIN_ZOOM)
+  assert.equal(r.distance, ORBIT.minZoom)
   // Maj lâchée avant la touche : `key` change, `code` non — elle se relâche.
   assert.equal(o.release('=', 'Equal'), true)
   o.press('-', 'NumpadSubtract')
   hold(o, 5, 1 / 60)
-  assert.equal(r.distance, C.MAX_ZOOM)
+  assert.equal(r.distance, ORBIT.maxZoom)
   o.releaseAll()
   o.press('Unidentified', 'NumpadAdd')
   hold(o, 0.5, 1 / 60)
-  assert.ok(r.distance < C.MAX_ZOOM)
+  assert.ok(r.distance < ORBIT.maxZoom)
+})
+
+test('+ s\'arrête au plancher du cadrage courant (portrait : sous 8)', () => {
+  const r = rig(3.5)
+  const o = new K.KeyOrbit(r)
+  o.press('+', 'Equal')
+  hold(o, 5, 1 / 60)
+  assert.equal(r.distance, 3.5)
+})
+
+test('- recule dès le premier instant sous un plancher remonté (paysage)', () => {
+  const r = { ...rig(8), distance: 4.7 }
+  const o = new K.KeyOrbit(r)
+  o.press('-', 'Minus')
+  hold(o, 0.2, 1 / 60)
+  assert.ok(r.distance > 8, `${r.distance}`)
 })
 
 test('releaseAll (blur, onglet caché) arrête net : rien ne tourne seul', () => {

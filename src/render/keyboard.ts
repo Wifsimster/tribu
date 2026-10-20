@@ -1,15 +1,17 @@
-import { MAX_POLAR, MAX_ZOOM, MIN_POLAR, MIN_ZOOM, clamp } from './controls'
+import { ORBIT, clamp, zoomBy } from './orbit'
 
 /** Ce que le clavier fait bouger : les trois réglages d'orbite de la scène. */
 export interface OrbitRig {
   azimuth: number
   polar: number
   distance: number
+  /** Zoom le plus proche pour le cadrage courant (voir orbit.ts). */
+  readonly zoomMin: number
 }
 
 /** Vitesses de croisière, touche tenue. Un tour d'île en un peu plus de cinq
  *  secondes ; toute la plage d'inclinaison en moins de deux ; le zoom entier
- *  (8 → 58) en deux secondes environ. */
+ *  (8 → 58 sur écran large) en deux secondes environ. */
 export const AZIMUTH_SPEED = 1.2 // rad/s
 export const POLAR_SPEED = 0.7 // rad/s
 export const ZOOM_RATE = 1.0 // ln(distance)/s
@@ -120,9 +122,9 @@ export class KeyOrbit {
 
     const r = this.rig
     r.azimuth += this.vAz * dt
-    r.polar = clamp(r.polar + this.vPolar * dt, MIN_POLAR, MAX_POLAR)
+    r.polar = clamp(r.polar + this.vPolar * dt, ORBIT.minPolar, ORBIT.maxPolar)
     // Le zoom est un multiplicateur, comme la molette et le pincement.
-    if (this.vZoom !== 0) r.distance = clamp(r.distance * Math.exp(this.vZoom * dt), MIN_ZOOM, MAX_ZOOM)
+    if (this.vZoom !== 0) r.distance = zoomBy(r.distance, Math.exp(this.vZoom * dt), r.zoomMin)
     return this.active
   }
 
