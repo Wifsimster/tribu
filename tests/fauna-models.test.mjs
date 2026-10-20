@@ -135,8 +135,8 @@ test('un fichier qui n’est pas une bête est refusé, pas dessiné de travers'
 // ── Le museau dans l'herbe ─────────────────────────────────────────────────
 // Le vrai `Fauna.update`, une bête qui broute (état 2) sans fin ; on pose sa
 // tête comme le GPU et on relève le point le plus bas au-dessus du sol. Le
-// chevreuil plongeait de 75° : avec son modèle, ce banc trouvait son museau
-// entre 29 et 40 cm de l'herbe. 105° depuis la v3.66.0.
+// chevreuil plongeait de 75° : avec son modèle, ce banc trouve son museau
+// entre 9 et 19 cm de l'herbe. 105° depuis la v3.66.0.
 
 function grazeLow(sp) {
   const f = new Fauna(new Island(7, 2, []), [])
