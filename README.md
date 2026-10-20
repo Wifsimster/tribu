@@ -103,9 +103,9 @@ flowchart TD
 
 ### Décisions structurantes
 
-- **Zéro asset externe.** Toutes les géométries sont procédurales, les icônes sont
-  inline, aucune police distante. Le jeu entier tient en ~145 kB gzip, premier
-  dessin sous la seconde en 4G simulée.
+- **Zéro asset externe, sauf les sons.** Toutes les géométries sont procédurales, les icônes sont
+  inline, aucune police distante ; les sons viennent de Wikimedia Commons et d'ElevenLabs ([crédits](public/audio/CREDITS.md)).
+  Le jeu entier tient en ~145 kB gzip, premier dessin sous la seconde en 4G simulée.
 - **Instanciation systématique.** Arbres (tronc et houppier dans la même
   instance), rochers, buissons : trois `InstancedMesh` pour toute la carte,
   parcelles comprises. Le terrain est une seule géométrie fusionnée qui ne garde

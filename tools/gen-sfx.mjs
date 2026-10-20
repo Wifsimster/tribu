@@ -29,11 +29,12 @@
  * Les fichiers atterrissent dans public/audio/<id>.mp3. Rien n'est écrasé
  * sans --force : une génération réussie est un tirage, on la garde.
  */
-import { mkdir, writeFile, stat, rename } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, stat, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { mergeCredits } from './credits-file.mjs'
 
 const run = promisify(execFile)
 
@@ -202,6 +203,7 @@ await mkdir(OUT, { recursive: true })
 
 let written = 0
 let bytes = 0
+const generated = {}
 for (const s of wanted) {
   const fmt = formatOverride ?? FORMATS[s.kind]
   const file = join(OUT, `${s.id}.mp3`)
@@ -238,7 +240,17 @@ for (const s of wanted) {
   written++
   const st = await stat(file)
   bytes += st.size
+  generated[s.id] =
+    `- **${s.id}** — généré avec ElevenLabs (text-to-sound-effects), palier gratuit, usage non commercial · ` +
+    `prompt : « ${s.text} » · tools/gen-sfx.mjs`
   console.log(`✓ ${s.id.padEnd(9)} ${(st.size / 1024).toFixed(0).padStart(4)} ko  ${fmt}`)
+}
+
+// Chaque fichier généré a sa ligne dans CREDITS.md, fusionnée avec les autres.
+if (Object.keys(generated).length > 0) {
+  const creditsFile = join(OUT, 'CREDITS.md')
+  const existing = await readFile(creditsFile, 'utf8').catch(() => null)
+  await writeFile(creditsFile, mergeCredits(existing, generated))
 }
 
 console.log(`\n${written} fichier(s), ${(bytes / 1024).toFixed(0)} ko au total dans public/audio/.`)
