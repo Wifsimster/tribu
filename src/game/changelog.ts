@@ -10,6 +10,20 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.68.0',
+    title: 'Le train fait le tour de l’île',
+    items: [
+      "Dès le Paléolithique, un sentier côtier fait le tour de l'île. Il devient un chemin de terre quand ta tribu trace ses premières routes.",
+      "À l'Ère industrielle, la mer recule : l'île s'agrandit d'un coup, d'environ un cinquième de son rayon. Le chemin de fer remplace alors le sentier et fait le tour de l'île le long de la nouvelle côte, sans terminus ni heurtoir.",
+      "Le train tourne toujours dans le même sens, la locomotive en tête. Il ralentit à l'approche de la gare, s'y arrête cinq secondes et repart. C'est son seul arrêt du tour.",
+      "La gare est sur la boucle, côté village, près de l'unique passage à niveau de la route du ponton. Quand le train approche, l'auto attend avant la barrière, et la rame ne s'arrête jamais pour elle.",
+      "La locomotive et ses wagons sont 1,4 fois plus grands : la locomotive est presque aussi haute qu'un colon. À taille réelle, elle ne prendrait pas les courbes de l'île.",
+      "Chaque nouvelle terre gagnée sur la mer éloigne la voie vers le large. La voie ne se rapproche jamais du centre de l'île.",
+      "Dans une partie commencée avant cette version, à l'Ère industrielle (ou à ton arrivée à cet âge), les bâtiments qui se trouvent sur le tracé de la voie sont reposés ailleurs sur l'île, une seule fois. La carte « Le grand tracé » dit combien ont été reposés et lesquels, et un échafaudage les signale pendant dix secondes. Le phare, que la mer a laissé à l'intérieur des terres, rejoint la nouvelle côte s'il gêne la voie. Le feu, le campement, les terres gagnées et tous les autres bâtiments restent à leur place. Un bâtiment qui ne trouve aucune place ailleurs reste où il était.",
+      "Les rues, la place de la Merveille et celle du musée sont maintenant gardées dans ta sauvegarde : elles ne bougent plus d'un chargement à l'autre, ni quand la mer recule.",
+    ],
+  },
+  {
     version: '3.67.0',
     title: 'Des bêtes mieux dessinées',
     items: [

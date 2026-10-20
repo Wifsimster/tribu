@@ -2690,30 +2690,44 @@ export class Village implements GroundSource {
     const camZ = Math.cos(0.785)
     let best: { x: number; z: number } | null = null
     let bestK = -Infinity
-    for (const c of this.island.cells) {
-      // Le sable d'une crique n'attire pas le ponton : il resterait à sa
-      // place d'origine, sur l'île de base.
-      if (!c.beach || !c.rim || c.plot) continue
-      const r = Math.hypot(c.x, c.z) + 1e-6
-      const dx = c.x / r
-      const dz = c.z / r
-      // La MER, pas une flaque. `rim` signifie seulement « un voisin manque » :
-      // il est vrai aussi sur la berge d'un plan d'eau INTÉRIEUR. Mesuré à
-      // l'âge 9 : la cellule élue se trouvait à 15,8 du centre pour une île de
-      // rayon 26,3 — le ponton partait d'une lagune vers le large.
-      // On exige donc que la direction du large soit dégagée sur cinq unités.
-      if (
-        this.island.isLand(c.x + dx * 1.6, c.z + dz * 1.6) ||
-        this.island.isLand(c.x + dx * 3.2, c.z + dz * 3.2) ||
-        this.island.isLand(c.x + dx * 5, c.z + dz * 5)
-      )
-        continue
-      // On veut à la fois « face à la caméra » et « bien au bord ».
-      const k = (c.x * camX + c.z * camZ) / r + r * 0.03
-      if (k > bestK) {
-        bestK = k
-        best = { x: c.x, z: c.z }
+    // La tête du ponton est au-delà de la ceinture : la route y descend en
+    // franchissant la voie. Dans une anse où la ceinture frôle la plage, un
+    // ponton posé en deçà laissait la route finir sans jamais la croiser.
+    // (Si aucune plage ne s'y prête, on revient à la règle d'avant.)
+    for (const strict of this.beltRadii.length > 0 ? [true, false] : [false]) {
+      for (const c of this.island.cells) {
+        // Le sable d'une crique n'attire pas le ponton : il resterait à sa
+        // place d'origine, sur l'île de base.
+        if (!c.beach || !c.rim || c.plot) continue
+        const r = Math.hypot(c.x, c.z) + 1e-6
+        const dx = c.x / r
+        const dz = c.z / r
+        // La MER, pas une flaque. `rim` signifie seulement « un voisin manque » :
+        // il est vrai aussi sur la berge d'un plan d'eau INTÉRIEUR. Mesuré à
+        // l'âge 9 : la cellule élue se trouvait à 15,8 du centre pour une île de
+        // rayon 26,3 — le ponton partait d'une lagune vers le large.
+        // On exige donc que la direction du large soit dégagée sur cinq unités.
+        if (
+          this.island.isLand(c.x + dx * 1.6, c.z + dz * 1.6) ||
+          this.island.isLand(c.x + dx * 3.2, c.z + dz * 3.2) ||
+          this.island.isLand(c.x + dx * 5, c.z + dz * 5)
+        )
+          continue
+        if (strict) {
+          const hx = c.x - dx * 0.75
+          const hz = c.z - dz * 0.75
+          // 2,4 u : l'auto qui attend au bout de la route (demi-longueur
+          // 1,15) reste hors du passage de la rame (0,72 u de l'axe).
+          if (insideBelt(this.beltRadii, hx, hz) || this.beltDist(hx, hz) < 2.4) continue
+        }
+        // On veut à la fois « face à la caméra » et « bien au bord ».
+        const k = (c.x * camX + c.z * camZ) / r + r * 0.03
+        if (k > bestK) {
+          bestK = k
+          best = { x: c.x, z: c.z }
+        }
       }
+      if (best) break
     }
     if (!best) return
     const dir = Math.atan2(best.x, best.z)
@@ -2982,9 +2996,12 @@ export class Village implements GroundSource {
     if (li === 0 || this.beltRadii.length === 0) return pts
     const out: { x: number; z: number }[] = []
     for (const q of pts) {
-      // Ni la voie (celle d'aujourd'hui ou de l'île agrandie), ni le sentier.
+      // Ni la voie (celle d'aujourd'hui ou de l'île agrandie), ni le sentier :
+      // une rue s'arrête à 2,5 u de la voie, à 1,3 u du sentier (sa
+      // demi-chaussée et la demi-largeur du chemin).
       if (!this.beltClear(q.x, q.z, Village.LANE_BELT)) break
-      if (!insideBelt(this.beltRadii, q.x, q.z) || this.beltDist(q.x, q.z) < Village.LANE_BELT) break
+      const pathGap = this.railRadii === this.beltRadii ? Village.LANE_BELT : 1.3
+      if (!insideBelt(this.beltRadii, q.x, q.z) || this.beltDist(q.x, q.z) < pathGap) break
       out.push(q)
     }
     return out
@@ -3226,24 +3243,33 @@ export class Village implements GroundSource {
     const cells = [...this.island.cells].sort(
       (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
     )
-    for (const c of cells) {
-      const slot = new Vector3(c.x, GROUND_Y, c.z)
-      if (!this.fits(slot, r, footprint, 0, false, accept)) continue
-      this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
-      this.lots.push({ x: c.x, z: c.z, r })
-      return slot
-    }
+    // Une place sans rocher ni buisson d'abord : le repli tombe souvent au
+    // bord de l'île, là où pousse le décor, et un bourg qui l'efface paraît
+    // défriché (test « l'île ne paraît pas déboisée »).
+    for (const bare of this.plan.legacy ? [false] : [true, false])
+      for (const c of cells) {
+        const slot = new Vector3(c.x, GROUND_Y, c.z)
+        if (!this.fits(slot, r, footprint, 0, false, accept)) continue
+        if (bare && !this.bare(c.x, c.z, r)) continue
+        this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
+        this.lots.push({ x: c.x, z: c.z, r })
+        return slot
+      }
     // Avant l'âge 7, l'île de base est petite : un gros ouvrage (aqueduc,
     // moulin) peut ne trouver sa place que sur le sentier — qui passe alors
     // derrière lui —, et en dernier recours sur le tracé de la future voie :
     // le grand tracé de l'âge 7 le relogera. Plutôt que sur le foyer.
+    // Sur le sentier, on prend d'abord une place sans rocher ni buisson : ces
+    // places-là sont au bord de l'île, là où pousse le décor, et un bourg qui
+    // l'efface paraît défriché.
     if (this.railRadii !== this.beltRadii)
-      for (const level of [1, 2]) {
+      for (const [level, bare] of [[1, true], [1, false], [2, false]] as const) {
         this.relaxBelt = level
         let found: Vector3 | null = null
         for (const c of cells) {
           const slot = new Vector3(c.x, GROUND_Y, c.z)
           if (!this.fits(slot, r, footprint, 0, false, accept)) continue
+          if (bare && !this.bare(c.x, c.z, r)) continue
           found = slot
           break
         }
@@ -5126,9 +5152,15 @@ export class Village implements GroundSource {
       let next = this.carD + this.carDir * Village.CAR_SPEED * dt
       const c = this.crossing
       if (c && this.train) {
-        // La zone de la traversée, vue de la route : la voie et ses
-        // accotements, plus la demi-longueur de l'auto.
-        const half = Village.BALLAST / 2 + 0.5 + this.carHalf()
+        // La zone de la traversée, vue de la route : tant que son centre y
+        // est, une part de l'auto est dans le passage de la rame (0,72 u de
+        // part et d'autre de l'axe, 0,3 de jour). Une route qui coupe la voie
+        // en biais l'y laisse plus longtemps.
+        const t = this.trackDir(c.sTrack)
+        const sin = Math.max(0.3, Math.abs(Math.sin(c.yaw) * t.z - Math.cos(c.yaw) * t.x))
+        const cos = Math.sqrt(1 - sin * sin)
+        const { half: a, width: b } = this.carSize()
+        const half = a + (0.72 + 0.3 + b * cos) / sin
         const lo = c.sRoad - half
         const hi = c.sRoad + half
         const inside = this.carD > lo && this.carD < hi
@@ -5159,10 +5191,10 @@ export class Village implements GroundSource {
     pivot.rotation.y = headingYaw(dx * s, dz * s)
   }
 
-  /** Demi-longueur de l'auto à taille réelle (le mesh est mis à l'échelle,
-   *  sa géométrie non). */
-  private carHalf(): number {
-    return Village.CAR_HALF.l
+  /** Demi-longueur et demi-largeur de l'auto à taille réelle (le mesh est
+   *  mis à l'échelle, sa géométrie non : voir CAR_HALF). */
+  private carSize(): { half: number; width: number } {
+    return { half: Village.CAR_HALF.l, width: Village.CAR_HALF.w }
   }
 
   private carD = 0
@@ -6372,6 +6404,23 @@ export class Village implements GroundSource {
     return true
   }
   private nodeXZ: number[] | null = null
+
+  /** Aucun rocher ni buisson sous le disque (les sapins s'abattent). */
+  private bare(x: number, z: number, r: number): boolean {
+    if (!this.nodeXZ) {
+      this.nodeXZ = []
+      for (const m of this.island.pickables) {
+        if (this.island.kindFor(m) === 'wood') continue
+        for (let i = 0; i < m.count; i++) {
+          const p = this.island.instancePosition(m, i)
+          this.nodeXZ.push(p.x, p.z)
+        }
+      }
+    }
+    for (let i = 0; i < this.nodeXZ.length; i += 2)
+      if (Math.hypot(this.nodeXZ[i]! - x, this.nodeXZ[i + 1]! - z) < r + 0.5) return false
+    return true
+  }
   /** Zones que le quai ne doit pas couvrir, hors du village : l'enclos à
    *  moutons de la faune, tiré au hasard à chaque chargement. */
   goodsAvoid: readonly { x: number; z: number; r: number }[] = []

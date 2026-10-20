@@ -71,10 +71,12 @@ export function raiseWorld(
   let streets = kept ? save.streets : null
   let wonderAt = kept ? save.wonderAt : null
   let museumAt = kept ? save.museumAt : null
-  if (!streets && kept && v3 && age >= RAIL_AGE) {
+  if (!streets && kept && v3 && plan.length > 0) {
     // La 3.61 ne gardait ni les rues, ni la Merveille, ni le musée : ils
     // étaient retirés à chaque chargement. On les retire une dernière fois
-    // comme elle, pour les garder là où le joueur les voyait.
+    // comme elle, pour les garder là où le joueur les voyait (avant l'âge 7
+    // aussi : le ponton, qui oriente les rues, tient désormais compte de la
+    // ceinture).
     const old = legacyPlan(save, opts.wonder ?? null, opts.relics ?? [])
     streets = old.streets
     wonderAt ??= old.wonderAt
