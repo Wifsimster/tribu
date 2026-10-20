@@ -44,7 +44,9 @@ export const CAR_MODEL: Record<CarKind, string> = {
 }
 
 /** L'ÉCHELLE de la rame, posée sur la voie. Les modèles livrés font une loco
- *  de 2,43 u, soit 2,75 m à l'échelle du colon (1,5 u pour 1,70 m) : un
+ *  de 2,43 u de long et 1,02 u de haut ; le colon, joué à ×1,32 pour rester
+ *  lisible sur un téléphone (settler.ts), fait 2,2 u de haut à l'écran pour
+ *  1,70 m. À l'échelle du village (colon 1,5 u), la loco fait 2,75 m : un
  *  jouet. La taille réelle (loco à vapeur de 10 à 12 m, ×4) ne tient pas sur
  *  la boucle : un véhicule RIGIDE de longueur L sur un rayon R a le milieu
  *  à L²/8R de la corde, et l'essieu avant de la loco (à 0,6/2,43 de L) à
@@ -53,8 +55,8 @@ export const CAR_MODEL: Record<CarKind, string> = {
  *  8 cm), k ≤ 1,42 ; la taille réelle demanderait R ≥ 89 u, une île trois
  *  fois plus grande que la nôtre. Mesuré en jeu à 1,45 : 0,1005 u au pire
  *  (graine 42, douze parcelles). On prend 1,4 : loco de 3,40 u (3,85 m),
- *  1,44 u de haut (le colon : 1,5 u), rame de 15,2 u à l'âge 10 pour une
- *  boucle de 110 u au moins. */
+ *  1,43 u de haut, soit les deux tiers du colon tel qu'on le voit (2,2 u) ;
+ *  rame de 15,2 u à l'âge 10 pour une boucle de 110 u au moins. */
 export const TRAIN_SCALE = 1.4
 
 /** L'âge du chemin de fer (savoir `railway`, Ère industrielle). */

@@ -14,7 +14,8 @@ console.warn = (...a) => {
 const { Island } = await import('../src/render/island.ts')
 const { Village } = await import('../src/render/village.ts')
 const { TRAIN_SCALE } = await import('../src/render/consist.ts')
-const { TECHS, livingBuildings } = await import('../src/game/content.ts')
+const { raiseWorld, planOf } = await import('../src/render/plan.ts')
+const { TECHS, TOOLS, WONDER_BY_AGE, livingBuildings } = await import('../src/game/content.ts')
 
 const atAge = (age) =>
   new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
@@ -39,6 +40,29 @@ function village(seed, age, nPlots) {
   v.setCargo({ wood: 3, stone: 2, food: 1 })
   v.setWonder(age, 4)
   v.sync(livingBuildings(atAge(age), age))
+  return v
+}
+
+/** Une partie jouée de l'âge 0 à `age`, rechargée à chaque âge comme le fait
+ *  le jeu (plan, ceinture et rues gardés dans la sauvegarde) : c'est ainsi
+ *  que la route du ponton de la graine 31337 longe la voie. */
+function played(seed, age, nPlots) {
+  let save = { seed, age: 0, land: plots(seed, nPlots), layout: [], layoutV: 4, goods: null, belt: null, streets: null, wonderAt: null, museumAt: null }
+  let v = null
+  for (let a = 0; a <= age; a++) {
+    save = { ...save, age: a }
+    // La Merveille de l'âge achevée, les reliques du musée : ils prennent
+    // leur place avant les rues.
+    const wonder = a >= 1 && WONDER_BY_AGE.get(a) ? { age: a, stage: 4 } : null
+    const relics = a >= 3 ? ['amphore', 'astrolabe'].slice(0, a >= 6 ? 2 : 1) : []
+    const r = raiseWorld(save, { electric: a >= 8, yule: false, rates: { wood: 3, stone: 2, food: 1 }, ageChanged: a > 0, wonder, relics })
+    v = r.village
+    if (wonder) v.setWonder(wonder.age, 4)
+    v.sync(livingBuildings(atAge(a), a))
+    v.setRelics(relics)
+    v.setTools(TOOLS.filter((t) => t.age <= a).map((t) => t.id))
+    save = { ...save, ...planOf(v), layoutV: r.layoutV, goods: v.goodsAt }
+  }
   return v
 }
 
@@ -122,10 +146,11 @@ test('la rame longe le campement à 0,3 u au moins, sur tout le tour (âges 7 et
 })
 
 test('l’auto et la rame ne se recouvrent jamais : l’auto attend à la barrière', () => {
-  // Graines et parcelles où la 1re version de la zone d'attente laissait
-  // l'auto sur la voie (route en biais), et une graine ordinaire.
-  for (const [seed, nPlots] of [[5, 6], [99, 6], [5, 12], [42, 0]]) {
-    const v = village(seed, 8, nPlots)
+  // Graines et parcelles où les premières versions de la zone d'attente
+  // laissaient l'auto sur la voie : route en biais (5 et 99), route qui longe
+  // la voie après la traversée (31337, partie jouée) ; et une graine ordinaire.
+  for (const [seed, nPlots, play] of [[5, 6], [99, 6], [5, 12], [31337, 12, true], [42, 0]]) {
+    const v = play ? played(seed, 8, nPlots) : village(seed, 8, nPlots)
     assert.ok(v.train && v.car, `graine ${seed} : rame et auto`)
     assert.equal(v.crossings, 1, `graine ${seed} : ${v.crossings} traversées`)
     const mesh = v.car.children[0]

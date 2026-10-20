@@ -2216,6 +2216,7 @@ export class Village implements GroundSource {
   private crossRoad(): void {
     this.crossing = null
     this.crossings = 0
+    this.zoneKey = ''
     const road = this.roadPath
     if (road.length < 2 || this.beltRadii.length === 0) return
     const inside = (q: { x: number; z: number }): boolean => insideBelt(this.beltRadii, q.x, q.z)
@@ -5151,22 +5152,15 @@ export class Village implements GroundSource {
     } else {
       let next = this.carD + this.carDir * Village.CAR_SPEED * dt
       const c = this.crossing
-      if (c && this.train) {
-        // La zone de la traversée, vue de la route : tant que son centre y
-        // est, une part de l'auto est dans le passage de la rame (0,72 u de
-        // part et d'autre de l'axe, 0,3 de jour). Une route qui coupe la voie
-        // en biais l'y laisse plus longtemps.
-        const t = this.trackDir(c.sTrack)
-        const sin = Math.max(0.3, Math.abs(Math.sin(c.yaw) * t.z - Math.cos(c.yaw) * t.x))
-        const cos = Math.sqrt(1 - sin * sin)
-        const { half: a, width: b } = this.carSize()
-        const half = a + (0.72 + 0.3 + b * cos) / sin
-        const lo = c.sRoad - half
-        const hi = c.sRoad + half
+      const zone = c && this.train ? this.crossZone() : null
+      if (zone) {
+        const { lo, hi } = zone
         const inside = this.carD > lo && this.carD < hi
-        // La rame est annoncée : sa présence à 8 u de la traversée ferme la
-        // barrière (le temps pour l'auto déjà engagée de dégager).
-        if (!inside && this.trainCovers(c.sTrack, Village.CROSSING_WARN)) {
+        // La rame est annoncée : sa présence à 8 u de l'arc de voie que borde
+        // la zone ferme la barrière (le temps pour l'auto déjà engagée de
+        // dégager).
+        const mid = (zone.s0 + zone.s1) / 2
+        if (!inside && this.trainCovers(mid, Village.CROSSING_WARN + (zone.s1 - zone.s0) / 2)) {
           if (this.carDir > 0 && this.carD <= lo && next > lo) next = lo
           if (this.carDir < 0 && this.carD >= hi && next < hi) next = hi
         }
@@ -5190,6 +5184,64 @@ export class Village implements GroundSource {
     const s = this.carWait > 0 ? -this.carDir : this.carDir
     pivot.rotation.y = headingYaw(dx * s, dz * s)
   }
+
+  /** La zone de la traversée, mesurée sur la géométrie et non le long de la
+   *  route : les abscisses de route [lo, hi] où l'emprise de l'auto entre dans
+   *  le gabarit de la rame (0,72 u de part et d'autre de l'axe, plus 0,3 de
+   *  jour), et l'arc de voie [s0, s1] qui la borde. Une route qui longe la
+   *  voie après la traversée (graine 31337, douze parcelles : l'auto attendait
+   *  à 2,3 u de la traversée sur la route, mais à 0,5 u de l'axe) allonge la
+   *  zone d'autant. Refaite quand l'auto change de taille. */
+  private crossZone(): { lo: number; hi: number; s0: number; s1: number } | null {
+    const c = this.crossing
+    const pts = this.roadPath
+    if (!c || pts.length < 2) return null
+    const { half, width } = this.carSize()
+    const key = `${half.toFixed(3)},${width.toFixed(3)}`
+    if (this.zoneKey === key) return this.zone
+    const track = this.beltTrack
+    const L = this.beltLength
+    const total = this.roadCum[this.roadCum.length - 1]!
+    const clear = 0.72 + 0.3
+    let lo = c.sRoad
+    let hi = c.sRoad
+    let s0 = 0
+    let s1 = 0
+    let i = 1
+    for (let d = 0; d <= total + 1e-9; d += 0.1) {
+      while (i < this.roadCum.length - 1 && this.roadCum[i]! < d) i++
+      const a = pts[i - 1]!
+      const b = pts[i]!
+      const seg = Math.max(1e-3, this.roadCum[i]! - this.roadCum[i - 1]!)
+      const u = Math.min(1, Math.max(0, (d - this.roadCum[i - 1]!) / seg))
+      const x = a.x + (b.x - a.x) * u
+      const z = a.z + (b.z - a.z) * u
+      const fx = (b.x - a.x) / seg
+      const fz = (b.z - a.z) / seg
+      // L'emprise de l'auto : son axe et ses deux flancs, tous les 0,2 u.
+      let hit = false
+      for (let l = -half; l <= half + 1e-9; l += Math.max(0.2, half / 4))
+        for (const w of [-width, 0, width]) {
+          const q = nearestOnLoop(track, { x: x + fx * l + fz * w, z: z + fz * l - fx * w })
+          if (q.d >= clear) continue
+          hit = true
+          const ds = ((((q.s - c.sTrack) % L) + L * 1.5) % L) - L / 2
+          s0 = Math.min(s0, ds)
+          s1 = Math.max(s1, ds)
+        }
+      // Le pas d'échantillonnage en marge : l'auto s'arrête AVANT le premier
+      // point touché.
+      if (hit) {
+        lo = Math.min(lo, d - 0.1)
+        hi = Math.max(hi, d + 0.1)
+      }
+    }
+    this.zoneKey = key
+    this.zone = { lo, hi, s0: c.sTrack + s0, s1: c.sTrack + s1 }
+    return this.zone
+  }
+  private zoneKey = ''
+  private zone: { lo: number; hi: number; s0: number; s1: number } | null = null
 
   /** Demi-longueur et demi-largeur de l'auto à taille réelle (le mesh est
    *  mis à l'échelle, sa géométrie non : voir CAR_HALF). */
