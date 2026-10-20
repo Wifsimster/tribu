@@ -66,8 +66,10 @@ export const REAL_SIZE_M: Record<VehicleId, number> = {
  *  - caravelle, vapeur, caboteur : au réel, la caravelle ferait 28 u, plus que
  *    le rayon de l'île (24,4 u), et masquerait le bourg depuis la caméra par
  *    défaut (le ponton lui fait face). Plafond de lisibilité : 12,5 u de long ;
- *  - avion : à 11,6 u d'envergure, les ailes couvrent les parcelles voisines
- *    de l'aérodrome. Plafonné à ce qui laisse 0,5 u de marge au sol. */
+ *  - avion : au réel (×5,2, 11,6 u d'envergure), il touche un bâtiment sur
+ *    les cinq bourgs du test, roues sur la terre ; à ×3, sur deux. À ×2,5, il
+ *    garde 0,5 u de marge sur quatre ; sur le cinquième, trop serré, il
+ *    reprend sa taille 3.62.0 (Village.PLANE_SIZES). */
 export const VEHICLE_SCALE: Record<VehicleId, number> = {
   raft: 2.5,
   canoe: 3,

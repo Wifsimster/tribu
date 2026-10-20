@@ -2359,7 +2359,9 @@ export class Village implements GroundSource {
     }
     if (swap()) return
     void loadModels([id]).then((fresh) => {
-      if (fresh && this.group.parent) swap()
+      // L'avion se regare selon la forme du modèle (planeProxy) : le cadastre
+      // refait, la boucle rappelle fitMovers.
+      if (fresh && this.group.parent && swap() && id === 'plane') this.revision++
     })
   }
 
@@ -4288,6 +4290,11 @@ export class Village implements GroundSource {
    *  appel de plus) et chaque bâtiment reçoit sa flaque de lumière. Les
    *  lueurs, elles, vivent dans un mesh additif dont l'opacité suit la nuit. */
   private lampGlow: Mesh | null = null
+  /** Le pied de chaque réverbère : l'avion, qui roule hors des rues, doit les
+   *  éviter (le mât monte à 3 u, la potence déborde de 0,54 u en +x). */
+  private lampPosts: readonly { x: number; y: number; z: number }[] = []
+  /** Autour de l'aérodrome, dans ce rayon, ni réverbère ni roulage gêné. */
+  private static readonly FIELD_CLEAR = 7
 
   private streetLights(all: BufferGeometry[]): void {
     if (this.lampGlow) {
@@ -4301,6 +4308,7 @@ export class Village implements GroundSource {
     const warm = new Color('#ffdba0')
     const pool = new Color('#e8a94e')
     const posts: { x: number; y: number; z: number }[] = []
+    const field = this.propPlacements.find((q) => q.id === 'plane')
     for (const lane of this.lanes!) {
       // Un réverbère tous les cinq pas, alternativement d'un côté et de
       // l'autre : une rue éclairée n'a pas ses lampes en vis-à-vis.
@@ -4314,9 +4322,12 @@ export class Village implements GroundSource {
         const x = a.x + (dz / len) * side * 1.75
         const z = a.z - (dx / len) * side * 1.75
         if (!this.island.isLand(x, z)) continue
+        // Pas de réverbère sur l'aire de l'aérodrome : l'avion y roule.
+        if (field && Math.hypot(x - field.x, z - field.z) < Village.FIELD_CLEAR) continue
         posts.push({ x, y: GROUND_Y, z })
       }
     }
+    this.lampPosts = posts
     for (const q of posts) {
       all.push(part(new CylinderGeometry(0.11, 0.15, 0.16, 8), C.stoneDark, q.x, q.y + 0.08, q.z))
       all.push(part(new CylinderGeometry(0.05, 0.075, 2.9, 7), iron, q.x, q.y + 1.5, q.z))
@@ -4619,8 +4630,11 @@ export class Village implements GroundSource {
     const rot = Math.atan2(pl.x, pl.z)
     this.planeBase = { x: pl.x, z: pl.z }
     this.planeSlotRot = pl.rot
-    this.planeAt = { x: pl.x, y: pl.y + 0.4 + Village.PLANE_WHEEL * (k - 1), z: pl.z, rot }
+    this.planeK = k
+    this.planeY0 = pl.y + 0.4
+    this.planeAt = { x: pl.x, y: this.planeY0 + Village.PLANE_WHEEL * (k - 1), z: pl.z, rot }
     this.planeOff = Village.PLANE_TAIL * (k - 1)
+    this.planeSig = ''
     this.placePlane(this.planeOff)
     this.plane = pivot
     this.planeRest()
@@ -4656,8 +4670,16 @@ export class Village implements GroundSource {
   private static readonly PLANE_WHEEL = 0.34
   /** La queue derrière le pivot de l'avion, avant mise à l'échelle. */
   private static readonly PLANE_TAIL = 0.88
-  /** Demi-envergure de l'avion à sa taille de jeu, en monde. */
-  static readonly PLANE_HALF_SPAN = 1.12 * VEHICLE_SCALE.plane
+  /** Demi-envergure de l'avion à sa taille 3.61.0, en monde. */
+  private static readonly PLANE_HALF_SPAN = 1.12
+  /** Les tailles essayées, de la plus grande à celle de la 3.62.0 : là où
+   *  l'aérodrome est trop serré pour ses 4,3 m d'envergure, l'avion rapetisse
+   *  jusqu'à tenir plutôt que de traverser la manche à air ou un atelier. */
+  private static readonly PLANE_SIZES = [1, 0.8, 0.6, 0.4].map((f) => Math.max(1, VEHICLE_SCALE.plane * f))
+  /** Le facteur retenu pour ce bourg (VEHICLE_SCALE.plane si la place y est). */
+  planeK = VEHICLE_SCALE.plane
+  /** La hauteur du pivot à la taille 3.61.0, roues sur l'aire. */
+  private planeY0 = 0
   /** Ce que les ailes laissent aux houppiers : rayon de cime et marge. */
   private static readonly PLANE_TREE_CLEAR = 1.6
   /** Sous cette hauteur (au-dessus du sol), l'avion peut toucher un sapin. */
@@ -4703,7 +4725,7 @@ export class Village implements GroundSource {
     if (!a || !b) return
     a.x = b.x + Math.sin(a.rot) * off
     a.z = b.z + Math.cos(a.rot) * off
-    this.island.clearCorridor(this.planeLowPath(), Village.PLANE_HALF_SPAN + Village.PLANE_TREE_CLEAR)
+    this.island.clearCorridor(this.planeLowPath(), Village.PLANE_HALF_SPAN * this.planeK + Village.PLANE_TREE_CLEAR)
   }
 
   /** Le hangar (et sa voûte) et la manche à air (et son mât) de l'aérodrome,
@@ -4728,6 +4750,71 @@ export class Village implements GroundSource {
     return out
   })()
 
+  /** Le même relevé, tiré de la géométrie affichée (primitive ou modèle) : une
+   *  case de 0,12 u en plan par morceau de surface, au plus bas de ce qui la
+   *  couvre. Les disques ci-dessus manquaient l'empennage et le bout des
+   *  ailes du modèle : 0,2 u de marge réelle là où ils en voyaient 0,5. */
+  private planeProxyFor: BufferGeometry | null = null
+  private planeProxyCells: readonly { u: number; v: number; y: number; r: number }[] = Village.PLANE_PROXY
+  private readonly roomBoxes: (typeof Village.AIRFIELD_SOLIDS)[number][] = []
+  private readonly roomLamps: { x: number; y: number; z: number }[] = []
+  private readonly roomLots: { x: number; z: number; r: number; top: number; air: number }[] = []
+  /** Le rayon en plan du relevé autour du pivot, et son point le plus bas. */
+  private planeProxyExtent = { reach: 1.33, low: -0.42 }
+
+  private planeProxy(): readonly { u: number; v: number; y: number; r: number }[] {
+    const mesh = this.plane?.children[0] as Mesh | undefined
+    const geo = mesh?.geometry
+    if (!geo || geo === this.planeProxyFor) return this.planeProxyCells
+    const C = 0.12
+    const cells = new Map<number, { u: number; v: number; y: number; r: number }>()
+    const pos = geo.getAttribute('position')
+    const idx = geo.index
+    const n = idx ? idx.count / 3 : pos.count / 3
+    const P = [new Vector3(), new Vector3(), new Vector3()]
+    for (let t = 0; t < n; t++) {
+      for (let c = 0; c < 3; c++) P[c]!.fromBufferAttribute(pos, idx ? idx.getX(t * 3 + c) : t * 3 + c)
+      const [A, B, D] = P as [Vector3, Vector3, Vector3]
+      const len = Math.max(A.distanceTo(B), B.distanceTo(D), D.distanceTo(A))
+      const steps = Math.max(1, Math.ceil(len / (C * 0.5)))
+      for (let i = 0; i <= steps; i++)
+        for (let j = 0; j <= steps - i; j++) {
+          const wa = i / steps
+          const wb = j / steps
+          const wd = 1 - wa - wb
+          const x = A.x * wa + B.x * wb + D.x * wd
+          const y = A.y * wa + B.y * wb + D.y * wd
+          const z = A.z * wa + B.z * wb + D.z * wd
+          // u vers le nez (+X local), v vers l'aile gauche (−Z local).
+          const gu = Math.round(x / C)
+          const gv = Math.round(-z / C)
+          const key = gu * 4096 + gv
+          const cell = cells.get(key)
+          if (!cell) cells.set(key, { u: gu * C, v: gv * C, y, r: C * 0.71 })
+          else cell.y = Math.min(cell.y, y)
+        }
+    }
+    this.planeProxyFor = geo
+    // Seules comptent les cases du bord, et celles plus basses que leurs
+    // voisines (le train sous l'aile) : une case intérieure n'est jamais la
+    // plus proche d'un plein. Trois fois moins de cases à chaque essai.
+    const at = (gu: number, gv: number) => cells.get(gu * 4096 + gv)
+    this.planeProxyCells = [...cells.values()].filter((q) => {
+      const gu = Math.round(q.u / C)
+      const gv = Math.round(q.v / C)
+      const ns = [at(gu + 1, gv), at(gu - 1, gv), at(gu, gv + 1), at(gu, gv - 1)]
+      return ns.some((n) => !n || n.y > q.y + 0.02)
+    })
+    let reach = 0
+    let low = Infinity
+    for (const q of this.planeProxyCells) {
+      reach = Math.max(reach, Math.hypot(q.u, q.v) + q.r)
+      low = Math.min(low, q.y)
+    }
+    this.planeProxyExtent = { reach, low }
+    return this.planeProxyCells
+  }
+
   /** La place qui reste à l'appareil, pivot en (x, z), `lift` au-dessus de
    *  l'aire, cap `rot` : la distance en plan de son bord au premier plein qui
    *  monte plus haut que lui — le hangar et la manche à air de son aire, les
@@ -4739,32 +4826,65 @@ export class Village implements GroundSource {
     z: number,
     lift: number,
     rot: number,
-    lots: readonly { x: number; z: number; r: number; top: number }[],
+    lots: readonly { x: number; z: number; r: number; top: number; air: number }[],
     floor: number,
   ): number {
     const a = this.planeAt
     const b = this.planeBase
     if (!a || !b) return -Infinity
-    const k = VEHICLE_SCALE.plane
+    const k = this.planeK
     const dx = Math.sin(rot)
     const dz = Math.cos(rot)
     const c = Math.cos(this.planeSlotRot)
     const sn = Math.sin(this.planeSlotRot)
-    const g = this.goodsPos
+    const cells = this.planeProxy()
+    const { reach, low } = this.planeProxyExtent
+    // Au-delà de la marge, la place exacte ne compte plus : un plein dont le
+    // disque reste à plus de `cap` du cercle de l'appareil est laissé de côté.
+    const cap = Village.PLANE_MARGIN + 0.01
+    const R = reach * k
+    const lowY = a.y - GROUND_Y + lift + low * k
+    const near = (ox: number, oz: number, rad: number, top: number): boolean =>
+      top > lowY && Math.hypot(ox - x, oz - z) - R - rad < cap
+    // Les listes de travail sont réutilisées d'un essai à l'autre : la
+    // recherche en fait des dizaines de milliers.
+    const boxes = this.roomBoxes
+    boxes.length = 0
+    for (const o of Village.AIRFIELD_SOLIDS)
+      if (near(b.x + o.x * c + o.z * sn, b.z - o.x * sn + o.z * c, Math.hypot(o.hx, o.hz), o.top)) boxes.push(o)
+    let g = this.goodsPos
+    if (g && !near(g.x, g.z, Math.hypot(Village.QUAY.w, Village.QUAY.d) / 2 + 0.1, Village.GOODS_TOP)) g = null
+    const lamps = this.roomLamps
+    lamps.length = 0
+    for (const q of this.lampPosts) if (near(q.x + 0.27, q.z, 0.55, 3.05)) lamps.push(q)
+    // Au ras du sol, chaque parcelle à son sommet de passage (`top`) ; en
+    // l'air, à son vrai sommet (`air`) : en montée, l'appareil ne voyait
+    // plus rien et traversait le phare.
+    const plots = this.roomLots
+    plots.length = 0
+    for (const l of lots) if (near(l.x, l.z, l.r, lift < 1 ? l.top : l.air)) plots.push(l)
+    // Au sol et au ras du sol, fuselage et train (y < 0) roulent sur la
+    // terre : avancé de 5 u sans ce garde-fou, l'appareil se garait au-delà
+    // de la plage, sur l'eau. Les ailes et l'empennage peuvent déborder.
+    const ground = lift < 0.3
+    if (!ground && !boxes.length && !g && !lamps.length && !plots.length) return Infinity
     let room = Infinity
-    for (const q of Village.PLANE_PROXY) {
+    for (const q of cells) {
       const px = x + (dx * q.u + dz * q.v) * k
       const pz = z + (dz * q.u - dx * q.v) * k
       const py = a.y - GROUND_Y + lift + q.y * k
       const r = q.r * k
-      // Dans le repère de l'atelier (inverse de rotateY).
-      const lx = (px - b.x) * c - (pz - b.z) * sn
-      const lz = (px - b.x) * sn + (pz - b.z) * c
-      for (const o of Village.AIRFIELD_SOLIDS) {
-        if (py >= o.top) continue
-        const ex = Math.max(0, Math.abs(lx - o.x) - o.hx)
-        const ez = Math.max(0, Math.abs(lz - o.z) - o.hz)
-        room = Math.min(room, Math.hypot(ex, ez) - r)
+      if (ground && q.y < 0 && !this.island.isLand(px, pz)) return -Infinity
+      if (boxes.length) {
+        // Dans le repère de l'atelier (inverse de rotateY).
+        const lx = (px - b.x) * c - (pz - b.z) * sn
+        const lz = (px - b.x) * sn + (pz - b.z) * c
+        for (const o of boxes) {
+          if (py >= o.top) continue
+          const ex = Math.max(0, Math.abs(lx - o.x) - o.hx)
+          const ez = Math.max(0, Math.abs(lz - o.z) - o.hz)
+          room = Math.min(room, Math.hypot(ex, ez) - r)
+        }
       }
       if (g && py < Village.GOODS_TOP) {
         const gc = Math.cos(g.rot)
@@ -4773,8 +4893,9 @@ export class Village implements GroundSource {
         const gz = Math.max(0, Math.abs((px - g.x) * gs + (pz - g.z) * gc) - Village.QUAY.d / 2 - 0.1)
         room = Math.min(room, Math.hypot(gx, gz) - r)
       }
-      if (lift < 1)
-        for (const l of lots) if (py < l.top) room = Math.min(room, Math.hypot(px - l.x, pz - l.z) - l.r - r)
+      // Les réverbères : un disque qui couvre mât et potence, jusqu'au chapeau.
+      if (py < 3.05) for (const l of lamps) room = Math.min(room, Math.hypot(px - l.x - 0.27, pz - l.z) - 0.55 - r)
+      for (const l of plots) if (py < (lift < 1 ? l.top : l.air)) room = Math.min(room, Math.hypot(px - l.x, pz - l.z) - l.r - r)
       if (room < floor) return room
     }
     return room
@@ -4783,6 +4904,7 @@ export class Village implements GroundSource {
   /** Comment l'avion s'est garé : avec sa marge (« clear »), ou, faute de
    *  place, au placement qui lui en laisse le plus (« tight »). */
   planeFit: 'clear' | 'tight' | null = null
+  private planeSig = ''
 
   /** Avance l'avion dans son axe de décollage jusqu'au premier point où il
    *  a sa marge, à l'arrêt comme pendant son roulage et le début de sa
@@ -4792,6 +4914,13 @@ export class Village implements GroundSource {
     const a = this.planeAt
     const b = this.planeBase
     if (!this.plane || !a || !b) return
+    // Rien n'a bougé autour de l'aire depuis le dernier calage (le cadastre se
+    // refait pour un sapin abattu, une récolte) : la place est la même.
+    this.planeProxy()
+    const g0 = this.goodsPos
+    const sig = [b.x, b.z, this.lots.length, this.propPlacements.length, this.lampPosts.length, g0?.x, g0?.z, this.planeProxyFor?.uuid].join('|')
+    if (sig === this.planeSig) return
+    this.planeSig = sig
     // Les parcelles à portée du roulage, chacune avec son sommet : disque
     // plein au premier passage ; au second, un atelier ne gêne que sous son
     // sommet, Merveille, musée, gare et campement restent pleins.
@@ -4799,11 +4928,12 @@ export class Village implements GroundSource {
       const d = Math.hypot(l.x - b.x, l.z - b.z)
       return d > 0.01 && d < 24
     })
-    const strict = near.map((l) => ({ ...l, top: Infinity }))
     const tall = near.map((l) => {
       const pl = this.propPlacements.find((q) => Math.hypot(q.x - l.x, q.z - l.z) < 0.01)
-      return { ...l, top: pl ? this.propTop(pl.id) + 0.1 : Infinity }
+      const top = pl ? this.propTop(pl.id) + 0.1 : Infinity
+      return { ...l, top, air: top }
     })
+    const strict = tall.map((l) => ({ ...l, top: Infinity }))
     const pathRoom = (rot: number, off: number, lots: typeof strict, floor: number): number => {
       const dx = Math.sin(rot)
       const dz = Math.cos(rot)
@@ -4818,22 +4948,32 @@ export class Village implements GroundSource {
       return room
     }
     // Droit vers le large d'abord ; si l'axe est barré (un quai posé en
-    // travers), le cap s'écarte peu à peu, jusqu'à un radian. Les disques de
-    // parcelle sont prudents (un champ est plat) : si rien ne les évite, un
-    // second passage compte chaque atelier à sa hauteur. Et si rien ne laisse
-    // la marge, le placement qui laisse le plus de place.
+    // travers), le cap s'écarte peu à peu, jusqu'à longer la côte (±1,5 rad) :
+    // l'aire est au bord de l'eau, et le roulage doit rester sur la terre. Les
+    // disques de parcelle sont prudents (un champ est plat) : si rien ne les
+    // évite, un second passage compte chaque atelier à sa hauteur. Et si rien
+    // ne laisse la marge, le placement qui laisse le plus de place.
     const radial = Math.atan2(b.x, b.z)
-    const DRIFT = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1]
+    const DRIFT = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1, 1.25, -1.25, 1.5, -1.5]
+    const k0 = this.planeK
     let found: { rot: number; off: number } | null = null
     let best = { rot: radial, off: this.planeOff, room: -Infinity }
-    for (const lots of [strict, tall]) {
-      for (const dr of DRIFT) {
-        for (let off = 0; off <= 8 && !found; off += 0.25) {
-          // Au second passage, on garde aussi le placement le plus large.
-          const floor = lots === strict ? Village.PLANE_MARGIN : Math.min(Village.PLANE_MARGIN, best.room)
-          const room = pathRoom(radial + dr, off, lots, floor)
-          if (room >= Village.PLANE_MARGIN) found = { rot: radial + dr, off }
-          else if (lots === tall && room > best.room) best = { rot: radial + dr, off, room }
+    for (const k of Village.PLANE_SIZES) {
+      // Chaque taille repart de zéro ; seule la dernière (3.62.0) garde, faute
+      // de mieux, le placement le plus large.
+      this.planeK = k
+      a.y = this.planeY0 + Village.PLANE_WHEEL * (k - 1)
+      best = { rot: radial, off: Village.PLANE_TAIL * (k - 1), room: -Infinity }
+      for (const lots of [strict, tall]) {
+        for (const dr of DRIFT) {
+          for (let off = -3; off <= 8 && !found; off += 0.25) {
+            // Au second passage, on garde aussi le placement le plus large.
+            const floor = lots === strict ? Village.PLANE_MARGIN : Math.min(Village.PLANE_MARGIN, best.room)
+            const room = pathRoom(radial + dr, off, lots, floor)
+            if (room >= Village.PLANE_MARGIN) found = { rot: radial + dr, off }
+            else if (lots === tall && room > best.room) best = { rot: radial + dr, off, room }
+          }
+          if (found) break
         }
         if (found) break
       }
@@ -4841,7 +4981,8 @@ export class Village implements GroundSource {
     }
     this.planeFit = found ? 'clear' : 'tight'
     const pick = found ?? best
-    if (Math.abs(pick.off - this.planeOff) < 1e-6 && Math.abs(pick.rot - a.rot) < 1e-6) return
+    ;(this.plane.children[0] as Mesh).scale.setScalar(this.planeK)
+    if (this.planeK === k0 && Math.abs(pick.off - this.planeOff) < 1e-6 && Math.abs(pick.rot - a.rot) < 1e-6) return
     a.rot = pick.rot
     this.planeOff = pick.off
     this.placePlane(pick.off)
@@ -5022,6 +5163,7 @@ export class Village implements GroundSource {
       this.propPlacements.map((q) => ({ x: q.x, z: q.z })),
       2.7,
     )
+    this.lampPosts = []
     if (this.electric) this.streetLights(all)
     this.propsGeo = mergeGeometries(all)
     this.restack()

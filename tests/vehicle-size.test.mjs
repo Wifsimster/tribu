@@ -223,6 +223,8 @@ test('chaque véhicule est, à 10 % près, à la taille appliquée par rapport a
   const { village } = town(42, 8)
   village.car.rotation.set(0, 0, 0)
   got.car = span(worldBox(village.car))
+  // Graine 42 : l'aérodrome a la place, l'avion y est à sa taille pleine.
+  assert.equal(village.planeK, VEHICLE_SCALE.plane)
   village.plane.rotation.set(0, 0, 0)
   got.plane = span(worldBox(village.plane))
   for (const id of IDS) {
@@ -380,7 +382,8 @@ test('l’auto ne roule que là où sa caisse passe : ni bâtiment, ni réverbè
   assert.ok(rolling >= 3, `l'auto ne roule que dans ${rolling} bourgs sur ${CASES.length}`)
 })
 
-test('l’avion décolle et se pose à 0,5 u au moins de tout bâtiment et de tout sapin', () => {
+test('l’avion décolle et se pose à 0,5 u au moins de tout bâtiment et de tout sapin, roues sur la terre', () => {
+  let full = 0
   for (const [seed, age] of CASES) {
     const w = town(seed, age)
     const v = w.village
@@ -403,15 +406,27 @@ test('l’avion décolle et se pose à 0,5 u au moins de tout bâtiment et de to
         }
       }
     }
-    // Graine 7 : l'aérodrome est serré entre le quai du marchand, le collier
-    // et le phare ; la mesure embarquée, prudente (parcelles en disques), n'y
-    // trouve pas sa marge et prend le placement le plus large. La géométrie
-    // exacte, elle, la trouve (1,01 u). L'avion 3.61.0 y passait à 0,06 u.
-    assert.ok(worst >= 0.5, `graine ${seed} âge ${age} : l'avion à ${worst.toFixed(2)} u d'un bâtiment (${v.planeFit})`)
+    // Mesuré sur la 3.62.0 (même scénario) : l'avion y touchait un bâtiment
+    // dans quatre bourgs sur cinq (graines 42, 99, 1337042, 2024) et un sapin
+    // dans un. Ici : la marge partout où il se gare à l'aise. Graine 2024 (âge
+    // 10), l'aérodrome est cerné par le phare, le serveur et la côte : rien n'y
+    // tient à 0,5 u, même à la taille 3.62.0 ; l'avion y reprend cette taille
+    // et passe sans rien toucher (0,23 u).
+    if (v.planeFit === 'clear') assert.ok(worst >= 0.5, `graine ${seed} âge ${age} : l'avion à ${worst.toFixed(2)} u d'un bâtiment`)
+    else {
+      assert.equal(v.planeK, 1, `graine ${seed} : serré, l'avion devait reprendre sa taille 3.62.0`)
+      assert.ok(worst >= 0.2, `graine ${seed} âge ${age} : l'avion à ${worst.toFixed(2)} u d'un bâtiment (serré)`)
+    }
+    if (v.planeK === VEHICLE_SCALE.plane) full++
     assert.ok(worstTree >= 0.5, `graine ${seed} âge ${age} : l'avion à ${worstTree.toFixed(2)} u d'un sapin`)
-    // Au repos, les roues sur l'aire, pas dessous.
+    // Au repos, les roues sur l'aire, pas dessous, et le fuselage sur la
+    // terre : avancé vers le large sans ce contrôle, il se garait sur l'eau.
     v.planeRest()
     const b = worldBox(v.plane)
     assert.ok(Math.abs(b.min.y - (GROUND_Y + 0.06)) < 0.08, `roues à ${b.min.y.toFixed(2)}`)
+    for (const p of samples(v.plane))
+      if (p.y < GROUND_Y + 0.3) assert.ok(w.island.isLand(p.x, p.z), `graine ${seed} : l'avion garé sur l'eau en ${p.x.toFixed(1)}, ${p.z.toFixed(1)}`)
   }
+  // Sur la plupart des bourgs, il est à sa taille pleine.
+  assert.ok(full >= 4, `avion à sa taille pleine dans ${full} bourgs sur ${CASES.length}`)
 })
