@@ -32,7 +32,7 @@ import { GROUND_Y, type Island } from './island'
 import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
-import { headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
+import { VEHICLE_SCALE, headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
 import type { Footprint, GroundSource } from './ground'
 import {
   CAR_LENGTH,
@@ -2914,6 +2914,21 @@ export class Village implements GroundSource {
     this.reaches.set(id, r)
     return r
   }
+  /** Le sommet d'un bâtiment au-dessus du sol, mesuré sur sa géométrie fixe ;
+   *  infini s'il a une pièce animée qui la dépasse (ailes du moulin…). */
+  private readonly tops = new Map<string, number>()
+  private propTop(id: string): number {
+    const known = this.tops.get(id)
+    if (known !== undefined) return known
+    let top = Village.MOVER_REACH[id] !== undefined ? Infinity : 0
+    for (const g of this.propGeo(id) ?? []) {
+      const pos = g.getAttribute('position')
+      for (let i = 0; i < pos.count; i++) top = Math.max(top, pos.getY(i))
+      g.dispose()
+    }
+    this.tops.set(id, top)
+    return top
+  }
   /** Ce que les pièces animées balaient hors de la géométrie fixe, mesuré
    *  sur leurs maillages (2026-10-12) : ailes du moulin (pivot avancé, rayon
    *  des pales), attelage qui fait l'aller-retour sur ±1,2, halo du phare,
@@ -4296,8 +4311,8 @@ export class Village implements GroundSource {
         const dz = b.z - a.z
         const len = Math.hypot(dx, dz) || 1
         const side = (i / 5) % 2 === 0 ? 1 : -1
-        const x = a.x + (dz / len) * side * 1.35
-        const z = a.z - (dx / len) * side * 1.35
+        const x = a.x + (dz / len) * side * 1.75
+        const z = a.z - (dx / len) * side * 1.75
         if (!this.island.isLand(x, z)) continue
         posts.push({ x, y: GROUND_Y, z })
       }
@@ -4371,10 +4386,18 @@ export class Village implements GroundSource {
     grain(geo, 0.05)
     const mesh = new Mesh(geo, this.solid)
     mesh.castShadow = true
+    // Taille réelle (une Ford T) : sur le mesh, pour que primitive et modèle
+    // grandissent pareil ; les roues restent au ras de la route.
+    const k = VEHICLE_SCALE.car
+    mesh.scale.setScalar(k)
+    mesh.position.y = Village.CAR_BASE * (1 - k)
     const pivot = new Group()
     pivot.add(mesh)
     this.car = pivot
     this.carHome = { x: pl.x, y: pl.y, z: pl.z }
+    this.carSpan = null
+    this.carPark = null
+    this.carFitted = false
     this.group.add(pivot)
     this.vehicleModel(mesh, 'car', 0.05)
   }
@@ -4394,46 +4417,161 @@ export class Village implements GroundSource {
   private car: Group | null = null
   private carHome: { x: number; y: number; z: number } | null = null
   private carT = 0
+  /** Le dessous des roues, dans le repère du mesh de l'auto (primitive ×2 et
+   *  modèle recalé, voir vehicles.ts). */
+  private static readonly CAR_BASE = 0.04
+  /** Demi-longueur et demi-largeur de l'auto à taille réelle, en monde. */
+  static readonly CAR_HALF = { l: 1.24 * VEHICLE_SCALE.car, w: 0.643 * VEHICLE_SCALE.car }
+  /** Ce que l'auto laisse entre sa carrosserie et le premier plein, en plus
+   *  de ce que le cadastre garde déjà (il sous-estime toujours, de 0,17 u). */
+  static readonly CAR_MARGIN = 0
+  /** La portion de route que l'auto parcourt, en abscisses : la plus longue
+   *  où sa caisse entière passe. La route part du foyer et finit au ponton ;
+   *  à taille réelle, l'auto entrait dans le feu, mordait la Merveille et les
+   *  réverbères. Null tant que le cadastre ne l'a pas mesurée. */
+  carSpan: { from: number; to: number } | null = null
+  /** Sans portion de route où elle passe (un atelier posé sur la chaussée) :
+   *  la place libre la plus proche du garage, où elle reste garée. */
+  carPark: { x: number; z: number; yaw: number } | null = null
+  /** Mesurée au moins une fois : sans portion ni place, l'auto ne se montre
+   *  pas, plutôt que de traverser l'atelier posé sur la chaussée. */
+  private carFitted = false
+  /** En deçà, la portion de route ne vaut pas un aller-retour : elle se gare. */
+  static readonly CAR_MIN_RUN = 3
 
-  /** Le va-et-vient de l'auto sur la route du village. */
-  private tickCar(dt: number): void {
-    const pivot = this.car
+  /** Mesure, sur le cadastre, où l'auto passe et où l'avion se gare :
+   *  `clear` donne la distance au plein le plus proche (Ground.clearAt).
+   *  Appelé à chaque refonte du cadastre — une pose peut fermer un bout de
+   *  route. */
+  fitMovers(clear: (x: number, z: number) => number): void {
+    this.fitPlane()
+    if (!this.car) return
     const pts = this.roadPath
-    if (!pivot || pts.length < 2 || this.roadCum.length < 2) {
-      if (pivot && this.carHome) pivot.position.set(this.carHome.x, this.carHome.y, this.carHome.z)
-      return
+    const cum = this.roadCum
+    const total = cum[cum.length - 1] ?? 0
+    this.carSpan = null
+    this.carPark = null
+    this.carFitted = true
+    const { l, w } = Village.CAR_HALF
+    const need = w + Village.CAR_MARGIN
+    /** La caisse posée en (x, z), capot vers `yaw` : la place qui lui reste. */
+    const fitsAt = (x: number, z: number, dx: number, dz: number): number => {
+      let m = Infinity
+      for (let u = -l; u <= l + 1e-6; u += 0.25) m = Math.min(m, clear(x + dx * u, z + dz * u))
+      return m
     }
-    const total = this.roadCum[this.roadCum.length - 1]!
-    if (total < 2) return
-    this.carT += dt * 3.4
-    const period = total * 2 + 10
-    let u = this.carT % period
-    let d: number
-    let fwd = true
-    if (u < total) d = u
-    else if (u < total + 5) {
-      d = total
-      fwd = true
-    } else if (u < total * 2 + 5) {
-      d = total - (u - total - 5)
-      fwd = false
-    } else {
-      d = 0
-      fwd = false
+    const park = (): void => {
+      const home = this.carHome
+      if (!home) return
+      // Au plus près du garage d'abord, huit caps à chaque point.
+      for (let r = 0; r <= 10; r += 0.5)
+        for (let a = 0; a < 32; a++) {
+          const x = home.x + Math.sin((a / 32) * Math.PI * 2) * r
+          const z = home.z + Math.cos((a / 32) * Math.PI * 2) * r
+          for (let h = 0; h < 8; h++) {
+            const yaw = (h / 8) * Math.PI
+            if (fitsAt(x, z, Math.sin(yaw), Math.cos(yaw)) >= need) {
+              this.carPark = { x, z, yaw }
+              return
+            }
+          }
+          if (r === 0) break
+        }
     }
+    if (pts.length < 2 || total < 2) return park()
+    // Rochers et buissons s'écartent de la chaussée, comme les sapins de la
+    // route : l'auto roulait sur un rocher posé à 0,5 u de l'axe. Le cadastre
+    // ne le sait qu'à sa refonte : la révision la demande, et l'auto est
+    // recalée à l'image suivante.
+    const lane = w + Village.CAR_MARGIN + 0.1
+    if (this.island.clearUnder((x, z, r) => this.roadDistance(x, z) < r + lane) > 0) this.revision++
+    let best: { from: number; to: number } | null = null
+    let run: number | null = null
+    const STEP = 0.25
+    for (let d = 0; d <= total + 1e-6; d += STEP) {
+      const q = this.roadAt(d)
+      if (fitsAt(q.x, q.z, q.dx, q.dz) >= need) {
+        if (run === null) run = d
+        if (!best || d - run > best.to - best.from) best = { from: run, to: d }
+      } else run = null
+    }
+    if (best && best.to - best.from >= Village.CAR_MIN_RUN) this.carSpan = best
+    else park()
+  }
+
+  /** Distance en plan à l'axe de la route. */
+  private roadDistance(x: number, z: number): number {
+    const pts = this.roadPath
+    let best = Infinity
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!
+      const b = pts[i]!
+      const dx = b.x - a.x
+      const dz = b.z - a.z
+      const L = dx * dx + dz * dz
+      const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L))
+      best = Math.min(best, Math.hypot(x - a.x - u * dx, z - a.z - u * dz))
+    }
+    return best
+  }
+
+  /** Le point de la route à l'abscisse d, et la direction du tronçon. */
+  private roadAt(d: number): { x: number; z: number; dx: number; dz: number } {
+    const pts = this.roadPath
+    const cum = this.roadCum
     let i = 1
-    while (i < this.roadCum.length - 1 && this.roadCum[i]! < d) i++
+    while (i < cum.length - 1 && cum[i]! < d) i++
     const a = pts[i - 1]!
     const b = pts[i]!
-    const segLen = Math.max(1e-3, this.roadCum[i]! - this.roadCum[i - 1]!)
-    const t = Math.min(1, Math.max(0, (d - this.roadCum[i - 1]!) / segLen))
-    const x = a.x + (b.x - a.x) * t
-    const z = a.z + (b.z - a.z) * t
+    const segLen = Math.max(1e-3, cum[i]! - cum[i - 1]!)
+    const t = Math.min(1, Math.max(0, (d - cum[i - 1]!) / segLen))
+    return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, dx: (b.x - a.x) / segLen, dz: (b.z - a.z) / segLen }
+  }
+
+  /** Le va-et-vient de l'auto sur la route du village, entre les deux bouts
+   *  de `carSpan`. Sans portion où elle passe, elle reste garée (`carPark`). */
+  private tickCar(dt: number): void {
+    const pivot = this.car
+    if (!pivot) return
+    const total = this.roadCum[this.roadCum.length - 1] ?? 0
+    const park = this.carPark
+    if (this.carFitted && !this.carSpan) {
+      pivot.visible = park !== null
+      if (!park) return
+      pivot.position.set(park.x, GROUND_Y + 0.1, park.z)
+      pivot.rotation.y = headingYaw(Math.sin(park.yaw), Math.cos(park.yaw))
+      return
+    }
+    pivot.visible = true
+    if (this.roadPath.length < 2 || total < 2) {
+      if (this.carHome) pivot.position.set(this.carHome.x, this.carHome.y, this.carHome.z)
+      return
+    }
+    // Avant la première mesure du cadastre : toute la route, comme avant.
+    const span = this.carSpan ?? { from: 0, to: total }
+    const len = span.to - span.from
+    let d: number
+    let fwd = true
+    {
+      this.carT += dt * 3.4
+      const period = len * 2 + 10
+      const u = this.carT % period
+      if (u < len) d = span.from + u
+      else if (u < len + 5) d = span.to
+      else if (u < len * 2 + 5) {
+        d = span.to - (u - len - 5)
+        fwd = false
+      } else {
+        d = span.from
+        fwd = false
+      }
+    }
+    const { x, z, dx, dz } = this.roadAt(d)
     pivot.position.set(x, GROUND_Y + 0.1, z)
     // Le capot (+X local) dans le sens de la marche : au retour, le trajet
     // s'inverse, le cap aussi — voir headingYaw.
     const s = fwd ? 1 : -1
-    pivot.rotation.y = headingYaw((b.x - a.x) * s, (b.z - a.z) * s)
+    pivot.rotation.y = headingYaw(dx * s, dz * s)
   }
 
   /** L'APPAREIL. Hors de la fusion, parce qu'il doit décoller et se poser :
@@ -4465,6 +4603,9 @@ export class Village implements GroundSource {
     grain(geo, 0.05)
     const mesh = new Mesh(geo, this.solid)
     mesh.castShadow = true
+    // Taille réelle plafonnée (voir vehicles.ts), sur le mesh comme l'auto.
+    const k = VEHICLE_SCALE.plane
+    mesh.scale.setScalar(k)
     const pivot = new Group()
     pivot.add(mesh)
     // Le cap d'abord, puis le tangage autour de l'envergure (z local) et le
@@ -4472,7 +4613,15 @@ export class Village implements GroundSource {
     // tangage se faisait autour de l'axe x du MONDE, quel que soit le cap.
     pivot.rotation.order = 'YZX'
     // Cap de décollage : vers le large, dos à l'île.
-    this.planeAt = { x: pl.x, y: pl.y + 0.4, z: pl.z, rot: Math.atan2(pl.x, pl.z) }
+    // Les roues (0,34 sous le pivot, ×k) restent où elles touchaient l'aire.
+    // L'appareil avance d'abord de ce que sa queue a gagné ; le cadastre
+    // l'avance ensuite jusqu'à ce qu'il ait sa marge (fitPlane).
+    const rot = Math.atan2(pl.x, pl.z)
+    this.planeBase = { x: pl.x, z: pl.z }
+    this.planeSlotRot = pl.rot
+    this.planeAt = { x: pl.x, y: pl.y + 0.4 + Village.PLANE_WHEEL * (k - 1), z: pl.z, rot }
+    this.planeOff = Village.PLANE_TAIL * (k - 1)
+    this.placePlane(this.planeOff)
     this.plane = pivot
     this.planeRest()
     this.group.add(pivot)
@@ -4501,6 +4650,204 @@ export class Village implements GroundSource {
     if (!this.plane) return
     this.flightDir = -1
     this.flight = 0
+  }
+
+  /** Le dessous des roues sous le pivot de l'avion, avant mise à l'échelle. */
+  private static readonly PLANE_WHEEL = 0.34
+  /** La queue derrière le pivot de l'avion, avant mise à l'échelle. */
+  private static readonly PLANE_TAIL = 0.88
+  /** Demi-envergure de l'avion à sa taille de jeu, en monde. */
+  static readonly PLANE_HALF_SPAN = 1.12 * VEHICLE_SCALE.plane
+  /** Ce que les ailes laissent aux houppiers : rayon de cime et marge. */
+  private static readonly PLANE_TREE_CLEAR = 1.6
+  /** Sous cette hauteur (au-dessus du sol), l'avion peut toucher un sapin. */
+  static readonly PLANE_LOW = 7.5
+
+  /** La position de l'avion à l'avancement t (0 : à l'arrêt, 1 : parti), pour
+   *  un départ. Le retour refait la même courbe à l'envers. */
+  planePose(t: number): { x: number; y: number; z: number } | null {
+    const a = this.planeAt
+    if (!a) return null
+    const roll = Math.min(1, t / 0.25)
+    const climb = Math.max(0, (t - 0.25) / 0.75)
+    const d = roll * 3 + climb * climb * 52
+    return { x: a.x + Math.sin(a.rot) * d, y: a.y + climb * climb * 26, z: a.z + Math.cos(a.rot) * d }
+  }
+
+  /** Les points du trajet où l'avion vole encore sous la cime des arbres. */
+  private planeLowPath(): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = []
+    for (let t = 0; t <= 1; t += 0.01) {
+      const q = this.planePose(t)!
+      if (q.y - GROUND_Y > Village.PLANE_LOW) break
+      out.push({ x: q.x, z: q.z })
+    }
+    return out
+  }
+
+  /** Le centre de l'aérodrome, d'où l'on compte l'avancée de l'appareil. */
+  private planeBase: { x: number; z: number } | null = null
+  /** Ce que l'avion laisse, en plan, entre lui et le premier plein. */
+  static readonly PLANE_MARGIN = 0.5
+  /** L'avancée retenue, depuis le centre de l'aérodrome. */
+  private planeOff = 0
+  /** L'orientation de l'aérodrome (celle de son atelier). */
+  private planeSlotRot = 0
+
+  /** L'appareil à `off` u en avant du centre de l'aérodrome, dans l'axe de
+   *  décollage, et la pinède écartée de son couloir tant qu'il vole sous la
+   *  cime des sapins : à taille réelle, ses ailes y passaient. */
+  private placePlane(off: number): void {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!a || !b) return
+    a.x = b.x + Math.sin(a.rot) * off
+    a.z = b.z + Math.cos(a.rot) * off
+    this.island.clearCorridor(this.planeLowPath(), Village.PLANE_HALF_SPAN + Village.PLANE_TREE_CLEAR)
+  }
+
+  /** Le hangar (et sa voûte) et la manche à air (et son mât) de l'aérodrome,
+   *  relevés sur sa géométrie (case 'plane' de propGeo), dans le repère de
+   *  l'atelier : centre, demi-côtés, sommet au-dessus du sol. Le cadastre
+   *  compte tout l'aérodrome comme plein, tarmac compris : il ne peut pas dire
+   *  où l'appareil tient SUR son aire. */
+  private static readonly AIRFIELD_SOLIDS = [
+    { x: -1.7, z: -0.1, hx: 0.52, hz: 0.52, top: 1.26 },
+    { x: 1.72, z: 0.6, hx: 0.26, hz: 0.17, top: 1.29 },
+  ]
+
+  /** L'avion, en quelques disques : fuselage, aile, empennage, train — repère
+   *  de l'appareil à sa taille de jeu 3.61.0 (u vers le nez, v vers l'aile
+   *  gauche, y depuis le pivot), rayon en plan. */
+  private static readonly PLANE_PROXY: readonly { u: number; v: number; y: number; r: number }[] = (() => {
+    const out: { u: number; v: number; y: number; r: number }[] = []
+    for (let u = -0.88; u <= 0.88 + 1e-6; u += 0.11) out.push({ u, v: 0, y: -0.17, r: 0.17 })
+    for (let v = -1.12; v <= 1.12 + 1e-6; v += 0.112) out.push({ u: 0.02, v, y: 0.15, r: 0.21 })
+    for (let v = -0.4; v <= 0.4 + 1e-6; v += 0.1) out.push({ u: -0.62, v, y: 0.04, r: 0.15 })
+    for (const v of [-0.22, 0.22]) out.push({ u: 0.16, v, y: -0.34, r: 0.08 })
+    return out
+  })()
+
+  /** La place qui reste à l'appareil, pivot en (x, z), `lift` au-dessus de
+   *  l'aire, cap `rot` : la distance en plan de son bord au premier plein qui
+   *  monte plus haut que lui — le hangar et la manche à air de son aire, les
+   *  caisses du quai du marchand, et les parcelles voisines tant qu'il vole
+   *  au ras du sol (`lots`, chacune avec le sommet au-dessus duquel elle ne
+   *  gêne plus). Rend dès que la place tombe sous `floor`. */
+  private planeRoom(
+    x: number,
+    z: number,
+    lift: number,
+    rot: number,
+    lots: readonly { x: number; z: number; r: number; top: number }[],
+    floor: number,
+  ): number {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!a || !b) return -Infinity
+    const k = VEHICLE_SCALE.plane
+    const dx = Math.sin(rot)
+    const dz = Math.cos(rot)
+    const c = Math.cos(this.planeSlotRot)
+    const sn = Math.sin(this.planeSlotRot)
+    const g = this.goodsPos
+    let room = Infinity
+    for (const q of Village.PLANE_PROXY) {
+      const px = x + (dx * q.u + dz * q.v) * k
+      const pz = z + (dz * q.u - dx * q.v) * k
+      const py = a.y - GROUND_Y + lift + q.y * k
+      const r = q.r * k
+      // Dans le repère de l'atelier (inverse de rotateY).
+      const lx = (px - b.x) * c - (pz - b.z) * sn
+      const lz = (px - b.x) * sn + (pz - b.z) * c
+      for (const o of Village.AIRFIELD_SOLIDS) {
+        if (py >= o.top) continue
+        const ex = Math.max(0, Math.abs(lx - o.x) - o.hx)
+        const ez = Math.max(0, Math.abs(lz - o.z) - o.hz)
+        room = Math.min(room, Math.hypot(ex, ez) - r)
+      }
+      if (g && py < Village.GOODS_TOP) {
+        const gc = Math.cos(g.rot)
+        const gs = Math.sin(g.rot)
+        const gx = Math.max(0, Math.abs((px - g.x) * gc - (pz - g.z) * gs) - Village.QUAY.w / 2 - 0.1)
+        const gz = Math.max(0, Math.abs((px - g.x) * gs + (pz - g.z) * gc) - Village.QUAY.d / 2 - 0.1)
+        room = Math.min(room, Math.hypot(gx, gz) - r)
+      }
+      if (lift < 1)
+        for (const l of lots) if (py < l.top) room = Math.min(room, Math.hypot(px - l.x, pz - l.z) - l.r - r)
+      if (room < floor) return room
+    }
+    return room
+  }
+
+  /** Comment l'avion s'est garé : avec sa marge (« clear »), ou, faute de
+   *  place, au placement qui lui en laisse le plus (« tight »). */
+  planeFit: 'clear' | 'tight' | null = null
+
+  /** Avance l'avion dans son axe de décollage jusqu'au premier point où il
+   *  a sa marge, à l'arrêt comme pendant son roulage et le début de sa
+   *  montée : à sa place d'avant, déjà à sa taille 3.61.0, sa queue frôlait
+   *  le hangar (0,3 u) et il traversait la manche à air en roulant. */
+  private fitPlane(): void {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!this.plane || !a || !b) return
+    // Les parcelles à portée du roulage, chacune avec son sommet : disque
+    // plein au premier passage ; au second, un atelier ne gêne que sous son
+    // sommet, Merveille, musée, gare et campement restent pleins.
+    const near = this.lots.filter((l) => {
+      const d = Math.hypot(l.x - b.x, l.z - b.z)
+      return d > 0.01 && d < 24
+    })
+    const strict = near.map((l) => ({ ...l, top: Infinity }))
+    const tall = near.map((l) => {
+      const pl = this.propPlacements.find((q) => Math.hypot(q.x - l.x, q.z - l.z) < 0.01)
+      return { ...l, top: pl ? this.propTop(pl.id) + 0.1 : Infinity }
+    })
+    const pathRoom = (rot: number, off: number, lots: typeof strict, floor: number): number => {
+      const dx = Math.sin(rot)
+      const dz = Math.cos(rot)
+      let room = Infinity
+      for (let t = 0; t <= 0.6; t += 0.02) {
+        const roll = Math.min(1, t / 0.25)
+        const climb = Math.max(0, (t - 0.25) / 0.75)
+        const d = off + roll * 3 + climb * climb * 52
+        room = Math.min(room, this.planeRoom(b.x + dx * d, b.z + dz * d, climb * climb * 26, rot, lots, floor))
+        if (room < floor) return room
+      }
+      return room
+    }
+    // Droit vers le large d'abord ; si l'axe est barré (un quai posé en
+    // travers), le cap s'écarte peu à peu, jusqu'à un radian. Les disques de
+    // parcelle sont prudents (un champ est plat) : si rien ne les évite, un
+    // second passage compte chaque atelier à sa hauteur. Et si rien ne laisse
+    // la marge, le placement qui laisse le plus de place.
+    const radial = Math.atan2(b.x, b.z)
+    const DRIFT = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1]
+    let found: { rot: number; off: number } | null = null
+    let best = { rot: radial, off: this.planeOff, room: -Infinity }
+    for (const lots of [strict, tall]) {
+      for (const dr of DRIFT) {
+        for (let off = 0; off <= 8 && !found; off += 0.25) {
+          // Au second passage, on garde aussi le placement le plus large.
+          const floor = lots === strict ? Village.PLANE_MARGIN : Math.min(Village.PLANE_MARGIN, best.room)
+          const room = pathRoom(radial + dr, off, lots, floor)
+          if (room >= Village.PLANE_MARGIN) found = { rot: radial + dr, off }
+          else if (lots === tall && room > best.room) best = { rot: radial + dr, off, room }
+        }
+        if (found) break
+      }
+      if (found) break
+    }
+    this.planeFit = found ? 'clear' : 'tight'
+    const pick = found ?? best
+    if (Math.abs(pick.off - this.planeOff) < 1e-6 && Math.abs(pick.rot - a.rot) < 1e-6) return
+    a.rot = pick.rot
+    this.planeOff = pick.off
+    this.placePlane(pick.off)
+    if (this.flight < 0) this.planeRest()
+    // Des sapins ont pu tomber : le cadastre se refait à l'image suivante.
+    this.revision++
   }
 
   private plane: Group | null = null
@@ -4942,6 +5289,8 @@ export class Village implements GroundSource {
   /** La terre battue du quai, et le rayon qui la couvre (demi-diagonale). */
   private static readonly QUAY = { w: 4.7, d: 1.95 }
   static readonly GOODS_R = Math.hypot(Village.QUAY.w / 2, Village.QUAY.d / 2) + 0.05
+  /** Le haut des lots posés sur le quai, au-dessus du sol (prudent). */
+  private static readonly GOODS_TOP = 1.6
   /** Même échelle que l'étain : les lots sont modelés à l'échelle brute
    *  d'etain.glb, et se lisent ensemble comme une même cargaison. */
   private static readonly CARGO_K = 0.85 * SCALE

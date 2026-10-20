@@ -10,6 +10,19 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.66.0',
+    title: 'Des véhicules à la taille du colon',
+    items: [
+      "Les bateaux sont à l'échelle du colon, qui sert de mesure (1,70 m) : le radeau fait 3 m, la pirogue 5,5 m, la barque à voile 6,5 m et le hors-bord 5 m. Avant, le radeau était plus petit que le colon.",
+      "La caravelle, le vapeur et la barque marchande grandissent aussi (environ 9,6 m), mais restent plus petits qu'en vrai (20 à 25 m) : à leur taille réelle, ils seraient plus longs que le rayon de l'île et cacheraient le village depuis la vue par défaut.",
+      "Le colon assis dans la barque d'expédition a désormais sa taille, au lieu d'une silhouette réduite de moitié.",
+      "Au ponton, la barque s'amarre par l'arrière au bout du tablier au lieu de chevaucher le ponton et la plage. Elle part d'un endroit où toute sa coque flotte. La barque marchande mouille un peu plus au large, hors de la plage.",
+      "L'automobile est une Ford T à sa taille (3,2 m). Elle ne roule que sur la portion de route où elle passe sans toucher un bâtiment, et elle n'entre plus dans le feu de camp. Les rochers et buissons posés sur la chaussée sont retirés, et les réverbères sont un peu plus écartés de la route. Si la route est encombrée sur toute sa longueur, l'auto reste garée près du garage.",
+      "L'avion est deux fois et demie plus grand (4,3 m d'envergure). C'est moins que la moitié de la taille réelle : il n'y a pas plus de place autour de l'aérodrome. Il se gare un peu plus loin sur l'aire, pour ne plus toucher le hangar ni la manche à air. Si un bâtiment lui barre la route, il décolle un peu de biais, et les sapins de son couloir de décollage sont abattus.",
+      "Le train et le traîneau de Noël ne changent pas. Ta partie, tes bâtiments et ta production restent tels quels.",
+    ],
+  },
+  {
     version: '3.65.0',
     title: "Faire le tour de l'île au clavier",
     items: [

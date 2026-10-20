@@ -24,6 +24,62 @@ export const BOAT_MODELS: readonly VehicleId[] = [
   'motorboat',
 ]
 
+/** L'étalon : le colon debout fait 2,2 u en jeu (pieds au sommet du crâne,
+ *  mesuré en 3.61.0), qu'on lit comme 1,70 m. Une unité vaut donc 0,77 m. */
+export const UNITS_PER_METRE = 2.2 / 1.7
+
+/** La plus grande cote du fichier livré (longueur, ou envergure pour
+ *  l'avion), en unités monde : la taille de jeu jusqu'à la 3.61.0. */
+export const FILE_SIZE: Record<VehicleId, number> = {
+  raft: 1.57,
+  canoe: 2.4,
+  sailboat: 2.938,
+  caravel: 5.014,
+  steamer: 4.45,
+  motorboat: 3.6,
+  merchant: 4.286,
+  car: 2.47,
+  plane: 2.24,
+}
+
+/** La même cote dans la réalité, en mètres : radeau de rondins, pirogue
+ *  monoxyle, barque à voile, caravelle (la Niña : ~20 m), petit vapeur à
+ *  roues côtier, hors-bord, caboteur marchand de l'âge du Bronze (l'épave
+ *  d'Uluburun : ~15 m), Ford T (3,4 m sur 1,68 m) et monoplan à aile haute (Piper Cub :
+ *  10,7 m d'envergure). */
+export const REAL_SIZE_M: Record<VehicleId, number> = {
+  raft: 3,
+  canoe: 5.5,
+  sailboat: 6.5,
+  caravel: 22,
+  steamer: 25,
+  motorboat: 5,
+  merchant: 15,
+  car: 3.4,
+  plane: 9,
+}
+
+/** Le facteur appliqué au fichier, sur la taille de jeu 3.61.0. C'est le
+ *  réel (REAL_SIZE_M × UNITS_PER_METRE / FILE_SIZE) partout où il tient —
+ *  l'auto, plus trapue que la Ford T, est calée sur sa largeur (1,66 m) : sa
+ *  longueur tombe à 3,2 m ; ailleurs, la plus grande taille qui tient :
+ *  - caravelle, vapeur, caboteur : au réel, la caravelle ferait 28 u, plus que
+ *    le rayon de l'île (24,4 u), et masquerait le bourg depuis la caméra par
+ *    défaut (le ponton lui fait face). Plafond de lisibilité : 12,5 u de long ;
+ *  - avion : à 11,6 u d'envergure, les ailes couvrent les parcelles voisines
+ *    de l'aérodrome. Plafonné à ce qui laisse 0,5 u de marge au sol. */
+export const VEHICLE_SCALE: Record<VehicleId, number> = {
+  raft: 2.5,
+  canoe: 3,
+  sailboat: 2.85,
+  caravel: 2.49,
+  steamer: 2.8,
+  motorboat: 1.8,
+  merchant: 2.9,
+  car: 1.7,
+  plane: 2.5,
+}
+
 /** Les fichiers sont livrés base à y = 0 et centrés en x/z, déjà à leur taille
  *  de jeu. Les primitives, elles, avaient leur origine ailleurs (la quille du
  *  radeau sous zéro, la caravelle décalée vers sa proue…). Ce décalage remet le modèle dans le repère de la

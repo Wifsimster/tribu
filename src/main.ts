@@ -77,6 +77,9 @@ const stage = new Stage(canvas)
 const game = new Game(Date.now())
 const caravan = new Caravan()
 const boat = new ExpeditionBoat()
+/** La terre de l'île du moment : la barque n'appareille que là où sa coque
+ *  entière flotte. `island` est refaite à chaque buildWorld, d'où la flèche. */
+const isLand = (x: number, z: number): boolean => island.isLand(x, z)
 /** Séquence d'embarquement : marche → embarque → large → (voyage) → accoste → marche. */
 let expPhase: 'none' | 'walking' | 'sailed' = 'none'
 
@@ -229,6 +232,9 @@ function buildWorld(): void {
   // révision du village ou de la faune, et la boucle le refait.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   ground = new Ground(island, [village, fauna])
+  // L'auto ne roule que là où sa caisse passe, l'avion se gare où ses ailes
+  // tiennent : le cadastre le dit.
+  village.fitMovers((x, z) => ground.clearAt(x, z))
   settler.setGround(ground)
   fauna.setGround(ground)
   villagers.setGround(ground)
@@ -501,7 +507,7 @@ game.on((e) => {
         .join('  ')
       // La barque ne revient que si l'on est parti par la mer ; du rail ou de
       // l'avion, le colon rentre par ses propres moyens.
-      if (tripKind === 'sea') boat.sailIn(settler.shorePoint)
+      if (tripKind === 'sea') boat.sailIn(settler.shorePoint, isLand)
       else {
         if (tripKind === 'air') village.planeArrive()
         settler.returnFromExpedition()
@@ -1737,6 +1743,7 @@ function frame(now: number): void {
   // quiconque ne marche.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   if (ground.refresh()) {
+    village.fitMovers((x, z) => ground.clearAt(x, z))
     // La carte refaite a pu effacer du décor sous la nouvelle pose : les
     // nœuds de récolte se relèvent, et si le colon marchait vers un buisson
     // ou un rocher qui n'existe plus, il repart vers un nœud debout.
@@ -1750,7 +1757,7 @@ function frame(now: number): void {
   boat.update(dt, elapsed)
   if (expPhase === 'walking' && settler.isAway) {
     // Il est arrivé à l'embarquement : le véhicule s'ébranle.
-    if (tripKind === 'sea') boat.launchOut(settler.shorePoint)
+    if (tripKind === 'sea') boat.launchOut(settler.shorePoint, isLand)
     else if (tripKind === 'air') village.planeDepart()
     expPhase = 'sailed'
   }
@@ -1935,6 +1942,8 @@ document.getElementById('photo-save')!.addEventListener('click', () => {
   island: () => island,
   ground: () => ground,
   anchors: () => anchorMarks.anchors,
+  boat: () => boat,
+  caravan: () => caravan,
 }
 
 // Credit real elapsed time when the tab comes back, and never lose a session.

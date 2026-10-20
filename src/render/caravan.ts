@@ -15,13 +15,21 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
 import { loadModels } from './models'
-import { headingYaw, vehicleGeometry } from './vehicles'
+import { VEHICLE_SCALE, headingYaw, vehicleGeometry } from './vehicles'
 
 type State = 'away' | 'sailingIn' | 'docked' | 'sailingOut'
 
 const APPROACH = 2.35 // azimut d'arrivée, choisi pour croiser la caméra par défaut
 const SPAWN_R = 46
-const DOCK_R = 19
+/** L'échelle de jeu de la barque jusqu'à la 3.61.0, puis le facteur de taille
+ *  réelle par-dessus (voir vehicles.ts). */
+const BASE_SCALE = 1.5
+const SCALE = BASE_SCALE * VEHICLE_SCALE.merchant
+/** La poupe mouille à 19 u du centre, où mouillait le milieu de la barque
+ *  jusqu'à la 3.61.0, et la coque s'étend au large. Centrée à 19, la barque
+ *  de 12,4 u avait la moitié de sa coque sur la plage (la côte est à 17,7). */
+const HALF_LENGTH = 4.286 / 2
+const DOCK_R = 19 + HALF_LENGTH * VEHICLE_SCALE.merchant
 const TRAVEL = 7 // secondes de trajet, dans un sens comme dans l'autre
 
 function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
@@ -106,7 +114,8 @@ export class Caravan {
     // ×1.5 : un cargo côtier, même modeste, dépasse les 2.7 u — la barque
     // marchande faisait la taille de la barque d'expédition du colon. L'échelle
     // vit sur le groupe : la houle (position) et la voile animée n'y touchent pas.
-    this.group.scale.setScalar(1.5)
+    // La taille réelle (×VEHICLE_SCALE) s'y ajoute : 12,4 u de long.
+    this.group.scale.setScalar(SCALE)
     this.group.visible = false
 
     this.spawn = new Vector3(Math.sin(APPROACH) * SPAWN_R, 0, Math.cos(APPROACH) * SPAWN_R)
@@ -134,7 +143,7 @@ export class Caravan {
    *  retire, sinon la barque serait agrandie deux fois. */
   private adopt(): void {
     if (this.modelled) return
-    const geo = vehicleGeometry('merchant', this.group.scale.x)
+    const geo = vehicleGeometry('merchant', BASE_SCALE)
     if (!geo) return
     this.hull.geometry.dispose()
     this.hull.geometry = geo
