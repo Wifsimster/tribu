@@ -15,13 +15,21 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
 import { loadModels } from './models'
-import { headingYaw, vehicleGeometry } from './vehicles'
+import { VEHICLE_SCALE, headingYaw, vehicleGeometry } from './vehicles'
 
 type State = 'away' | 'sailingIn' | 'docked' | 'sailingOut'
 
 const APPROACH = 2.35 // azimut d'arrivée, choisi pour croiser la caméra par défaut
 const SPAWN_R = 46
-const DOCK_R = 19
+/** L'échelle de jeu de la barque jusqu'à la 3.61.0, puis le facteur de taille
+ *  réelle par-dessus (voir vehicles.ts). */
+const BASE_SCALE = 1.5
+const SCALE = BASE_SCALE * VEHICLE_SCALE.merchant
+/** La poupe mouille à 19 u du centre, où mouillait le milieu de la barque
+ *  jusqu'à la 3.61.0, et la coque s'étend au large. Centrée à 19, la barque
+ *  de 12,4 u avait la moitié de sa coque sur la plage (la côte est à 17,7). */
+const HALF_LENGTH = 4.286 / 2
+const DOCK_R = 19 + HALF_LENGTH * VEHICLE_SCALE.merchant
 const TRAVEL = 7 // secondes de trajet, dans un sens comme dans l'autre
 
 function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
@@ -49,6 +57,7 @@ export class Caravan {
   private readonly spawn: Vector3
   private readonly dock: Vector3
   private readonly exit: Vector3
+  private isLand: ((x: number, z: number) => boolean) | null = null
 
   constructor() {
     const wood = PALETTE.trunk
@@ -106,13 +115,60 @@ export class Caravan {
     // ×1.5 : un cargo côtier, même modeste, dépasse les 2.7 u — la barque
     // marchande faisait la taille de la barque d'expédition du colon. L'échelle
     // vit sur le groupe : la houle (position) et la voile animée n'y touchent pas.
-    this.group.scale.setScalar(1.5)
+    // La taille réelle (×VEHICLE_SCALE) s'y ajoute : 12,4 u de long.
+    this.group.scale.setScalar(SCALE)
     this.group.visible = false
 
     this.spawn = new Vector3(Math.sin(APPROACH) * SPAWN_R, 0, Math.cos(APPROACH) * SPAWN_R)
     this.dock = new Vector3(Math.sin(APPROACH) * DOCK_R, 0, Math.cos(APPROACH) * DOCK_R)
     const exitA = APPROACH + 0.7
     this.exit = new Vector3(Math.sin(exitA) * SPAWN_R, 0, Math.cos(exitA) * SPAWN_R)
+  }
+
+  /** La côte de l'île : la barque mouille au premier rayon, à partir de
+   *  DOCK_R, où toute sa coque flotte (0,2 u de marge), à l'approche, à quai
+   *  et au départ — comme l'appareillage de la barque d'expédition. Une langue
+   *  de terre dans l'axe d'arrivée (graines 20, 41, 777) mordait la coque. */
+  fitShore(isLand: (x: number, z: number) => boolean): void {
+    this.isLand = isLand
+    this.fitDock()
+  }
+
+  private fitDock(): void {
+    const isLand = this.isLand
+    if (!isLand) return
+    const geo = this.hull.geometry
+    geo.computeBoundingBox()
+    const bb = geo.boundingBox!
+    const m = 0.2 / SCALE
+    /** La coque posée en (x, z), proue vers (dx, dz) : flotte-t-elle ? */
+    const floats = (x: number, z: number, dx: number, dz: number): boolean => {
+      const L = Math.hypot(dx, dz)
+      const fx = dx / L
+      const fz = dz / L
+      for (let u = bb.min.x - m; u <= bb.max.x + m + 1e-6; u += 0.1)
+        for (let v = bb.min.z - m; v <= bb.max.z + m + 1e-6; v += 0.1)
+          if (isLand(x + (fx * u - fz * v) * SCALE, z + (fz * u + fx * v) * SCALE)) return false
+      return true
+    }
+    const ax = Math.sin(APPROACH)
+    const az = Math.cos(APPROACH)
+    for (let r = DOCK_R; r <= DOCK_R + 12; r += 0.25) {
+      const x = ax * r
+      const z = az * r
+      // À quai et sur l'approche (l'axe d'arrivée, vers le centre)…
+      let ok = floats(x, z, -ax, -az)
+      for (let d = r + 0.5; ok && d < SPAWN_R; d += 0.5) ok = floats(ax * d, az * d, -ax, -az)
+      // …puis au départ, cap sur la sortie.
+      const ex = this.exit.x - x
+      const ez = this.exit.z - z
+      for (let s = 0.02; ok && s <= 1; s += 0.02) ok = floats(x + ex * s, z + ez * s, ex, ez)
+      if (ok) {
+        this.dock.set(x, 0, z)
+        return
+      }
+    }
+    this.dock.set(ax * DOCK_R, 0, az * DOCK_R)
   }
 
   get docked(): boolean {
@@ -134,11 +190,13 @@ export class Caravan {
    *  retire, sinon la barque serait agrandie deux fois. */
   private adopt(): void {
     if (this.modelled) return
-    const geo = vehicleGeometry('merchant', this.group.scale.x)
+    const geo = vehicleGeometry('merchant', BASE_SCALE)
     if (!geo) return
     this.hull.geometry.dispose()
     this.hull.geometry = geo
     this.modelled = true
+    // La coque du modèle n'a pas tout à fait la forme de la primitive.
+    this.fitDock()
   }
 
   depart(): void {

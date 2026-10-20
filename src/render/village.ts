@@ -8,14 +8,17 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DodecahedronGeometry,
+  Euler,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshToonMaterial,
   Object3D,
   PointLight,
+  Quaternion,
   RingGeometry,
   SphereGeometry,
   Sprite,
@@ -32,7 +35,7 @@ import { GROUND_Y, type Island } from './island'
 import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
-import { headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
+import { VEHICLE_SCALE, headingYaw, vehicleGeometry, type VehicleId } from './vehicles'
 import type { Footprint, GroundSource } from './ground'
 import {
   CAR_LENGTH,
@@ -275,6 +278,26 @@ function bakeFirelight(geo: BufferGeometry): void {
 }
 
 /** Demi-étendue d'un maillage centré, en x puis en z. */
+/** Une case du relevé de l'avion : position en plan (u vers le nez, v vers
+ *  l'aile gauche), bas et haut de la colonne depuis le pivot, rayon en plan —
+ *  à sa taille 3.61.0. */
+interface PlaneCell {
+  u: number
+  v: number
+  y: number
+  top: number
+  r: number
+}
+
+/** Distance en plan du point (px, pz) au segment [a, b]. */
+function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax
+  const dz = bz - az
+  const L = dx * dx + dz * dz
+  const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L))
+  return Math.hypot(px - ax - u * dx, pz - az - u * dz)
+}
+
 function halfX(geo: BufferGeometry): number {
   geo.computeBoundingBox()
   const b = geo.boundingBox!
@@ -2359,7 +2382,9 @@ export class Village implements GroundSource {
     }
     if (swap()) return
     void loadModels([id]).then((fresh) => {
-      if (fresh && this.group.parent) swap()
+      // L'avion se regare selon la forme du modèle (planeProxy) : le cadastre
+      // refait, la boucle rappelle fitMovers.
+      if (fresh && this.group.parent && swap() && id === 'plane') this.revision++
     })
   }
 
@@ -4273,6 +4298,11 @@ export class Village implements GroundSource {
    *  appel de plus) et chaque bâtiment reçoit sa flaque de lumière. Les
    *  lueurs, elles, vivent dans un mesh additif dont l'opacité suit la nuit. */
   private lampGlow: Mesh | null = null
+  /** Le pied de chaque réverbère : l'avion, qui roule hors des rues, doit les
+   *  éviter (le mât monte à 3 u, la potence déborde de 0,54 u en +x). */
+  private lampPosts: readonly { x: number; y: number; z: number }[] = []
+  /** Autour de l'aérodrome, dans ce rayon, ni réverbère ni roulage gêné. */
+  private static readonly FIELD_CLEAR = 7
 
   private streetLights(all: BufferGeometry[]): void {
     if (this.lampGlow) {
@@ -4286,6 +4316,7 @@ export class Village implements GroundSource {
     const warm = new Color('#ffdba0')
     const pool = new Color('#e8a94e')
     const posts: { x: number; y: number; z: number }[] = []
+    const field = this.propPlacements.find((q) => q.id === 'plane')
     for (const lane of this.lanes!) {
       // Un réverbère tous les cinq pas, alternativement d'un côté et de
       // l'autre : une rue éclairée n'a pas ses lampes en vis-à-vis.
@@ -4296,12 +4327,15 @@ export class Village implements GroundSource {
         const dz = b.z - a.z
         const len = Math.hypot(dx, dz) || 1
         const side = (i / 5) % 2 === 0 ? 1 : -1
-        const x = a.x + (dz / len) * side * 1.35
-        const z = a.z - (dx / len) * side * 1.35
+        const x = a.x + (dz / len) * side * 1.75
+        const z = a.z - (dx / len) * side * 1.75
         if (!this.island.isLand(x, z)) continue
+        // Pas de réverbère sur l'aire de l'aérodrome : l'avion y roule.
+        if (field && Math.hypot(x - field.x, z - field.z) < Village.FIELD_CLEAR) continue
         posts.push({ x, y: GROUND_Y, z })
       }
     }
+    this.lampPosts = posts
     for (const q of posts) {
       all.push(part(new CylinderGeometry(0.11, 0.15, 0.16, 8), C.stoneDark, q.x, q.y + 0.08, q.z))
       all.push(part(new CylinderGeometry(0.05, 0.075, 2.9, 7), iron, q.x, q.y + 1.5, q.z))
@@ -4371,10 +4405,18 @@ export class Village implements GroundSource {
     grain(geo, 0.05)
     const mesh = new Mesh(geo, this.solid)
     mesh.castShadow = true
+    // Taille réelle (une Ford T) : sur le mesh, pour que primitive et modèle
+    // grandissent pareil ; les roues restent au ras de la route.
+    const k = VEHICLE_SCALE.car
+    mesh.scale.setScalar(k)
+    mesh.position.y = Village.CAR_BASE * (1 - k)
     const pivot = new Group()
     pivot.add(mesh)
     this.car = pivot
     this.carHome = { x: pl.x, y: pl.y, z: pl.z }
+    this.carSpan = null
+    this.carPark = null
+    this.carFitted = false
     this.group.add(pivot)
     this.vehicleModel(mesh, 'car', 0.05)
   }
@@ -4394,46 +4436,164 @@ export class Village implements GroundSource {
   private car: Group | null = null
   private carHome: { x: number; y: number; z: number } | null = null
   private carT = 0
+  /** Le dessous des roues, dans le repère du mesh de l'auto (primitive ×2 et
+   *  modèle recalé, voir vehicles.ts). */
+  private static readonly CAR_BASE = 0.04
+  /** Demi-longueur et demi-largeur de l'auto à taille réelle, en monde. */
+  static readonly CAR_HALF = { l: 1.24 * VEHICLE_SCALE.car, w: 0.643 * VEHICLE_SCALE.car }
+  /** Ce que l'auto laisse entre sa carrosserie et le premier plein, en plus
+   *  de ce que le cadastre garde déjà (il sous-estime toujours, de 0,17 u). */
+  static readonly CAR_MARGIN = 0
+  /** La portion de route que l'auto parcourt, en abscisses : la plus longue
+   *  où sa caisse entière passe. La route part du foyer et finit au ponton ;
+   *  à taille réelle, l'auto entrait dans le feu, mordait la Merveille et les
+   *  réverbères. Null tant que le cadastre ne l'a pas mesurée. */
+  carSpan: { from: number; to: number } | null = null
+  /** Sans portion de route où elle passe (un atelier posé sur la chaussée) :
+   *  la place libre la plus proche du garage, où elle reste garée. */
+  carPark: { x: number; z: number; yaw: number } | null = null
+  /** Mesurée au moins une fois : sans portion ni place, l'auto ne se montre
+   *  pas, plutôt que de traverser l'atelier posé sur la chaussée. */
+  private carFitted = false
+  /** En deçà, la portion de route ne vaut pas un aller-retour : elle se gare. */
+  static readonly CAR_MIN_RUN = 3
 
-  /** Le va-et-vient de l'auto sur la route du village. */
-  private tickCar(dt: number): void {
-    const pivot = this.car
+  /** Mesure, sur le cadastre, où l'auto passe et où l'avion se gare :
+   *  `clear` donne la distance au plein le plus proche (Ground.clearAt),
+   *  `sources` les autres poseurs d'emprises du cadastre (la faune).
+   *  Appelé à chaque refonte du cadastre — une pose peut fermer un bout de
+   *  route. */
+  fitMovers(clear: (x: number, z: number) => number, sources: readonly GroundSource[] = []): void {
+    // L'avion lit aussi les emprises des autres poseurs (l'enclos de la faune).
+    this.planeSources = sources
+    this.fitPlane()
+    if (!this.car) return
     const pts = this.roadPath
-    if (!pivot || pts.length < 2 || this.roadCum.length < 2) {
-      if (pivot && this.carHome) pivot.position.set(this.carHome.x, this.carHome.y, this.carHome.z)
-      return
+    const cum = this.roadCum
+    const total = cum[cum.length - 1] ?? 0
+    this.carSpan = null
+    this.carPark = null
+    this.carFitted = true
+    const { l, w } = Village.CAR_HALF
+    const need = w + Village.CAR_MARGIN
+    /** La caisse posée en (x, z), capot vers `yaw` : la place qui lui reste. */
+    const fitsAt = (x: number, z: number, dx: number, dz: number): number => {
+      let m = Infinity
+      for (let u = -l; u <= l + 1e-6; u += 0.25) m = Math.min(m, clear(x + dx * u, z + dz * u))
+      return m
     }
-    const total = this.roadCum[this.roadCum.length - 1]!
-    if (total < 2) return
-    this.carT += dt * 3.4
-    const period = total * 2 + 10
-    let u = this.carT % period
-    let d: number
-    let fwd = true
-    if (u < total) d = u
-    else if (u < total + 5) {
-      d = total
-      fwd = true
-    } else if (u < total * 2 + 5) {
-      d = total - (u - total - 5)
-      fwd = false
-    } else {
-      d = 0
-      fwd = false
+    const park = (): void => {
+      const home = this.carHome
+      if (!home) return
+      // Au plus près du garage d'abord, huit caps à chaque point.
+      for (let r = 0; r <= 10; r += 0.5)
+        for (let a = 0; a < 32; a++) {
+          const x = home.x + Math.sin((a / 32) * Math.PI * 2) * r
+          const z = home.z + Math.cos((a / 32) * Math.PI * 2) * r
+          for (let h = 0; h < 8; h++) {
+            const yaw = (h / 8) * Math.PI
+            if (fitsAt(x, z, Math.sin(yaw), Math.cos(yaw)) >= need) {
+              this.carPark = { x, z, yaw }
+              return
+            }
+          }
+          if (r === 0) break
+        }
     }
+    if (pts.length < 2 || total < 2) return park()
+    // Rochers et buissons s'écartent de la chaussée, comme les sapins de la
+    // route : l'auto roulait sur un rocher posé à 0,5 u de l'axe. Le cadastre
+    // ne le sait qu'à sa refonte : la révision la demande, et l'auto est
+    // recalée à l'image suivante.
+    const lane = w + Village.CAR_MARGIN + 0.1
+    if (this.island.clearUnder((x, z, r) => this.roadDistance(x, z) < r + lane) > 0) this.revision++
+    let best: { from: number; to: number } | null = null
+    let run: number | null = null
+    const STEP = 0.25
+    for (let d = 0; d <= total + 1e-6; d += STEP) {
+      const q = this.roadAt(d)
+      if (fitsAt(q.x, q.z, q.dx, q.dz) >= need) {
+        if (run === null) run = d
+        if (!best || d - run > best.to - best.from) best = { from: run, to: d }
+      } else run = null
+    }
+    if (best && best.to - best.from >= Village.CAR_MIN_RUN) this.carSpan = best
+    else park()
+  }
+
+  /** Distance en plan à l'axe de la route. */
+  private roadDistance(x: number, z: number): number {
+    const pts = this.roadPath
+    let best = Infinity
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!
+      const b = pts[i]!
+      const dx = b.x - a.x
+      const dz = b.z - a.z
+      const L = dx * dx + dz * dz
+      const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L))
+      best = Math.min(best, Math.hypot(x - a.x - u * dx, z - a.z - u * dz))
+    }
+    return best
+  }
+
+  /** Le point de la route à l'abscisse d, et la direction du tronçon. */
+  private roadAt(d: number): { x: number; z: number; dx: number; dz: number } {
+    const pts = this.roadPath
+    const cum = this.roadCum
     let i = 1
-    while (i < this.roadCum.length - 1 && this.roadCum[i]! < d) i++
+    while (i < cum.length - 1 && cum[i]! < d) i++
     const a = pts[i - 1]!
     const b = pts[i]!
-    const segLen = Math.max(1e-3, this.roadCum[i]! - this.roadCum[i - 1]!)
-    const t = Math.min(1, Math.max(0, (d - this.roadCum[i - 1]!) / segLen))
-    const x = a.x + (b.x - a.x) * t
-    const z = a.z + (b.z - a.z) * t
+    const segLen = Math.max(1e-3, cum[i]! - cum[i - 1]!)
+    const t = Math.min(1, Math.max(0, (d - cum[i - 1]!) / segLen))
+    return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, dx: (b.x - a.x) / segLen, dz: (b.z - a.z) / segLen }
+  }
+
+  /** Le va-et-vient de l'auto sur la route du village, entre les deux bouts
+   *  de `carSpan`. Sans portion où elle passe, elle reste garée (`carPark`). */
+  private tickCar(dt: number): void {
+    const pivot = this.car
+    if (!pivot) return
+    const total = this.roadCum[this.roadCum.length - 1] ?? 0
+    const park = this.carPark
+    if (this.carFitted && !this.carSpan) {
+      pivot.visible = park !== null
+      if (!park) return
+      pivot.position.set(park.x, GROUND_Y + 0.1, park.z)
+      pivot.rotation.y = headingYaw(Math.sin(park.yaw), Math.cos(park.yaw))
+      return
+    }
+    pivot.visible = true
+    if (this.roadPath.length < 2 || total < 2) {
+      if (this.carHome) pivot.position.set(this.carHome.x, this.carHome.y, this.carHome.z)
+      return
+    }
+    // Avant la première mesure du cadastre : toute la route, comme avant.
+    const span = this.carSpan ?? { from: 0, to: total }
+    const len = span.to - span.from
+    let d: number
+    let fwd = true
+    {
+      this.carT += dt * 3.4
+      const period = len * 2 + 10
+      const u = this.carT % period
+      if (u < len) d = span.from + u
+      else if (u < len + 5) d = span.to
+      else if (u < len * 2 + 5) {
+        d = span.to - (u - len - 5)
+        fwd = false
+      } else {
+        d = span.from
+        fwd = false
+      }
+    }
+    const { x, z, dx, dz } = this.roadAt(d)
     pivot.position.set(x, GROUND_Y + 0.1, z)
     // Le capot (+X local) dans le sens de la marche : au retour, le trajet
     // s'inverse, le cap aussi — voir headingYaw.
     const s = fwd ? 1 : -1
-    pivot.rotation.y = headingYaw((b.x - a.x) * s, (b.z - a.z) * s)
+    pivot.rotation.y = headingYaw(dx * s, dz * s)
   }
 
   /** L'APPAREIL. Hors de la fusion, parce qu'il doit décoller et se poser :
@@ -4465,6 +4625,17 @@ export class Village implements GroundSource {
     grain(geo, 0.05)
     const mesh = new Mesh(geo, this.solid)
     mesh.castShadow = true
+    // Le village se reconstruit à chaque pose : sur la même aire, l'avion
+    // reprend la place qu'il avait (fitPlane la revérifie). Sans quoi chaque
+    // atelier posé, même à l'autre bout de l'île, relançait toute la recherche.
+    const prev =
+      this.planeFit && this.planeAt && this.planeBase && this.planeBase.x === pl.x && this.planeBase.z === pl.z
+        ? { k: this.planeK, rot: this.planeAt.rot, off: this.planeOff }
+        : null
+    if (!prev) this.planeFit = null
+    // Taille réelle plafonnée (voir vehicles.ts), sur le mesh comme l'auto.
+    const k = prev?.k ?? VEHICLE_SCALE.plane
+    mesh.scale.setScalar(k)
     const pivot = new Group()
     pivot.add(mesh)
     // Le cap d'abord, puis le tangage autour de l'envergure (z local) et le
@@ -4472,7 +4643,17 @@ export class Village implements GroundSource {
     // tangage se faisait autour de l'axe x du MONDE, quel que soit le cap.
     pivot.rotation.order = 'YZX'
     // Cap de décollage : vers le large, dos à l'île.
-    this.planeAt = { x: pl.x, y: pl.y + 0.4, z: pl.z, rot: Math.atan2(pl.x, pl.z) }
+    // Les roues (0,34 sous le pivot, ×k) restent où elles touchaient l'aire.
+    // L'appareil avance d'abord de ce que sa queue a gagné ; le cadastre
+    // l'avance ensuite jusqu'à ce qu'il ait sa marge (fitPlane).
+    const rot = prev?.rot ?? Math.atan2(pl.x, pl.z)
+    this.planeBase = { x: pl.x, z: pl.z }
+    this.planeK = k
+    this.planeY0 = pl.y + 0.4
+    this.planeAt = { x: pl.x, y: this.planeY0 + Village.PLANE_WHEEL * (k - 1), z: pl.z, rot }
+    this.planeOff = prev?.off ?? Village.PLANE_TAIL * (k - 1)
+    this.planeSig = ''
+    this.placePlane(this.planeOff)
     this.plane = pivot
     this.planeRest()
     this.group.add(pivot)
@@ -4501,6 +4682,574 @@ export class Village implements GroundSource {
     if (!this.plane) return
     this.flightDir = -1
     this.flight = 0
+  }
+
+  /** Le dessous des roues sous le pivot de l'avion, avant mise à l'échelle. */
+  private static readonly PLANE_WHEEL = 0.34
+  /** La queue derrière le pivot de l'avion, avant mise à l'échelle. */
+  private static readonly PLANE_TAIL = 0.88
+  /** Demi-envergure de l'avion à sa taille 3.61.0, en monde. */
+  private static readonly PLANE_HALF_SPAN = 1.12
+  /** Les tailles essayées, de la plus grande à celle de la 3.62.0 : là où
+   *  l'aérodrome est trop serré pour ses 4,3 m d'envergure, l'avion rapetisse
+   *  jusqu'à tenir plutôt que de traverser la manche à air ou un atelier. */
+  private static readonly PLANE_SIZES = [1, 0.8, 0.6, 0.4].map((f) => Math.max(1, VEHICLE_SCALE.plane * f))
+  /** Le facteur retenu pour ce bourg (VEHICLE_SCALE.plane si la place y est). */
+  planeK = VEHICLE_SCALE.plane
+  /** La hauteur du pivot à la taille 3.61.0, roues sur l'aire. */
+  private planeY0 = 0
+  /** Ce que les ailes laissent aux houppiers : rayon de cime et marge. */
+  private static readonly PLANE_TREE_CLEAR = 1.6
+  /** Sous cette hauteur (au-dessus du sol), l'avion peut toucher un sapin. */
+  static readonly PLANE_LOW = 7.5
+
+  /** La position de l'avion à l'avancement t (0 : à l'arrêt, 1 : parti), pour
+   *  un départ. Le retour refait la même courbe à l'envers. */
+  planePose(t: number): { x: number; y: number; z: number } | null {
+    const a = this.planeAt
+    if (!a) return null
+    const roll = Math.min(1, t / 0.25)
+    const climb = Math.max(0, (t - 0.25) / 0.75)
+    const d = roll * 3 + climb * climb * 52
+    return { x: a.x + Math.sin(a.rot) * d, y: a.y + climb * climb * 26, z: a.z + Math.cos(a.rot) * d }
+  }
+
+  /** Les points du trajet où l'avion vole encore sous la cime des arbres. */
+  private planeLowPath(): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = []
+    for (let t = 0; t <= 1; t += 0.01) {
+      const q = this.planePose(t)!
+      if (q.y - GROUND_Y > Village.PLANE_LOW) break
+      out.push({ x: q.x, z: q.z })
+    }
+    return out
+  }
+
+  /** Le centre de l'aérodrome, d'où l'on compte l'avancée de l'appareil. */
+  private planeBase: { x: number; z: number } | null = null
+  /** Ce que l'avion laisse, en plan, entre lui et le premier plein. */
+  static readonly PLANE_MARGIN = 0.5
+  /** L'avancée retenue, depuis le centre de l'aérodrome. */
+  private planeOff = 0
+
+  /** L'appareil à `off` u en avant du centre de l'aérodrome, dans l'axe de
+   *  décollage, et la pinède écartée de son couloir tant qu'il vole sous la
+   *  cime des sapins : à taille réelle, ses ailes y passaient. */
+  private placePlane(off: number): void {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!a || !b) return
+    a.x = b.x + Math.sin(a.rot) * off
+    a.z = b.z + Math.cos(a.rot) * off
+    this.island.clearCorridor(this.planeLowPath(), Village.PLANE_HALF_SPAN * this.planeK + Village.PLANE_TREE_CLEAR)
+  }
+
+  /** L'avion, en quelques disques : fuselage, aile, empennage, train — repère
+   *  de l'appareil à sa taille de jeu 3.61.0 (u vers le nez, v vers l'aile
+   *  gauche, y depuis le pivot, `top` le haut de la colonne), rayon en plan. */
+  private static readonly PLANE_PROXY: readonly PlaneCell[] = (() => {
+    const out: PlaneCell[] = []
+    for (let u = -0.88; u <= 0.88 + 1e-6; u += 0.11) out.push({ u, v: 0, y: -0.17, top: 0.17, r: 0.17 })
+    for (let v = -1.12; v <= 1.12 + 1e-6; v += 0.112) out.push({ u: 0.02, v, y: 0.15, top: 0.2, r: 0.21 })
+    for (let v = -0.4; v <= 0.4 + 1e-6; v += 0.1) out.push({ u: -0.62, v, y: 0.04, top: 0.4, r: 0.15 })
+    for (const v of [-0.22, 0.22]) out.push({ u: 0.16, v, y: -0.34, top: -0.04, r: 0.08 })
+    return out
+  })()
+
+  /** Le même relevé, tiré de la géométrie affichée (primitive ou modèle) : une
+   *  case de 0,12 u en plan par morceau de surface, au plus bas de ce qui la
+   *  couvre. Les disques ci-dessus manquaient l'empennage et le bout des
+   *  ailes du modèle : 0,2 u de marge réelle là où ils en voyaient 0,5. */
+  private planeProxyFor: BufferGeometry | null = null
+  private planeProxyCells: readonly PlaneCell[] = Village.PLANE_PROXY
+  /** Les cases du bord et les colonnes hautes : le balayage du vol penche
+   *  l'appareil (tangage, roulis), et le haut d'une colonne (dérive,
+   *  verrière) glisse alors en plan. */
+  private planeProxyTilt: readonly PlaneCell[] = Village.PLANE_PROXY
+  /** Une case du bord sur trois : le premier tri de la recherche. Moins de
+   *  cases ne voient jamais moins de place que toutes : ce qui échoue ici
+   *  échouerait aussi avec toutes les cases. */
+  private planeProxySparse: readonly PlaneCell[] = Village.PLANE_PROXY
+  private readonly roomLamps: { x: number; y: number; z: number }[] = []
+  /** Le rayon en plan du relevé autour du pivot, et son point le plus bas. */
+  private planeProxyExtent = { reach: 1.33, low: -0.42 }
+
+  private planeProxy(): readonly PlaneCell[] {
+    const mesh = this.plane?.children[0] as Mesh | undefined
+    const geo = mesh?.geometry
+    if (!geo || geo === this.planeProxyFor) return this.planeProxyCells
+    const C = 0.12
+    const cells = new Map<number, PlaneCell>()
+    const pos = geo.getAttribute('position')
+    const idx = geo.index
+    const n = idx ? idx.count / 3 : pos.count / 3
+    const P = [new Vector3(), new Vector3(), new Vector3()]
+    for (let t = 0; t < n; t++) {
+      for (let c = 0; c < 3; c++) P[c]!.fromBufferAttribute(pos, idx ? idx.getX(t * 3 + c) : t * 3 + c)
+      const [A, B, D] = P as [Vector3, Vector3, Vector3]
+      const len = Math.max(A.distanceTo(B), B.distanceTo(D), D.distanceTo(A))
+      const steps = Math.max(1, Math.ceil(len / (C * 0.5)))
+      for (let i = 0; i <= steps; i++)
+        for (let j = 0; j <= steps - i; j++) {
+          const wa = i / steps
+          const wb = j / steps
+          const wd = 1 - wa - wb
+          const x = A.x * wa + B.x * wb + D.x * wd
+          const y = A.y * wa + B.y * wb + D.y * wd
+          const z = A.z * wa + B.z * wb + D.z * wd
+          // u vers le nez (+X local), v vers l'aile gauche (−Z local).
+          const gu = Math.round(x / C)
+          const gv = Math.round(-z / C)
+          const key = gu * 4096 + gv
+          const cell = cells.get(key)
+          if (!cell) cells.set(key, { u: gu * C, v: gv * C, y, top: y, r: C * 0.71 })
+          else {
+            cell.y = Math.min(cell.y, y)
+            cell.top = Math.max(cell.top, y)
+          }
+        }
+    }
+    this.planeProxyFor = geo
+    // Seules comptent les cases du bord, et celles plus basses que leurs
+    // voisines (le train sous l'aile) : une case intérieure n'est jamais la
+    // plus proche d'un plein. Trois fois moins de cases à chaque essai.
+    const at = (gu: number, gv: number) => cells.get(gu * 4096 + gv)
+    const edge = new Set(
+      [...cells.values()].filter((q) => {
+        const gu = Math.round(q.u / C)
+        const gv = Math.round(q.v / C)
+        const ns = [at(gu + 1, gv), at(gu - 1, gv), at(gu, gv + 1), at(gu, gv - 1)]
+        return ns.some((n) => !n || n.y > q.y + 0.02)
+      }),
+    )
+    this.planeProxyCells = [...edge]
+    this.planeProxySparse = this.planeProxyCells.filter((q) => (((Math.round(q.u / C) + Math.round(q.v / C)) % 3) + 3) % 3 === 0)
+    // Penché, le haut d'une colonne haute (dérive, verrière) glisse en plan :
+    // le balayage garde aussi ces colonnes-là.
+    this.planeProxyTilt = [...cells.values()].filter((q) => edge.has(q) || q.top - q.y > 0.04)
+    let reach = 0
+    let low = Infinity
+    for (const q of this.planeProxyCells) {
+      reach = Math.max(reach, Math.hypot(q.u, q.v) + q.r)
+      low = Math.min(low, q.y)
+    }
+    this.planeProxyExtent = { reach, low }
+    return this.planeProxyCells
+  }
+
+  /** Les pleins que l'avion doit éviter, relevés sur les emprises du cadastre
+   *  au sol (`groundFootprints`) du village ET de la faune — palissade de
+   *  l'enclos, poulailler —, triangle par triangle, avec leur sommet. Avant
+   *  (v3.66.0 première version), il lisait des disques de parcelle et deux
+   *  boîtes pour l'aérodrome : ni l'enclos, ni le coin d'un atelier qui
+   *  déborde de sa parcelle. Sur 16 bourgs, il se disait « à l'aise » dans 4
+   *  où il touchait. Onze nombres par triangle : les trois sommets en plan,
+   *  la boîte en plan, le sommet. */
+  private planeTris: number[] = []
+  /** Grille de SOLID_CELL u : chaque case connaît les triangles à moins de
+   *  SOLID_PAD d'elle. */
+  private readonly planeGrid = new Map<number, number[]>()
+  /** Le plus haut des pleins relevés (monde) : au-dessus, plus rien ne gêne. */
+  private planeTop = -Infinity
+  /** Les pièces animées hors de la géométrie fixe (ailes du moulin,
+   *  attelage) : un disque plein jusqu'au ciel, comme le cadastre des
+   *  parcelles les comptait. */
+  private planeDiscs: { x: number; z: number; r: number }[] = []
+  private static readonly SOLID_CELL = 0.5
+  /** La même chose en gros (cases de 2 u) : le plus haut sommet qui
+   *  approche chaque case. Le balayage y saute les poses loin de tout. */
+  private readonly planeCoarse = new Map<number, number>()
+  private static readonly COARSE_CELL = 2
+  /** Au-delà, la distance exacte ne compte plus : marge (0,5) et rayon d'une
+   *  case à ×2,5 (0,21) y tiennent. */
+  private static readonly SOLID_PAD = 1
+  /** Ce qui, hors du village, pose des emprises au sol (la faune). */
+  private planeSources: readonly GroundSource[] = []
+
+  /** Relève les pleins à moins de 40 u de l'aérodrome. */
+  private buildPlaneSolids(fps: readonly Footprint[]): void {
+    const b = this.planeBase!
+    const C = Village.SOLID_CELL
+    const PAD = Village.SOLID_PAD
+    const WIN = 40
+    const tris: number[] = []
+    const grid = this.planeGrid
+    grid.clear()
+    const coarse = this.planeCoarse
+    coarse.clear()
+    const G = Village.COARSE_CELL
+    let topMax = -Infinity
+    const p = [0, 0, 0, 0, 0, 0]
+    for (const f of fps) {
+      const k = f.scale ?? 1
+      const ox = f.ox ?? 0
+      const oy = f.oy ?? 0
+      const oz = f.oz ?? 0
+      const pos = f.geo?.getAttribute('position')
+      const raw = f.tris
+      const idx = f.geo?.index ?? null
+      const n = pos ? (idx ? idx.count : pos.count) / 3 : (raw?.length ?? 0) / 9
+      // Comme le cadastre : une dalle au ras du sol (tarmac, rue) se roule.
+      const min = Math.max(f.minY, GROUND_Y + 0.2)
+      for (let t = 0; t < n; t++) {
+        let top = -Infinity
+        for (let c = 0; c < 3; c++) {
+          const i = idx ? idx.getX(t * 3 + c) : t * 3 + c
+          const x = pos ? pos.getX(i) : raw![i * 3]!
+          const y = pos ? pos.getY(i) : raw![i * 3 + 1]!
+          const z = pos ? pos.getZ(i) : raw![i * 3 + 2]!
+          top = Math.max(top, oy + y * k)
+          p[c * 2] = ox + x * k
+          p[c * 2 + 1] = oz + z * k
+        }
+        if (top < min) continue
+        const x0 = Math.min(p[0]!, p[2]!, p[4]!)
+        const x1 = Math.max(p[0]!, p[2]!, p[4]!)
+        const z0 = Math.min(p[1]!, p[3]!, p[5]!)
+        const z1 = Math.max(p[1]!, p[3]!, p[5]!)
+        if (x1 < b.x - WIN || x0 > b.x + WIN || z1 < b.z - WIN || z0 > b.z + WIN) continue
+        const o = tris.length
+        tris.push(p[0]!, p[1]!, p[2]!, p[3]!, p[4]!, p[5]!, x0, x1, z0, z1, top)
+        topMax = Math.max(topMax, top)
+        for (let i = Math.floor((x0 - PAD) / C); i <= Math.floor((x1 + PAD) / C); i++)
+          for (let j = Math.floor((z0 - PAD) / C); j <= Math.floor((z1 + PAD) / C); j++) {
+            const key = i * 100003 + j
+            const list = grid.get(key)
+            if (list) list.push(o)
+            else grid.set(key, [o])
+          }
+        for (let i = Math.floor((x0 - PAD) / G); i <= Math.floor((x1 + PAD) / G); i++)
+          for (let j = Math.floor((z0 - PAD) / G); j <= Math.floor((z1 + PAD) / G); j++) {
+            const key = i * 100003 + j
+            coarse.set(key, Math.max(coarse.get(key) ?? -Infinity, top))
+          }
+      }
+    }
+    this.planeTris = tris
+    this.planeDiscs = this.propPlacements
+      .filter((q) => (q.id === 'windmill' || q.id === 'plough') && Math.hypot(q.x - b.x, q.z - b.z) < WIN)
+      .map((q) => ({ x: q.x, z: q.z, r: this.reach(q.id) }))
+    this.planeTop = this.planeDiscs.length ? Infinity : topMax
+  }
+
+  /** Un plein relevé plus haut que `lowest` approche-t-il le disque de rayon
+   *  `R` autour de (x, z) ? Tri grossier, sur les cases de 2 u. */
+  private solidsNear(x: number, z: number, R: number, lowest: number): boolean {
+    const G = Village.COARSE_CELL
+    for (const q of this.planeDiscs) if (Math.hypot(q.x - x, q.z - z) < q.r + R + Village.SOLID_PAD) return true
+    for (let i = Math.floor((x - R) / G); i <= Math.floor((x + R) / G); i++)
+      for (let j = Math.floor((z - R) / G); j <= Math.floor((z + R) / G); j++)
+        if ((this.planeCoarse.get(i * 100003 + j) ?? -Infinity) > lowest) return true
+    return false
+  }
+
+  /** La distance en plan de (x, z) au premier plein relevé qui monte plus
+   *  haut que `y` (monde) ; −1 dedans, SOLID_PAD au-delà. */
+  private solidRoom(x: number, z: number, y: number): number {
+    let best = Village.SOLID_PAD
+    if (this.planeDiscs.length) for (const d of this.planeDiscs) best = Math.min(best, Math.hypot(x - d.x, z - d.z) - d.r)
+    const C = Village.SOLID_CELL
+    const list = this.planeGrid.get(Math.floor(x / C) * 100003 + Math.floor(z / C))
+    if (!list) return best
+    const T = this.planeTris
+    for (const o of list) {
+      if (T[o + 10]! <= y) continue
+      if (x < T[o + 6]! - best || x > T[o + 7]! + best || z < T[o + 8]! - best || z > T[o + 9]! + best) continue
+      const ax = T[o]!
+      const az = T[o + 1]!
+      const bx = T[o + 2]!
+      const bz = T[o + 3]!
+      const cx = T[o + 4]!
+      const cz = T[o + 5]!
+      const d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz)
+      if (Math.abs(d) > 1e-12) {
+        const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / d
+        const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / d
+        if (l1 >= 0 && l2 >= 0 && 1 - l1 - l2 >= 0) return -1
+      }
+      best = Math.min(best, segDist(x, z, ax, az, bx, bz), segDist(x, z, bx, bz, cx, cz), segDist(x, z, cx, cz, ax, az))
+    }
+    return best
+  }
+
+  /** La place qui reste à l'appareil, à plat, pivot en (x, z), `lift`
+   *  au-dessus de l'aire, cap `rot` : la distance en plan de son bord au
+   *  premier plein qui monte plus haut que lui (pleins relevés, réverbères).
+   *  `land` : fuselage et train (y < 0) doivent rouler sur la terre. Rend dès
+   *  que la place tombe sous `floor`. `cells` : le relevé à lire (toutes les
+   *  cases du bord, ou une sur trois). C'est le tri rapide de la recherche ;
+   *  `planeSweep` rejoue ensuite le vol exact. */
+  private planeRoom(
+    x: number,
+    z: number,
+    lift: number,
+    rot: number,
+    land: boolean,
+    floor: number,
+    cells: readonly PlaneCell[] = this.planeProxy(),
+  ): number {
+    const a = this.planeAt
+    if (!a) return -Infinity
+    const k = this.planeK
+    const dx = Math.sin(rot)
+    const dz = Math.cos(rot)
+    const { reach, low } = this.planeProxyExtent
+    const R = reach * k
+    const lowY = a.y + lift + low * k
+    // Au-delà de la marge, la place exacte ne compte plus.
+    const cap = Village.PLANE_MARGIN + 0.01
+    const lamps = this.roomLamps
+    lamps.length = 0
+    if (lowY - GROUND_Y < 3.05)
+      for (const q of this.lampPosts) if (Math.hypot(q.x + 0.27 - x, q.z - z) - R - 0.55 < cap) lamps.push(q)
+    const solids = lowY < this.planeTop && this.solidsNear(x, z, R, lowY)
+    // Au sol et au ras du sol, fuselage et train (y < 0) roulent sur la
+    // terre : avancé de 5 u sans ce garde-fou, l'appareil se garait au-delà
+    // de la plage, sur l'eau. Les ailes et l'empennage peuvent déborder.
+    const ground = land && lift < 0.3
+    if (!ground && !solids && !lamps.length) return Infinity
+    let room = Infinity
+    for (const q of cells) {
+      const px = x + (dx * q.u + dz * q.v) * k
+      const pz = z + (dz * q.u - dx * q.v) * k
+      const py = a.y + lift + q.y * k
+      const r = q.r * k
+      if (ground && q.y < 0 && !this.island.isLand(px, pz)) return -Infinity
+      if (solids) room = Math.min(room, this.solidRoom(px, pz, py) - r)
+      // Les réverbères : un disque qui couvre mât et potence, jusqu'au chapeau.
+      if (py - GROUND_Y < 3.05) for (const l of lamps) room = Math.min(room, Math.hypot(px - l.x - 0.27, pz - l.z) - 0.55 - r)
+      if (room < floor) return room
+    }
+    return room
+  }
+
+  private readonly sweepEuler = new Euler(0, 0, 0, 'YZX')
+  private readonly sweepM = new Matrix4()
+  private readonly sweepQ = new Quaternion()
+  private readonly sweepV = new Vector3()
+  private readonly sweepP = new Vector3()
+  private readonly sweepS = new Vector3()
+
+  /** Le vol réel, pose par pose, comme `tickPlane` le joue : repos, roulage
+   *  et montée au départ ; au retour, le même chemin nez vers l'aire, puis le
+   *  demi-tour sur place. Appareil penché (tangage, roulis), chaque case au
+   *  bas de sa colonne, son rayon élargi de ce que le haut de la colonne
+   *  glisse en plan. Les poses sont assez serrées pour qu'un point de
+   *  l'appareil ne bouge pas de plus de 0,05 u de l'une à l'autre (marge
+   *  ajoutée). Rend la place minimale en plan, ou dès qu'elle tombe sous
+   *  `floor`. Le placement essayé : cap `rot`, à `off` du centre. */
+  private planeSweep(rot: number, off: number, floor: number): number {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!a || !b) return -Infinity
+    this.planeProxy()
+    const cells = this.planeProxyTilt
+    const k = this.planeK
+    const R = this.planeProxyExtent.reach * k
+    const sx = Math.sin(rot)
+    const sz = Math.cos(rot)
+    const x0 = b.x + sx * off
+    const z0 = b.z + sz * off
+    const out = headingYaw(sx, sz)
+    const SLACK = 0.05
+    const PAD = Village.SOLID_PAD
+    // Au-dessus des pleins et des réverbères, plus rien ne gêne.
+    const ceiling = Math.max(this.planeTop, this.lampPosts.length ? GROUND_Y + 3.05 : -Infinity)
+    const e = this.sweepEuler
+    const m = this.sweepM
+    const v = this.sweepV
+    const p = this.sweepP
+    this.sweepS.setScalar(k)
+    let room = Infinity
+    for (const dir of [1, -1] as const) {
+      let t = 0
+      while (t <= 1) {
+        const roll = dir === 1 ? Math.min(1, t / 0.25) : Math.min(1, Math.max(0, (t - 0.1) / 0.15))
+        const climb = Math.max(0, (t - 0.25) / 0.75)
+        const d = roll * 3 + climb * climb * 52
+        p.set(x0 + sx * d, a.y + climb * climb * 26, z0 + sz * d)
+        // L'appareil tient dans une boule de rayon R (penché, un peu plus bas).
+        const lowest = p.y - R - 0.5 * k
+        if (lowest > ceiling) break
+        // Pas de temps : le demi-tour (π en 0,1) avance par 0,002, le roulage
+        // par 0,005, la montée selon sa vitesse — 0,05 u au plus par pose.
+        const speed = dir === -1 && t < 0.1 ? Math.PI * R * 10 : t < 0.25 ? 12 : 1 + (104 * climb) / 0.75
+        const tNext = t + Math.min(0.005, 0.05 / speed)
+        // Tri grossier : rien d'assez haut à portée, la pose est libre.
+        let near = this.solidsNear(p.x, p.z, R, lowest)
+        const lamps = this.roomLamps
+        lamps.length = 0
+        if (lowest - GROUND_Y < 3.05)
+          for (const l of this.lampPosts) if (Math.hypot(l.x + 0.27 - p.x, l.z - p.z) < 0.55 + R + PAD) lamps.push(l)
+        if (lamps.length) near = true
+        if (!near) {
+          t = tNext
+          continue
+        }
+        const pitch = climb * 0.22
+        const bank = Math.sin(t * Math.PI) * 0.12
+        e.set(bank, dir === 1 ? out : out + Math.PI * Math.min(1, t / 0.1), pitch * dir)
+        this.sweepQ.setFromEuler(e)
+        m.compose(p, this.sweepQ, this.sweepS)
+        const lean = Math.sin(pitch) + Math.sin(bank)
+        for (const q of cells) {
+          const r = (q.r + (q.top - q.y) * lean) * k + SLACK
+          v.set(q.u, q.y, -q.v).applyMatrix4(m)
+          room = Math.min(room, this.solidRoom(v.x, v.z, v.y) - r)
+          if (v.y - GROUND_Y < 3.05)
+            for (const l of lamps) room = Math.min(room, Math.hypot(v.x - l.x - 0.27, v.z - l.z) - 0.55 - r)
+          if (room < floor) return room
+        }
+        t = tNext
+      }
+    }
+    return room
+  }
+
+  /** Comment l'avion s'est garé : avec sa marge, vérifiée sur le vol entier
+   *  (« clear »), ou, faute de place, au placement qui lui en laisse le plus
+   *  (« tight »). */
+  planeFit: 'clear' | 'tight' | null = null
+  /** La place minimale du vol retenu, mesurée par `planeSweep`. */
+  planeClearance = -Infinity
+  private planeSig = ''
+
+  /** Une signature des emprises : un plein posé, déplacé ou retiré la change. */
+  private static footprintSig(fps: readonly Footprint[]): string {
+    return fps
+      .map((f) => {
+        if (f.geo) {
+          const pos = f.geo.getAttribute('position')
+          return `${f.geo.uuid}.${'version' in pos ? pos.version : 0}.${pos.count}.${f.ox ?? 0}.${f.oz ?? 0}.${f.scale ?? 1}`
+        }
+        let h = 0
+        for (const x of f.tris ?? []) h = (h * 31 + Math.round(x * 1000)) | 0
+        return `t${h}`
+      })
+      .join(',')
+  }
+
+  /** Avance l'avion dans son axe de décollage jusqu'au premier point où il
+   *  a sa marge, à l'arrêt comme pendant son roulage, sa montée, son retour
+   *  et son demi-tour : à sa place d'avant, déjà à sa taille 3.61.0, sa queue
+   *  frôlait le hangar (0,3 u) et il traversait la manche à air en roulant. */
+  private fitPlane(): void {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!this.plane || !a || !b) return
+    // Rien n'a bougé autour de l'aire depuis le dernier calage (le cadastre se
+    // refait pour un sapin abattu, une récolte) : la place est la même.
+    this.planeProxy()
+    const fps = [this, ...this.planeSources].flatMap((s) => s.groundFootprints())
+    const sig = [b.x, b.z, this.lampPosts.length, this.planeProxyFor?.uuid, Village.footprintSig(fps)].join('|')
+    if (sig === this.planeSig) return
+    this.planeSig = sig
+    this.buildPlaneSolids(fps)
+    const M = Village.PLANE_MARGIN
+    // Un plein de plus ne peut que retirer des places : si celle qu'on avait
+    // garde sa marge sur le vol entier, la recherche (ordre fixe) y
+    // retomberait. On la garde sans tout refaire — une construction loin de
+    // l'aire ne coûte plus que ce balayage.
+    // Le calage d'avant, sur la même aire : les tailles plus grandes que la
+    // sienne ne tenaient pas, et ne tiennent toujours pas.
+    const startK = this.planeFit ? this.planeK : Infinity
+    if (this.planeFit === 'clear') {
+      const kept = this.planeSweep(a.rot, this.planeOff, M)
+      if (kept >= M) {
+        this.planeClearance = kept
+        return
+      }
+    } else if (this.planeFit === 'tight') {
+      // Serré (taille 3.62.0, rien ne laisse la marge, et un plein de plus
+      // n'en laissera pas) : la place d'avant reste tant que rien de neuf
+      // n'approche son vol. Elle peut différer de celle qu'un rechargement
+      // choisirait, jamais en moins bien.
+      const kept = this.planeSweep(a.rot, this.planeOff, this.planeClearance)
+      if (kept >= this.planeClearance) return
+    }
+    /** Le tri rapide d'un placement : départ à plat et retour nez vers
+     *  l'aire jusqu'à 0,6, puis le demi-tour sur place. */
+    const pathRoom = (rot: number, off: number, floor: number, cells: readonly PlaneCell[]): number => {
+      const dx = Math.sin(rot)
+      const dz = Math.cos(rot)
+      // Le repos et le demi-tour d'abord : c'est là que la plupart des
+      // placements échouent, et la recherche s'arrête au premier échec.
+      let room = this.planeRoom(b.x + dx * off, b.z + dz * off, 0, rot, true, floor, cells)
+      for (let s = 1; s <= 12 && room >= floor; s++)
+        room = Math.min(room, this.planeRoom(b.x + dx * off, b.z + dz * off, 0, rot + (Math.PI * s) / 12, false, floor, cells))
+      if (room < floor) return room
+      for (let t = 0.02; t <= 0.6; t += 0.02) {
+        const roll = Math.min(1, t / 0.25)
+        const climb = Math.max(0, (t - 0.25) / 0.75)
+        const d = off + roll * 3 + climb * climb * 52
+        const lift = climb * climb * 26
+        room = Math.min(room, this.planeRoom(b.x + dx * d, b.z + dz * d, lift, rot, true, floor, cells))
+        if (room < floor) return room
+        room = Math.min(room, this.planeRoom(b.x + dx * d, b.z + dz * d, lift, rot + Math.PI, false, floor, cells))
+        if (room < floor) return room
+      }
+      return room
+    }
+    // Droit vers le large d'abord ; si l'axe est barré (un quai posé en
+    // travers), le cap s'écarte peu à peu, jusqu'à longer la côte (±1,5 rad) :
+    // l'aire est au bord de l'eau, et le roulage doit rester sur la terre. Un
+    // placement qui passe le tri rapide est rejoué en entier (planeSweep) :
+    // seul celui-là peut se dire « clear ». Si rien ne laisse la marge, à la
+    // taille 3.62.0, le placement qui laisse le plus de place.
+    const radial = Math.atan2(b.x, b.z)
+    const DRIFT = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1, 1.25, -1.25, 1.5, -1.5]
+    const k0 = this.planeK
+    const sizes = Village.PLANE_SIZES
+    let found: { rot: number; off: number } | null = null
+    let best = { rot: radial, off: this.planeOff, room: -Infinity }
+    const tight: { rot: number; off: number; room: number }[] = []
+    const sparse = this.planeProxySparse
+    const full = this.planeProxyCells
+    for (const k of sizes) {
+      // Un plein de plus ne rend pas la place à une taille qui ne tenait pas.
+      if (k > startK) continue
+      this.planeK = k
+      a.y = this.planeY0 + Village.PLANE_WHEEL * (k - 1)
+      const last = k === sizes[sizes.length - 1]
+      best = { rot: radial, off: Village.PLANE_TAIL * (k - 1), room: -Infinity }
+      for (const dr of DRIFT) {
+        for (let off = -3; off <= 8 && !found; off += 0.25) {
+          // Une case sur trois d'abord, toutes ensuite, le vol entier enfin.
+          // À la dernière taille, on garde aussi les huit placements les plus
+          // larges au premier tri (le vol entier n'est rejoué que pour eux).
+          const floor = last && tight.length === 8 ? Math.min(M, tight[7]!.room) : last ? -Infinity : M
+          const room = pathRoom(radial + dr, off, floor, sparse)
+          if (room >= M && pathRoom(radial + dr, off, M, full) >= M && this.planeSweep(radial + dr, off, M) >= M)
+            found = { rot: radial + dr, off }
+          else if (last && room > floor && room > -Infinity) {
+            tight.push({ rot: radial + dr, off, room })
+            tight.sort((p, q) => q.room - p.room)
+            if (tight.length > 8) tight.pop()
+          }
+        }
+        if (found) break
+      }
+      if (found) break
+    }
+    if (!found) {
+      // Les huit plus larges au tri rapide, rejouées en entier : la plus
+      // large en vol l'emporte.
+      for (const c of tight) {
+        const room = this.planeSweep(c.rot, c.off, best.room)
+        if (room > best.room) best = { ...c, room }
+      }
+    }
+    this.planeFit = found ? 'clear' : 'tight'
+    const pick = found ?? best
+    this.planeClearance = this.planeSweep(pick.rot, pick.off, -Infinity)
+    ;(this.plane.children[0] as Mesh).scale.setScalar(this.planeK)
+    if (this.planeK === k0 && Math.abs(pick.off - this.planeOff) < 1e-6 && Math.abs(pick.rot - a.rot) < 1e-6) return
+    a.rot = pick.rot
+    this.planeOff = pick.off
+    this.placePlane(pick.off)
+    if (this.flight < 0) this.planeRest()
+    // Des sapins ont pu tomber : le cadastre se refait à l'image suivante.
+    this.revision++
   }
 
   private plane: Group | null = null
@@ -4675,6 +5424,7 @@ export class Village implements GroundSource {
       this.propPlacements.map((q) => ({ x: q.x, z: q.z })),
       2.7,
     )
+    this.lampPosts = []
     if (this.electric) this.streetLights(all)
     this.propsGeo = mergeGeometries(all)
     this.restack()

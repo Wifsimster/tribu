@@ -16,7 +16,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE } from './palette'
 import { loadModels } from './models'
-import { BOAT_MODELS, headingYaw, vehicleGeometry } from './vehicles'
+import { BOAT_MODELS, VEHICLE_SCALE, headingYaw, vehicleGeometry } from './vehicles'
 
 function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
   geo.translate(x, y, z)
@@ -35,6 +35,17 @@ type State = 'hidden' | 'out' | 'in'
 
 const SPEED = 4.2
 const RANGE = 26
+
+/** Le facteur de taille réelle de chaque palier (voir vehicles.ts). Il vit sur
+ *  le MESH, pas sur la géométrie : primitive et modèle grandissent pareil, et
+ *  la voile, l'assise du passager et le mouillage le suivent. */
+const TIER_SCALE = BOAT_MODELS.map((id) => VEHICLE_SCALE[id])
+/** Le passager est le colon assis, à la taille du colon : la silhouette d'avant
+ *  (buste et tête : 0,67 u) faisait 0,41 de celle du colon (1,63 u). */
+const RIDER_K = 2.4
+/** Poupe à 0,3 u du bout du ponton : centrée dessus, une coque de 12 u
+ *  recouvrait le tablier et la plage. */
+const MOOR_GAP = 0.3
 
 /** L'embarcation d'expédition : elle grandit avec les savoirs — radeau de
  *  rondins, pirogue creusée (hache polie), barque à voile (voile). Le colon
@@ -134,6 +145,7 @@ export class ExpeditionBoat {
       const m = new Mesh(mergeGeometries(parts) ?? new BufferGeometry(), mat)
       m.castShadow = true
       m.visible = false
+      m.scale.setScalar(TIER_SCALE[this.tiers.length]!)
       this.tiers.push(m)
       this.group.add(m)
     }
@@ -154,8 +166,9 @@ export class ExpeditionBoat {
     this.sail = new Mesh(sailGeo, new MeshToonMaterial({ vertexColors: true, side: DoubleSide }))
     // La voile suit la coque ×1.3 : mise à l'échelle du MESH, pas de la
     // géométrie — les rayures sont calculées sur les y d'origine.
-    this.sail.scale.setScalar(1.3)
-    this.sail.position.set(0, 1.47, 0)
+    // Et la taille réelle du palier par-dessus, autour de la même origine.
+    this.sail.scale.setScalar(1.3 * TIER_SCALE[2]!)
+    this.sail.position.set(0, 1.47 * TIER_SCALE[2]!, 0)
     this.sail.visible = false
     this.group.add(this.sail)
 
@@ -168,7 +181,7 @@ export class ExpeditionBoat {
       ]) ?? new BufferGeometry(),
       mat,
     )
-    rider.position.set(-0.2, 0.1, 0)
+    rider.scale.setScalar(RIDER_K)
     rider.castShadow = true
     this.rider = rider
     this.group.add(rider)
@@ -192,15 +205,36 @@ export class ExpeditionBoat {
     this.tiers.forEach((m, i) => (m.visible = i === t))
     this.sail.visible = t === 2
     this.seat()
+    if (this.state === 'hidden') this.dock()
     // Seul le palier affiché se télécharge : une tribu au radeau ne paie pas
     // le hors-bord. En attendant (ou si le fichier manque), la primitive reste.
     const id = BOAT_MODELS[t]!
     void loadModels([id]).then(() => this.adopt(t))
   }
 
+  /** Le pont monte avec la coque (×TIER_SCALE) ; l'écart entre le pont et le
+   *  buste est celui du colon, qui grandit avec lui (×RIDER_K, dans le mesh). */
   private seat(): void {
     const t = this.tier
-    this.rider.position.y = (this.modelled[t] ? ExpeditionBoat.RIDER_Y_MODEL : ExpeditionBoat.RIDER_Y)[t]!
+    const k = TIER_SCALE[t]!
+    const deck = (this.modelled[t] ? ExpeditionBoat.RIDER_Y_MODEL : ExpeditionBoat.RIDER_Y)[t]!
+    this.rider.position.set(-0.2 * k, deck * k, 0)
+  }
+
+  /** Longueur de la poupe (de l'origine à l'arrière de la coque), en monde. */
+  private stern(): number {
+    const mesh = this.tiers[this.tier]!
+    mesh.geometry.computeBoundingBox()
+    return -(mesh.geometry.boundingBox?.min.x ?? 0) * mesh.scale.x
+  }
+
+  /** La coque du palier en plan, en monde : demi-longueur et demi-largeur. */
+  private half(): { l: number; w: number } {
+    const mesh = this.tiers[this.tier]!
+    mesh.geometry.computeBoundingBox()
+    const b = mesh.geometry.boundingBox!
+    const k = mesh.scale.x
+    return { l: Math.max(b.max.x, -b.min.x) * k, w: Math.max(b.max.z, -b.min.z) * k }
   }
 
   /** Passe le palier au modèle s'il est là. Même mesh, même matériau : rien de
@@ -213,7 +247,9 @@ export class ExpeditionBoat {
     mesh.geometry.dispose()
     mesh.geometry = geo
     this.modelled[t] = true
-    if (t === this.tier) this.seat()
+    if (t !== this.tier) return
+    this.seat()
+    if (this.state === 'hidden') this.dock()
   }
 
   private moor: { x: number; z: number; yaw: number } | null = null
@@ -231,7 +267,14 @@ export class ExpeditionBoat {
       this.group.visible = false
       return
     }
-    this.group.position.set(this.moor.x, 0, this.moor.z)
+    // La poupe au bout du tablier, la coque vers le large : à taille réelle, la
+    // centrer sur le bout du ponton la posait sur le ponton et la plage.
+    const off = this.stern() + MOOR_GAP
+    this.group.position.set(
+      this.moor.x + Math.sin(this.moor.yaw) * off,
+      0,
+      this.moor.z + Math.cos(this.moor.yaw) * off,
+    )
     // Proue vers le large, dans l'axe du ponton : prête à partir. `yaw` est
     // le cap terre → mer du ponton.
     this.group.rotation.y = headingYaw(Math.sin(this.moor.yaw), Math.cos(this.moor.yaw))
@@ -249,9 +292,32 @@ export class ExpeditionBoat {
     return d
   }
 
-  private course(shore: Vector3, outward: boolean): void {
+  /** Où la coque entière flotte : le premier point au large de la plage où
+   *  aucun bout de la coque (plus 0,3 u) ne touche la terre. Le 1,6 u d'avant
+   *  suffisait à une barque de 3 u ; une coque de 12 u y mordait la plage. */
+  private launchOffset(shore: Vector3, dir: Vector3, isLand?: (x: number, z: number) => boolean): number {
+    const { l, w } = this.half()
+    if (!isLand) return 1.6 + l
+    const m = 0.3
+    for (let o = 1.6; o < RANGE; o += 0.25) {
+      const cx = shore.x + dir.x * o
+      const cz = shore.z + dir.z * o
+      let wet = true
+      for (let u = -l - m; u <= l + m && wet; u += 0.5)
+        for (let v = -w - m; v <= w + m; v += 0.5)
+          if (isLand(cx + dir.x * u - dir.z * v, cz + dir.z * u + dir.x * v)) {
+            wet = false
+            break
+          }
+      if (wet) return o
+    }
+    return 1.6 + l
+  }
+
+  private course(shore: Vector3, outward: boolean, isLand?: (x: number, z: number) => boolean): void {
     const dir = new Vector3(shore.x, 0, shore.z).normalize()
-    const near = new Vector3(shore.x + dir.x * 1.6, 0, shore.z + dir.z * 1.6)
+    const o = this.launchOffset(shore, dir, isLand)
+    const near = new Vector3(shore.x + dir.x * o, 0, shore.z + dir.z * o)
     const far = new Vector3(shore.x + dir.x * RANGE, 0, shore.z + dir.z * RANGE)
     this.from.copy(outward ? near : far)
     this.to.copy(outward ? far : near)
@@ -261,12 +327,12 @@ export class ExpeditionBoat {
     this.group.position.copy(this.from)
   }
 
-  launchOut(shore: Vector3): void {
-    this.course(shore, true)
+  launchOut(shore: Vector3, isLand?: (x: number, z: number) => boolean): void {
+    this.course(shore, true, isLand)
   }
 
-  sailIn(shore: Vector3): void {
-    this.course(shore, false)
+  sailIn(shore: Vector3, isLand?: (x: number, z: number) => boolean): void {
+    this.course(shore, false, isLand)
   }
 
   update(dt: number, time: number): void {
