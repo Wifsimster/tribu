@@ -1,6 +1,7 @@
 # Assets
 
-Provenance et licence des ressources graphiques et sonores embarquées dans le jeu.
+Provenance et licence des ressources embarquées dans le jeu : les modèles 3D
+ci-dessous, et les sons (section [Sons](#sons--publicaudio)).
 
 ## Modèles 3D — `src/assets/models/`
 
@@ -60,5 +61,13 @@ Provenance et licence des ressources graphiques et sonores embarquées dans le j
 | `car.glb` | Automobile du garage | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `plane.glb` | Avion de l'aérodrome — monoplan à aile haute | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 
-Aucun asset tiers : ni modèle, ni texture, ni matériau importé. Les couleurs sont
+Aucun modèle tiers : ni maillage, ni texture, ni matériau importé. Les couleurs sont
 peintes dans les sommets (attribut `COLOR_0`), sans texture.
+
+## Sons — `public/audio/`
+
+Les 15 fichiers `.mp3` ne sont pas des créations du projet : quatre prises
+Wikimedia Commons (CC0, domaine public, CC BY 4.0, CC BY-SA 4.0) et onze sons
+générés avec ElevenLabs au palier gratuit (usage non commercial). Le détail,
+fichier par fichier (titre, auteur, licence, lien, prompt), est dans
+[`public/audio/CREDITS.md`](public/audio/CREDITS.md).

@@ -25,11 +25,12 @@
  * détourés et normalisés. Tout atterrit dans public/audio/, avec un
  * CREDITS.md qui trace l'origine de chaque fichier.
  */
-import { mkdir, writeFile, stat, rm } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { mergeCredits } from './credits-file.mjs'
 
 const run = promisify(execFile)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -150,7 +151,7 @@ async function postProcess(inFile, outFile, s) {
   }
 }
 
-const credits = []
+const credits = {}
 let written = 0
 let bytes = 0
 
@@ -182,20 +183,19 @@ for (const s of wanted) {
     const st = await stat(outFile)
     written++
     bytes += st.size
-    credits.push(
-      `- **${s.id}** — « ${hit.name} » par ${hit.username} · CC0 · freesound #${hit.id} · ${hit.url}`,
-    )
+    credits[s.id] = `- **${s.id}** — « ${hit.name} » par ${hit.username} · CC0 · freesound #${hit.id} · ${hit.url}`
     console.log(`✓ ${s.id.padEnd(9)} ${(st.size / 1024).toFixed(0).padStart(4)} ko  ← #${hit.id} ${hit.name.slice(0, 40)}`)
   } catch (e) {
     console.error(`✗ ${s.id} — ${e.message}`)
   }
 }
 
-if (credits.length > 0) {
-  await writeFile(
-    join(OUT, 'CREDITS.md'),
-    `# Origine des sons\n\nTous les fichiers de ce dossier viennent de Freesound sous licence\n**CC0** (domaine public) et ont été retaillés par \`tools/fetch-sfx.mjs\`.\nLe CC0 n'oblige à rien — cette liste est là pour la traçabilité, et parce\nque citer ses sources est la moindre des choses.\n\n${credits.join('\n')}\n`,
-  )
+// Fusion, jamais réécriture : les autres sons du dossier (Commons, ElevenLabs,
+// ou sautés par --only) gardent leur ligne.
+if (Object.keys(credits).length > 0) {
+  const file = join(OUT, 'CREDITS.md')
+  const existing = await readFile(file, 'utf8').catch(() => null)
+  await writeFile(file, mergeCredits(existing, credits))
 }
 await rm(TMP, { recursive: true, force: true })
 

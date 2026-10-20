@@ -20,11 +20,12 @@
  * (rien à respecter), puis CC BY / CC BY-SA (attribution obligatoire, écrite
  * dans public/audio/CREDITS.md). Tout le reste est ignoré.
  */
-import { mkdir, writeFile, stat, rm } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { mergeCredits } from './credits-file.mjs'
 
 const run = promisify(execFile)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -127,6 +128,7 @@ async function search(term) {
       mime: ii.mime,
       size: ii.size ?? 0,
       license: meta.LicenseShortName?.value ?? '?',
+      licenseUrl: meta.LicenseUrl?.value ?? '',
       author: (meta.Artist?.value ?? '').replace(/<[^>]*>/g, '').trim().slice(0, 60),
       page: `https://commons.wikimedia.org/wiki/${encodeURIComponent(p.title)}`,
     }
@@ -210,7 +212,7 @@ if (has('--dry-run')) {
 await mkdir(OUT, { recursive: true })
 await mkdir(TMP, { recursive: true })
 
-const credits = []
+const credits = {}
 let written = 0
 let bytes = 0
 for (const s of wanted) {
@@ -236,25 +238,22 @@ for (const s of wanted) {
     const st = await stat(outFile)
     written++
     bytes += st.size
-    credits.push(
-      `- **${s.id}** — « ${hit.title} »${hit.author ? ` par ${hit.author}` : ''} · ${hit.license} · ${hit.page}`,
-    )
+    credits[s.id] =
+      `- **${s.id}** — « ${hit.title} »${hit.author ? ` par ${hit.author}` : ''} · ` +
+      `${hit.license}${hit.licenseUrl ? ` (${hit.licenseUrl})` : ''} · ${hit.page} · ` +
+      `retaillé (${s.kind === 'bed' ? 'boucle et fondu' : 'détourage et fondu'}) par tools/fetch-cc-sfx.mjs`
     console.log(`✓ ${s.id.padEnd(8)} ${(st.size / 1024).toFixed(0).padStart(4)} ko  [${hit.license}] ${hit.title.slice(0, 45)}`)
   } catch (e) {
     console.error(`✗ ${s.id} — ${e.message}`)
   }
 }
 
-if (credits.length > 0) {
-  await writeFile(
-    join(OUT, 'CREDITS.md'),
-    '# Origine des sons\n\n' +
-      'Ces fichiers viennent de Wikimedia Commons et ont été retaillés par\n' +
-      '`tools/fetch-cc-sfx.mjs` (boucle sans couture pour les nappes, détourage\n' +
-      "et fondu pour les coups). Les licences CC BY et CC BY-SA **exigent** cette\n" +
-      'attribution ; elle vaut aussi pour les fichiers dérivés publiés avec le jeu.\n\n' +
-      `${credits.join('\n')}\n`,
-  )
+// Fusion, jamais réécriture : un son sauté (--only, déjà présent) garde sa
+// ligne. Sans ça, chaque passe effaçait l'attribution des autres fichiers.
+if (Object.keys(credits).length > 0) {
+  const file = join(OUT, 'CREDITS.md')
+  const existing = await readFile(file, 'utf8').catch(() => null)
+  await writeFile(file, mergeCredits(existing, credits))
 }
 await rm(TMP, { recursive: true, force: true })
 console.log(`\n${written} fichier(s), ${(bytes / 1024).toFixed(0)} ko. Aucun compte, aucun euro.`)
