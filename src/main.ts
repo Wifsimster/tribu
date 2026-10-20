@@ -52,6 +52,7 @@ import { Fauna } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
+import { attachKeyboard } from './render/keyboard'
 import { AnchorMarks, type Anchor } from './render/anchors'
 import { Hud, escapeHtml, fmt, icon } from './ui/hud'
 import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, livingBuildings, yuleState } from './game/content'
@@ -779,6 +780,18 @@ function despawnWreck(): void {
   })
   wreck = null
 }
+
+// ── Clavier ────────────────────────────────────────────────────────────────
+// Flèches (ou ZQSD / WASD) : tourner autour de l'île et la survoler plus haut
+// ou plus bas ; + et - pour le zoom. Aussi en mode photo, où le doigt cadre
+// déjà. Le clavier se tait quand une fenêtre modale est ouverte (menu, fiche
+// de découverte, choix d'une terre) ou que le focus est dans un panneau
+// ouvert : il y sert à lire et à défiler. Un panneau FERMÉ ne compte pas — le
+// bouton « Continuer » du menu garde le focus après le clic.
+attachKeyboard(stage, (target) => {
+  if (document.querySelector('[aria-modal="true"].open')) return true
+  return target instanceof Element && target.closest('[role="dialog"].open') !== null
+})
 
 // ── Tapping ────────────────────────────────────────────────────────────────
 const raycaster = new Raycaster()

@@ -3,6 +3,12 @@ import type { Stage } from './scene'
 const TAP_MS = 250
 const TAP_SLOP = 12
 
+/** Bornes de l'orbite, partagées par le doigt, la molette et le clavier. */
+export const MIN_POLAR = 0.18
+export const MAX_POLAR = Math.PI * 0.44
+export const MIN_ZOOM = 8
+export const MAX_ZOOM = 58
+
 /** A deliberately small touch controller instead of OrbitControls: one finger
  *  orbits, two pinch, and a short stationary press is a tap. No panning, so the
  *  village can never be lost off-screen on a phone. */
@@ -17,9 +23,6 @@ export function attachControls(
   let moved = 0
   let pinchDist = 0
   let velocity = 0
-
-  const MIN_POLAR = 0.18
-  const MAX_POLAR = Math.PI * 0.44
 
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId)
@@ -49,7 +52,7 @@ export function attachControls(
       stage.polar = clamp(stage.polar - dy * k, MIN_POLAR, MAX_POLAR)
     } else if (pointers.size === 2) {
       const d = spread(pointers)
-      if (pinchDist > 0) stage.distance = clamp(stage.distance * (pinchDist / d), 8, 58)
+      if (pinchDist > 0) stage.distance = clamp(stage.distance * (pinchDist / d), MIN_ZOOM, MAX_ZOOM)
       pinchDist = d
     }
   })
@@ -72,7 +75,7 @@ export function attachControls(
     'wheel',
     (e) => {
       e.preventDefault()
-      stage.distance = clamp(stage.distance * (1 + Math.sign(e.deltaY) * 0.09), 8, 58)
+      stage.distance = clamp(stage.distance * (1 + Math.sign(e.deltaY) * 0.09), MIN_ZOOM, MAX_ZOOM)
     },
     { passive: false },
   )
@@ -94,6 +97,6 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
-function clamp(v: number, lo: number, hi: number): number {
+export function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
 }

@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.65.0',
+    title: "Faire le tour de l'île au clavier",
+    items: [
+      "Sur ordinateur, les flèches ← et → font tourner la vue autour de l'île, ↑ et ↓ la font monter ou descendre. Le mouvement démarre et s'arrête en douceur tant que la touche est tenue.",
+      "Z, Q, S, D sur un clavier AZERTY et W, A, S, D sur un QWERTY font la même chose. + et - (aussi sur le pavé numérique) rapprochent ou éloignent la vue.",
+      "Ça marche aussi en mode photo. Le clavier ne bouge pas la vue quand tu écris le nom du village ou qu'un menu est ouvert, et la vue s'arrête si tu changes de fenêtre.",
+    ],
+  },
+  {
     version: '3.62.0',
     title: 'Le troupeau marche, la basse-cour picore',
     items: [
