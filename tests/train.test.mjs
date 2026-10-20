@@ -175,9 +175,12 @@ test('chordFrom tombe à la bonne distance, y compris au-delà du bout de voie',
   }
 })
 
-// ── Dans le village ─────────────────────────────────────────────────────────
+// ── Dans le village : la boucle (incrément 2) ───────────────────────────────
 
-const ALL = new Set(TECHS.flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
+/** Les bâtiments des savoirs d'un âge et des précédents : un bourg qui existe. */
+const atAge = (age) =>
+  new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
+const K = C.TRAIN_SCALE
 
 async function adoptAll() {
   for (const model of Object.values(C.CAR_MODEL)) assert.ok(adoptModel(model, await load(model)))
@@ -188,67 +191,112 @@ function village(seed, age, rates) {
   const v = new Village(island, age, true, false)
   if (rates) v.setCargo(rates)
   v.setWonder(age, 4)
-  v.sync(livingBuildings(ALL, age))
+  v.sync(livingBuildings(atAge(age), age))
   return v
 }
 
-/** Le trajet complet de la rame, image par image (60 i/s). */
-function* loop(v) {
-  const legs = v.trainMax - v.trainMin
-  const period = 2 * legs + 4 * 5 + 2
+/** Un tour complet et l'arrêt en gare, image par image (60 i/s), et un peu
+ *  plus : la rame repart de la gare et y revient. */
+function* lap(v) {
+  const period = v.beltLength / 2.2 + 5 + 12
   for (let t = 0; t < period; t += 1 / 60) {
     v.tickTrain(1 / 60)
     yield t
   }
 }
 
-test('dans le jeu, sur une boucle complète : attelages, roues, cap, bornes de voie', async () => {
+/** Les bouts réels d'un véhicule posé (centre, cap, longueur posée). */
+function endsOf(c) {
+  const h = c.len / 2
+  return {
+    f: { x: c.x + Math.sin(c.yaw) * h, z: c.z + Math.cos(c.yaw) * h },
+    b: { x: c.x - Math.sin(c.yaw) * h, z: c.z - Math.cos(c.yaw) * h },
+  }
+}
+
+test('la voie est une boucle fermée, sans bout ni heurtoir', () => {
+  const v = village(42, 7)
+  const t = v.railTrack
+  assert.ok(t.closed)
+  const a = t.pts[0]
+  const b = t.pts.at(-1)
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) < 1e-9)
+  // L'abscisse se lit modulo la longueur, et la pose ne connaît plus de bout.
+  const L = t.cum.at(-1)
+  const p = C.pointAt(t, 3.3)
+  const q = C.pointAt(t, 3.3 + 2 * L)
+  assert.ok(Math.hypot(p.x - q.x, p.z - q.z) < 1e-9)
+  const poses = C.layConsist(t, 0.5, 1, C.consistFor(10, ['wood', 'stone', 'food', 'iron', 'clay']), K)
+  for (let i = 1; i < poses.length; i++) {
+    const e = endsOf(poses[i - 1])
+    const f = endsOf(poses[i])
+    assert.ok(Math.hypot(e.b.x - f.f.x, e.b.z - f.f.z) < 1e-6, 'attelage à cheval sur le point de départ')
+  }
+})
+
+test('dans le jeu, sur un tour complet : attelages, essieux, cap, roues, arrêt en gare seulement', async () => {
   await adoptAll()
   const report = []
   for (const seed of [1_337_042, 7, 42]) {
     for (const age of [7, 8, 10]) {
       const v = village(seed, age, { iron: 5, wood: 4, stone: 3, copper: 2, food: 1, clay: 0.5 })
       assert.ok(v.train, `graine ${seed}, âge ${age} : une rame`)
-      const t = { pts: v.trackPath, cum: v.trackCum }
-      const total = t.cum.at(-1)
+      const t = v.railTrack
+      const L = t.cum.at(-1)
       assert.equal(v.trainCars.length, age === 7 ? 3 : age === 8 ? 5 : 7, `graine ${seed}, âge ${age}`)
       let gap = 0
       let yawErr = 0
       let off = 0
-      let sMin = Infinity
-      let sMax = -Infinity
       let yMin = Infinity
-      for (const _ of loop(v)) {
+      let prevHead = null
+      let stops = 0
+      let badStop = 0
+      let covered = 0
+      for (const _ of lap(v)) {
         const poses = v.trainPoses
         for (let i = 0; i < poses.length; i++) {
           const c = poses[i]
-          const e = ends(c)
+          const e = endsOf(c)
           if (i > 0) {
-            const prev = ends(poses[i - 1])
+            const prev = endsOf(poses[i - 1])
             gap = Math.max(gap, Math.hypot(prev.b.x - e.f.x, prev.b.z - e.f.z))
           }
-          // Les essieux extrêmes (loco ±0,6/−0,7, voiture ±0,52, wagon ±0,4) :
-          // à combien de l'axe de la voie ? Le rail fait 8 cm, la roue 6.
+          // Les essieux extrêmes (loco ±0,6/−0,7, voiture ±0,52, wagon ±0,4
+          // au modèle), à l'échelle de la rame : à combien de l'axe de la
+          // voie ? Le rail fait 8 cm, la roue 6.
           const ax = c.kind === 'loco' ? [0.6, -0.7] : c.kind === 'coach' ? [0.52, -0.52] : [0.4, -0.4]
           for (const k of ax)
-            off = Math.max(off, offTrack(t, { x: c.x + Math.sin(c.yaw) * k, z: c.z + Math.cos(c.yaw) * k }))
+            off = Math.max(off, offTrack(t, { x: c.x + Math.sin(c.yaw) * k * K, z: c.z + Math.cos(c.yaw) * k * K }))
           // Le cap comparé à la tangente de la voie au centre du véhicule.
           const sc = (c.sFront + c.sBack) / 2
           const a = C.pointAt(t, sc - 0.05)
           const b = C.pointAt(t, sc + 0.05)
           yawErr = Math.max(yawErr, angle(c.yaw, Math.atan2(b.x - a.x, b.z - a.z)))
-          sMin = Math.min(sMin, c.sBack)
-          sMax = Math.max(sMax, c.sFront)
         }
         const y = v.train.geometry.attributes.position.array
         for (let i = 1; i < y.length; i += 3 * 37) yMin = Math.min(yMin, y[i])
+        // Arrêt = la tête n'avance plus d'une image à l'autre. Il n'a lieu
+        // qu'à l'abscisse de la gare.
+        const head = poses[0].sFront
+        if (prevHead !== null) {
+          const d = (((head - prevHead) % L) + L) % L
+          covered += d < L / 2 ? d : 0
+          if (d < 1e-9) {
+            stops++
+            const at = Math.min((((head - v.trainStop) % L) + L) % L, (((v.trainStop - head) % L) + L) % L)
+            if (at > 1e-6) badStop++
+          }
+        }
+        prevHead = head
       }
-      report.push({ seed, age, gap, yawErr: deg(yawErr), off, sMin, sMax, total })
+      report.push({ seed, age, gap, yawErr: deg(yawErr), off, yMin, stops, covered, L })
       assert.ok(gap < 1e-6, `graine ${seed}, âge ${age} : écart d'attelage ${gap}`)
-      assert.ok(off < 0.13, `graine ${seed}, âge ${age} : essieu à ${off} de l'axe`)
+      assert.ok(off < 0.1, `graine ${seed}, âge ${age} : essieu à ${off} de l'axe`)
       assert.ok(deg(yawErr) < 12, `graine ${seed}, âge ${age} : cap à ${deg(yawErr)}° de la voie`)
-      assert.ok(sMin >= -1e-6 && sMax <= total + 1e-6, `graine ${seed}, âge ${age} : la rame sort de la voie`)
       assert.ok(yMin >= GROUND_Y + 0.215 - 1e-4, `graine ${seed}, âge ${age} : roues sous le rail (${yMin})`)
+      assert.equal(badStop, 0, `graine ${seed}, âge ${age} : ${badStop} images d'arrêt hors de la gare`)
+      assert.ok(stops > 0, `graine ${seed}, âge ${age} : la rame ne s'arrête jamais en gare`)
+      assert.ok(covered >= L - 1e-6, `graine ${seed}, âge ${age} : la rame n'a pas fait le tour (${covered.toFixed(1)} / ${L.toFixed(1)})`)
     }
   }
   if (process.env.TRAIN_REPORT) console.log(JSON.stringify(report))
@@ -257,11 +305,13 @@ test('dans le jeu, sur une boucle complète : attelages, roues, cap, bornes de v
 test('à l’arrêt en gare, la voiture de voyageurs est devant l’abri du quai', async () => {
   await adoptAll()
   const v = village(1_337_042, 10, { wood: 1 })
-  const t = { pts: v.trackPath, cum: v.trackCum }
-  const poses = C.layConsist(t, v.trainStop, 1, v.trainCars)
+  const t = v.railTrack
+  const poses = C.layConsist(t, v.trainStop, 1, v.trainCars, K)
   const coach = poses[1]
   assert.equal(coach.kind, 'coach')
-  assert.ok(Math.abs((coach.sFront + coach.sBack) / 2 - v.railStop) < 0.05)
+  const L = t.cum.at(-1)
+  const mid = ((((coach.sFront + coach.sBack) / 2 - v.railStop) % L) + L) % L
+  assert.ok(Math.min(mid, L - mid) < 0.05)
 })
 
 test('la composition ne change qu’en gare, et seulement les cargaisons', async () => {
@@ -271,7 +321,7 @@ test('la composition ne change qu’en gare, et seulement les cargaisons', async
   v.setCargo({ iron: 9, clay: 8, wood: 1 })
   let changedAt = null
   let before = v.trainCars.join()
-  for (const _ of loop(v)) {
+  for (const _ of lap(v)) {
     if (v.trainCars.join() !== before) {
       // Changement : la rame est à l'arrêt en gare (sa tête au point d'arrêt).
       changedAt = v.trainHead

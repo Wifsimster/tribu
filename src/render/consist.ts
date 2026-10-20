@@ -48,12 +48,14 @@ export const CAR_MODEL: Record<CarKind, string> = {
  *  jouet. La taille réelle (loco à vapeur de 10 à 12 m, ×4) ne tient pas sur
  *  la boucle : un véhicule RIGIDE de longueur L sur un rayon R a le milieu
  *  à L²/8R de la corde, et l'essieu avant de la loco (à 0,6/2,43 de L) à
- *  0,558·k²/R de l'axe. Avec R ≥ 12,6 u (île agrandie, mesuré sur dix
- *  graines et douze parcelles) et la tolérance de 0,10 u (roue de 6 cm sur
- *  un rail de 8 cm), k ≤ 1,50 ; la taille réelle demanderait R ≥ 89 u, une
- *  île trois fois plus grande que la nôtre. On prend 1,45 : loco de 3,52 u
- *  (4,0 m), rame de 15,7 u à l'âge 10 pour une boucle de 110 u au moins. */
-export const TRAIN_SCALE = 1.45
+ *  0,558·k²/R de l'axe. Avec R ≥ 11,3 u (voie de l'île agrandie, dix graines,
+ *  douze parcelles) et la tolérance de 0,10 u (roue de 6 cm sur un rail de
+ *  8 cm), k ≤ 1,42 ; la taille réelle demanderait R ≥ 89 u, une île trois
+ *  fois plus grande que la nôtre. Mesuré en jeu à 1,45 : 0,1005 u au pire
+ *  (graine 42, douze parcelles). On prend 1,4 : loco de 3,40 u (3,85 m),
+ *  1,44 u de haut (le colon : 1,5 u), rame de 15,2 u à l'âge 10 pour une
+ *  boucle de 110 u au moins. */
+export const TRAIN_SCALE = 1.4
 
 /** L'âge du chemin de fer (savoir `railway`, Ère industrielle). */
 export const TRAIN_AGE = 7

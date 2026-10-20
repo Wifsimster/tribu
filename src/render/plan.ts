@@ -40,7 +40,16 @@ export interface Raised {
  *  rame doit le savoir AVANT que la voie ne se pose. */
 export function raiseWorld(
   save: PlanSave,
-  opts: { electric: boolean; yule: boolean; rates: Partial<Record<string, number>>; ageChanged?: boolean },
+  opts: {
+    electric: boolean
+    yule: boolean
+    rates: Partial<Record<string, number>>
+    ageChanged?: boolean
+    /** La Merveille montée (chantier en cours ou dernière achevée) et les
+     *  reliques : pour retrouver leurs places d'avant la ceinture. */
+    wonder?: { age: number; stage: number } | null
+    relics?: readonly string[]
+  },
 ): Raised {
   const island = new Island(save.seed, save.age, save.land)
   const age = save.age
@@ -60,14 +69,24 @@ export function raiseWorld(
   // l'île de base (1,45), où ses maisons ont été bâties — pas celles que
   // tracerait l'île agrandie, qui passeraient au travers.
   let streets = kept ? save.streets : null
-  if (!streets && kept && v3 && age >= RAIL_AGE) streets = legacyStreets(save)
+  let wonderAt = kept ? save.wonderAt : null
+  let museumAt = kept ? save.museumAt : null
+  if (!streets && kept && v3 && age >= RAIL_AGE) {
+    // La 3.61 ne gardait ni les rues, ni la Merveille, ni le musée : ils
+    // étaient retirés à chaque chargement. On les retire une dernière fois
+    // comme elle, pour les garder là où le joueur les voyait.
+    const old = legacyPlan(save, opts.wonder ?? null, opts.relics ?? [])
+    streets = old.streets
+    wonderAt ??= old.wonderAt
+    museumAt ??= old.museumAt
+  }
   // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
   // brasero, lampadaire dès que l'électricité est sue.
   const village = new Village(island, age, opts.electric, opts.yule, {
     belt: kept ? save.belt : null,
     streets,
-    wonderAt: kept ? save.wonderAt : null,
-    museumAt: kept ? save.museumAt : null,
+    wonderAt,
+    museumAt,
   })
   // La rame charge les ressources que la tribu produit le plus : à donner
   // AVANT que la voie ne se pose (plan adopté ci-dessous), pour qu'elle parte
@@ -112,15 +131,23 @@ export function planOf(village: Village): {
   }
 }
 
-/** Les rues telles que les voyait la 3.61 : celles de l'île de base, avec
- *  les mêmes terres. Un village de passage, construit pour être lu puis
- *  jeté — il n'est jamais montré. */
-function legacyStreets(save: PlanSave): Pt[][] {
+/** Le plan tel que le voyait la 3.61 : rues, Merveille et musée de l'île
+ *  de base, avec les mêmes terres et les mêmes bâtiments. Un village de
+ *  passage, construit pour être lu puis jeté — il n'est jamais montré. */
+function legacyPlan(
+  save: PlanSave,
+  wonder: { age: number; stage: number } | null,
+  relics: readonly string[],
+): { streets: Pt[][]; wonderAt: Pt | null; museumAt: Pt | null } {
   const old = new Island(save.seed, save.age, save.land, BASE_GROWTH)
   const v = new Village(old, save.age, false, false, { legacy: true })
-  const streets = v.streets
+  v.adoptLayout(save.layout)
+  v.adoptGoods(save.goods)
+  if (wonder) v.setWonder(wonder.age, wonder.stage)
+  if (relics.length > 0) v.setRelics(relics)
+  const out = { streets: v.streets, wonderAt: v.wonderSpot, museumAt: v.museumSpot }
   for (const g of [old.group, v.group]) dispose(g)
-  return streets
+  return out
 }
 
 function dispose(root: Object3D): void {

@@ -1536,7 +1536,7 @@ export class Village implements GroundSource {
       // La ceinture de CETTE île, jamais en deçà de celle de la sauvegarde :
       // elle ne fait que s'éloigner du centre, terre après terre.
       const prior = cleanBelt(plan.belt)
-      this.beltRadii = growBelt(prior, beltFor((x, z) => island.isLand(x, z)))
+      this.beltRadii = growBelt(prior, beltFor((x, z) => island.isLand(x, z), age >= RAIL_AGE))
       this.beltGrew = prior !== null && this.beltRadii.some((r, j) => r !== prior[j])
       const t = beltPath(this.beltRadii)
       this.beltTrack = { pts: t.pts, cum: t.cum, closed: true }
@@ -1548,7 +1548,7 @@ export class Village implements GroundSource {
       if (age >= RAIL_AGE) this.railRadii = this.beltRadii
       else {
         const future = new Island(island.seedValue, RAIL_AGE, island.land, GROWN_GROWTH, true)
-        this.railRadii = growBelt(this.beltRadii, beltFor((x, z) => future.isLand(x, z)))
+        this.railRadii = growBelt(this.beltRadii, beltFor((x, z) => future.isLand(x, z), true))
         const f = beltPath(this.railRadii)
         this.railPts = f.pts
       }
@@ -1935,7 +1935,7 @@ export class Village implements GroundSource {
       this.crossRoad()
       this.reserveStation()
       this.beltway(p)
-    }
+    } else if (this.plan.legacy && this.railKnown) this.legacyRailway()
     // Le PREMIER PLAN : la caméra par défaut regarde depuis l'azimut 0,785, et
     // la pinède de ce côté-là passait devant le bourg. On l'éclaircit de moitié
     // sur un secteur large — pas de coupe franche, la lisière reste.
@@ -2160,7 +2160,7 @@ export class Village implements GroundSource {
       const y = GROUND_Y + 0.05
       p.push(part(new BoxGeometry(Village.BALLAST, 0.09, seg * 1.02).rotateY(yaw), ballast, mx, y, mz))
       // Une traverse par pas de 0,4 u : c'est ce qui fait lire « voie ».
-      p.push(part(new BoxGeometry(0.92 * k, 0.07, 0.16).rotateY(yaw), tint(C.woodDark, i * 7, 0.08), mx, y + 0.07, mz))
+      p.push(part(new BoxGeometry(1.1, 0.07, 0.16).rotateY(yaw), tint(C.woodDark, i * 7, 0.08), mx, y + 0.07, mz))
       for (const side of [-1, 1])
         p.push(
           part(
@@ -2177,6 +2177,38 @@ export class Village implements GroundSource {
     this.station(p)
     this.buildTrain()
   }
+
+  /** La voie de la 3.61, pour le seul village de passage de la migration
+   *  (`plan.ts`) : une corde à travers l'île par le foyer, et la gare au
+   *  point libre le plus proche du feu. Rien n'est dessiné : ce tracé ne sert
+   *  qu'à retrouver où la 3.61 posait la Merveille et le musée, qu'elle ne
+   *  gardait pas dans la sauvegarde. */
+  private legacyRailway(): void {
+    const cross = 0.785 + Math.PI / 2
+    const west = this.traceLane(cross, 34, true)
+    const east = this.traceLane(cross + Math.PI, 34, true)
+    const pts = [...east.slice().reverse(), { x: HEARTH.x, z: HEARTH.z }, ...west].map((v) => ({ x: v.x, z: v.z }))
+    if (pts.length < 6) return
+    this.legacyRail = pts
+    const prior = this.stationAt
+    if (prior) {
+      const k = this.lots.findIndex((l) => l.x === prior.x && l.z === prior.z)
+      if (k >= 0) this.lots.splice(k, 1)
+    }
+    let best = 1
+    let bestD = Infinity
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = Math.hypot(pts[i]!.x - HEARTH.x, pts[i]!.z - HEARTH.z)
+      const score = this.clearOfLots(pts[i]!.x, pts[i]!.z, Village.STATION_R) ? d : d + 1000
+      if (score < bestD) {
+        bestD = score
+        best = i
+      }
+    }
+    this.stationAt = { x: pts[best]!.x, z: pts[best]!.z }
+    this.lots.push({ x: pts[best]!.x, z: pts[best]!.z, r: Village.STATION_R })
+  }
+  private legacyRail: { x: number; z: number }[] = []
 
   /** Où la route du ponton franchit la ceinture : l'UNIQUE traversée. Les rues
    *  latérales s'arrêtent avant la voie (`clipLane`), la route du ponton la
@@ -2286,7 +2318,7 @@ export class Village implements GroundSource {
       p.push(part(geo.rotateY(yaw), col, c.x + cy * u * side + sy * v, y + h, c.z - sy * u * side + cy * v))
     }
     // Quai surélevé et sa bordure claire : le bord du quai à 0,15 u au moins
-    // du flanc de la rame (0,60 u de demi-largeur à l'échelle 1,45).
+    // du flanc de la rame (0,59 u de demi-largeur à l'échelle 1,4).
     const u0 = Village.QUAY_EDGE
     put(new BoxGeometry(1.5, 0.26, 5.2), tint(C.stoneDark, 3, 0.05), u0 + 0.75, 0.13, 0)
     put(new BoxGeometry(0.16, 0.3, 5.2), C.stoneLight, u0 + 0.08, 0.15, 0)
@@ -3135,12 +3167,13 @@ export class Village implements GroundSource {
     if (!this.clearOfLots(x, z, r, spacing)) return false
     if (CAMP_BLOCKERS.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.6 + r * 0.5)) return false
     if (trees && this.treeDist(x, z) < 1.1 + footprint * 0.35) return false
-    // Dans la ceinture, et jamais dessus : le bord à 1,35 u au moins de l'axe
-    // (demi-ballast 0,73 + ruelle 0,6). Elle est réservée dès le sentier du
+    // Dans la ceinture, et jamais dessus : le bord à 1,2 u au moins de l'axe
+    // (demi-ballast 0,625 + ruelle 0,6). Elle est réservée dès le sentier du
     // Paléolithique : le train de l'âge 7 ne délogera personne.
     if (this.relaxBelt < 2 && (coast ? !this.beyondBelt(x, z, r + Village.BELT_CLEAR) : !this.beltClear(x, z, r + Village.BELT_CLEAR)))
       return false
     if (this.relaxBelt < 1 && !this.pathClear(x, z, r)) return false
+    if (this.legacyRail.some((q) => Math.hypot(x - q.x, z - q.z) < 1.0 + r)) return false
     // Ni sur la route du ponton hors des rues, ni sur le passage à niveau.
     const cross = this.crossing
     if (cross && Math.hypot(x - cross.x, z - cross.z) < r + 2.2) return false
@@ -3379,7 +3412,7 @@ export class Village implements GroundSource {
   }
 
   /** LE GRAND TRACÉ : les bâtiments du plan adopté qui empiètent sur la
-   *  ceinture (bord à moins de 1,35 u de l'axe, ou posés au-delà), ou sur la
+   *  ceinture (bord à moins de 1,2 u de l'axe, ou posés au-delà), ou sur la
    *  route prolongée jusqu'au ponton. Ils sont retirés ici et reposés par
    *  `sync`, du plus gros au plus petit ; un bâtiment qui ne trouve aucune
    *  place reste où il était. Les autres ne bougent pas d'un centimètre. Le
@@ -3598,13 +3631,16 @@ export class Village implements GroundSource {
   private static readonly TRAIN_SPEED = 2.2
   private static readonly TRAIN_ACCEL = 0.6
   private static readonly TRAIN_STOP = 5
-  /** Largeur du ballast à l'échelle de la rame (1,15 × ~1,26). */
-  private static readonly BALLAST = 1.45
+  /** Largeur du ballast : 1,25 u, les traverses (1,1 u) et les rails (à
+   *  ±0,42 u, l'écartement de la rame à l'échelle 1,4) dessus. */
+  private static readonly BALLAST = 1.25
   /** Bord du quai de la gare, depuis l'axe : demi-gabarit 0,60 + débord en
    *  courbe + 0,15 de jour. */
   private static readonly QUAY_EDGE = 0.85
-  /** Bord de bâtiment ↔ axe de la voie : demi-ballast 0,73 + ruelle 0,6. */
-  static readonly BELT_CLEAR = 1.35
+  /** Bord de bâtiment ↔ axe de la voie : demi-ballast 0,625 + ruelle 0,6,
+   *  la règle de la conception (1,2 u). Le flanc de la rame passe à 0,72 u
+   *  de l'axe au plus (0,59 de demi-gabarit, 0,13 de débord en courbe). */
+  static readonly BELT_CLEAR = 1.2
   /** Bord de bâtiment ↔ axe du sentier ou du chemin, avant l'âge 7 :
    *  demi-chemin 0,3 (il s'élargit à 0,64) + ruelle 0,6. */
   private static readonly PATH_CLEAR = 0.9
@@ -6363,23 +6399,31 @@ export class Village implements GroundSource {
     // peut border une rue à 0,5 près au lieu de 1 — la chaussée reste libre,
     // le colon passe à côté sans le traverser — et son emprise ne réserve
     // plus de marge de parcelle (empreinte 1,6 au lieu de 2,4).
-    // Quatrième passe, depuis la ceinture : le bourg plein jusqu'à la voie,
-    // le quai prend la bande côtière, sur un cap assez large.
-    for (const [strict, gap, foot, coast] of [
-      [true, 1.0, fp, false],
-      [false, 1.0, fp, false],
-      [false, 0.5, 1.6, false],
-      [false, 0.5, 1.6, true],
+    // Passes suivantes, depuis la ceinture. Avant l'âge 7, sur l'île de base,
+    // le quai peut border le sentier (relax 1), puis le tracé de la future
+    // voie (relax 2) — comme un bâtiment, voir `slotOrNull`. Après, le bourg
+    // plein jusqu'à la voie : la bande côtière, sur un cap assez large.
+    const early = this.railRadii !== this.beltRadii
+    for (const [strict, gap, foot, coast, relax] of [
+      [true, 1.0, fp, false, 0],
+      [false, 1.0, fp, false, 0],
+      [false, 0.5, 1.6, false, 0],
+      [false, 0.5, 1.6, false, early ? 1 : -1],
+      [false, 0.5, 1.6, false, early ? 2 : -1],
+      [false, 0.5, 1.6, true, 0],
     ] as const) {
+      if (relax < 0) continue
       const accept = (x: number, z: number): boolean => this.goodsClear(x, z, strict, gap)
-      if (!coast) s = this.laneSlot(r, foot, 0, accept)
+      if (!coast && relax === 0) s = this.laneSlot(r, foot, 0, accept)
       if (s) break
+      this.relaxBelt = relax
       for (const c of cells) {
         if (!this.fits(new Vector3(c.x, GROUND_Y, c.z), r, foot, 0, false, accept, coast)) continue
         this.lots.push({ x: c.x, z: c.z, r })
         s = { x: c.x, z: c.z }
         break
       }
+      this.relaxBelt = 0
       if (s) break
     }
     // Les lots regardent le feu : le village voit ce que le marchand a laissé.

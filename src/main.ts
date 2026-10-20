@@ -159,6 +159,8 @@ function buildWorld(): void {
     yule: yule !== 'none',
     rates: game.rates,
     ageChanged,
+    wonder: shownWonder(),
+    relics: game.save.relics,
   })
   ageChanged = false
   island = raised.island
@@ -198,14 +200,8 @@ function buildWorld(): void {
   {
     // La Merveille d'abord : elle réserve sa place au cœur de la clairière
     // AVANT que les ateliers ne prennent les meilleurs emplacements.
-    const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
-    const cur = game.save.wonder
-    if (cur) {
-      const ws = game.wonderState()
-      village.setWonder(cur.age, ws ? stageOf(ws.progress) : 0)
-    } else if (game.save.wonders.length > 0) {
-      village.setWonder(game.save.wonders[game.save.wonders.length - 1]!, 4)
-    }
+    const w = shownWonder()
+    if (w) village.setWonder(w.age, w.stage)
   }
   village.sync(livingBuildings(game.buildings, game.save.age))
   village.setRelics(game.save.relics)
@@ -249,6 +245,19 @@ function buildWorld(): void {
   // pris sous les bâtiments, et le colon n'irait pas cueillir un buisson
   // effacé.
   surveyNodes()
+}
+
+/** La Merveille montrée au village : le chantier en cours (et son stade),
+ *  sinon la dernière achevée. */
+function shownWonder(): { age: number; stage: number } | null {
+  const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
+  const cur = game.save.wonder
+  if (cur) {
+    const ws = game.wonderState()
+    return { age: cur.age, stage: ws ? stageOf(ws.progress) : 0 }
+  }
+  if (game.save.wonders.length > 0) return { age: game.save.wonders[game.save.wonders.length - 1]!, stage: 4 }
+  return null
 }
 
 /** Le plan dans la sauvegarde : bâtiments, ceinture, rues, Merveille, musée. */

@@ -15,13 +15,22 @@
 // ne peut que repousser la courbe vers le large.
 
 export const BELT_N = 72
-/** Largeur du lissage : 32°. Mesuré (conception) : la moyenne glissante ou
- *  Fourier à 5 harmoniques descendaient à 2,2 u de rayon de courbure. Sur dix
- *  graines et douze parcelles (2026-10-20) : à 30°, l'île de base descend à
- *  8,99 u ; à 32°, 9,5 u au moins avant l'âge 7 et 12,6 u après. */
+/** Le tracé sur l'île de base (le sentier, avant l'âge 7) : lissage de 32°
+ *  et une case de garde (1,35 u). Mesuré (conception) : la moyenne glissante
+ *  ou Fourier à 5 harmoniques descendaient à 2,2 u de rayon de courbure ; à
+ *  30°, l'île de base descend à 8,99 u (graine 123), à 32° 9,5 u au moins.
+ *
+ *  Le tracé de la VOIE, sur l'île agrandie (2026-10-20, 90 sauvegardes 3.61
+ *  générées, dix graines, âges 7 à 10, 0 à 12 parcelles, phare à part) :
+ *  σ 32° / garde 1,35 → rayon ≥ 12,2 u, 13,6 % des bâtiments sur le tracé,
+ *  11 parties sur 90 au-delà de 20 % ; σ 28° / garde 1,2 → rayon ≥ 11,3 u,
+ *  10,9 %, 2 parties sur 90 (22,7 % au pire). On garde la seconde : moins de
+ *  bâtiments déplacés, la garde de la conception (1,2 u) et un rayon bien
+ *  au-dessus du plancher de 9 u. */
 export const BELT_SIGMA = (32 * Math.PI) / 180
-/** Garde de l'axe à l'eau au tracé : une case. */
 export const BELT_GUARD = 1.35
+export const RAIL_SIGMA = (28 * Math.PI) / 180
+export const RAIL_GUARD = 1.2
 const RAYS = 720
 
 type IsLand = (x: number, z: number) => boolean
@@ -145,17 +154,28 @@ function guarded(isLand: IsLand, pts: readonly Pt[], guard: number): boolean {
  *  celle qu'on a tracée. */
 const up = (v: number): number => Math.ceil(v * 100 - 1e-6) / 100
 
-/** Le tracé que réclame CETTE île : rivage lissé, puis recul. */
-export function beltFor(isLand: IsLand): number[] {
-  const g = gaussCircular(shoreRadii(isLand), BELT_SIGMA)
+/** Le tracé que réclame CETTE île : rivage lissé, puis recul. `rail` : le
+ *  tracé de la voie (île agrandie), sinon celui du sentier. */
+export function beltFor(isLand: IsLand, rail = false): number[] {
+  const guard = rail ? RAIL_GUARD : BELT_GUARD
+  const g = gaussCircular(shoreRadii(isLand), rail ? RAIL_SIGMA : BELT_SIGMA)
   const step = RAYS / BELT_N
   const base: number[] = []
   for (let j = 0; j < BELT_N; j++) base.push(g[j * step]!)
-  for (let d = 0; d < 12; d += 0.05) {
-    const c = base.map((r) => up(Math.max(2, r - d)))
-    if (guarded(isLand, beltPath(c).pts, BELT_GUARD)) return c
+  const at = (d: number): number[] => base.map((r) => up(Math.max(2, r - d)))
+  const ok = (d: number): boolean => guarded(isLand, beltPath(at(d)).pts, guard)
+  if (ok(0)) return at(0)
+  // Le plus petit recul qui tient la garde, au vingtième d'unité, par
+  // dichotomie : `lo` ne tient pas, `hi` tient.
+  let lo = 0
+  let hi = 12
+  if (!ok(hi)) return at(hi)
+  while (hi - lo > 0.05) {
+    const m = Math.round(((lo + hi) / 2) * 100) / 100
+    if (ok(m)) hi = m
+    else lo = m
   }
-  return base.map((r) => up(Math.max(2, r - 12)))
+  return at(hi)
 }
 
 /** La ceinture après une terre gagnée (ou le palier de l'âge 7) : elle ne
