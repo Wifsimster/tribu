@@ -45,6 +45,7 @@ import type { ResourceId } from './game/content'
 import { DAY_SECONDS, DAY_START } from './game/content'
 import { Stage } from './render/scene'
 import { GROUND_Y, Island } from './render/island'
+import { planOf, raiseWorld } from './render/plan'
 import { Ground } from './render/ground'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
@@ -141,37 +142,28 @@ game.visitable = neighbors.map((n) => ({ id: n.id, name: n.name, age: n.age, rel
 // la remet à zéro à chaque reconstruction du monde.
 let fishing = false
 let catchTimer = 12
+/** Vrai le temps du buildWorld qui suit un passage d'âge. */
+let ageChanged = false
 let firstCatch = true
 
 /** (Re)construit l'île à la taille de l'âge courant. Appelé au chargement et à
  *  chaque passage d'âge : le monde s'agrandit sous la bannière. */
 function buildWorld(): void {
   disposeWorld()
-  // L'île ne grandit plus avec les âges : seulement des terres que le joueur
-  // a gagnées sur la mer.
-  island = new Island(game.save.seed, game.save.age, game.save.land)
-  // Le centre du village suit l'époque : tipis puis maison, feu ouvert puis
-  // brasero, lampadaire dès que l'électricité est sue.
-  village = new Village(island, game.save.age, game.knows('electricity'), yule !== 'none')
-  // La rame charge les ressources que la tribu produit le plus : à donner
-  // AVANT que la voie ne se pose (plan adopté ci-dessous), pour qu'elle parte
-  // déjà chargée et non avec des wagons vides.
-  village.setCargo(game.rates)
-  // Le plan sauvegardé d'abord : ce qui est bâti ne se redéplace pas.
-  // Plan d'une version antérieure : il est retracé selon les règles du jour.
-  // Un plan tracé sur une île plus grande que celle d'aujourd'hui (avant les
-  // parcelles, l'île grandissait à chaque âge) est retracé une fois : un
-  // bâtiment ne se pose pas dans l'eau.
-  // v3 : l'île plate et la règle « deux bâtiments ne se touchent jamais ».
-  // Un plan v2 pouvait coller deux toits : il est retracé une fois.
-  const plan = game.save.layoutV === 3 ? game.save.layout : []
-  const kept = plan.every((p) => island.isLand(p.x, p.z))
-  village.adoptLayout(kept ? plan : [])
-  // Le quai du marchand est repris AVANT tout ce qui se pose ensuite : la
-  // Merveille, le musée et les nouveaux ateliers le contournent. Un plan
-  // retracé repart sans lui.
-  village.adoptGoods(kept && game.save.layoutV === 3 ? game.save.goods : null)
-  game.save.layoutV = 3
+  // L'île grandit une fois, d'un palier, à l'âge 7 (la mer recule pour la
+  // voie ferrée) ; le reste vient des terres gagnées sur la mer.
+  // L'île, puis le plan du village : gardé, retracé ou passé au grand tracé
+  // (plan.ts, partagé avec les tests).
+  const raised = raiseWorld(game.save, {
+    electric: game.knows('electricity'),
+    yule: yule !== 'none',
+    rates: game.rates,
+    ageChanged,
+  })
+  ageChanged = false
+  island = raised.island
+  village = raised.village
+  game.save.layoutV = raised.layoutV
   settler = new Settler(island)
   // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
   // du rivage de CETTE île-là. Le quai n'y entre pas ici : qu'il vienne de la
@@ -216,9 +208,9 @@ function buildWorld(): void {
     }
   }
   village.sync(livingBuildings(game.buildings, game.save.age))
-  // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
-  game.save.layout = village.layout
   village.setRelics(game.save.relics)
+  // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
+  persistPlan()
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
   // Le marchand mouille là où toute sa coque flotte, sur la côte de CETTE île.
@@ -230,6 +222,16 @@ function buildWorld(): void {
 
   // Ce que le marchand a laissé se voit dès le chargement.
   placeGoods()
+  if (raised.migrate) {
+    // Le grand tracé, c'est la migration d'un plan v3 ou la mer qui recule à
+    // l'âge 7 ; une terre gagnée qui pousse la voie n'a droit qu'à un mot.
+    // Après coup : au premier chargement, le HUD n'existe pas encore.
+    const moved = village.moved.map((m) => m.id)
+    const goods = village.goodsMoved && game.save.goods !== null
+    const stuck = village.stuck.length
+    village.markMoved()
+    setTimeout(() => announceTracing(raised.grand, moved, goods, stuck), 400)
+  }
   // Le cadastre au sol, une fois TOUT posé : bâtiments, Merveille, musée,
   // gare, quai, campement, enclos, troncs, rochers et l'eau. Il ne déplace
   // aucun bâtiment — il lit. Il retire seulement le décor qui chevauche une
@@ -247,6 +249,40 @@ function buildWorld(): void {
   // pris sous les bâtiments, et le colon n'irait pas cueillir un buisson
   // effacé.
   surveyNodes()
+}
+
+/** Le plan dans la sauvegarde : bâtiments, ceinture, rues, Merveille, musée. */
+function persistPlan(): void {
+  Object.assign(game.save, planOf(village))
+}
+
+/** La carte « Le grand tracé », et sa ligne de Chronique : combien de
+ *  bâtiments ont été reposés ailleurs sur l'île, lesquels. Pas de carte si
+ *  rien n'a bougé ; la Chronique, elle, le note quand c'est le tracé de
+ *  l'âge 7. */
+function announceTracing(grand: boolean, moved: string[], goods: boolean, stuck: number): void {
+  const names = moved.map((id) => techOfBuilding.get(id)?.name ?? id)
+  if (goods) names.push('le quai du marchand')
+  const n = names.length
+  if (n === 0) {
+    if (grand) game.note('age', 'Le grand tracé : la voie fait désormais le tour de l’île, sans rien déplacer')
+    return
+  }
+  const what = n > 1 ? `${n} bâtiments ont été reposés` : 'un bâtiment a été reposé'
+  game.note('age', `Le grand tracé : ${what} ailleurs sur l’île pour laisser passer la voie`)
+  if (!grand) {
+    hud.toast(`La voie s’éloigne vers la mer : ${what} ailleurs sur l’île`)
+    return
+  }
+  const list = names.map((x) => `<li>${escapeHtml(x)}</li>`).join('')
+  hud.showStory(
+    'Le grand tracé',
+    'La voie fait le tour de l’île',
+    `La mer a reculé et le chemin de fer suit désormais la côte, d’un bout à l’autre de l’île. Pour lui laisser la place, ${what} ailleurs sur l’île. Tout le reste est resté où il était.`,
+    `<ul class="wc-moved">${list}</ul>${stuck > 0 ? `<p>${stuck > 1 ? `${stuck} n’ont` : 'Un seul n’a'} pas trouvé de place : ${stuck > 1 ? 'ils restent' : 'il reste'} où ${stuck > 1 ? 'ils étaient' : 'il était'}.</p>` : ''}`,
+    n > 1 ? 'Les bâtiments reposés' : 'Le bâtiment reposé',
+    true,
+  )
 }
 
 /** Les nœuds de récolte : chaque arbre, rocher et buisson encore debout.
@@ -462,7 +498,7 @@ game.on((e) => {
         // Le nouvel atelier prend sa place DÉFINITIVE : elle part dans la
         // sauvegarde tout de suite, sinon elle serait retirée au sort au
         // prochain chargement.
-        game.save.layout = village.layout
+        persistPlan()
       }
       hud.refreshTechList()
       settler.celebrate()
@@ -473,6 +509,7 @@ game.on((e) => {
       hud.refreshTechList()
       // La tribu gagne du terrain : l'île est reconstruite plus grande, les
       // bâtiments repoussent avec leur animation de pose.
+      ageChanged = true
       buildWorld()
       break
     case 'expeditionStart':
@@ -524,6 +561,7 @@ game.on((e) => {
         // La relique passe du sac du colon aux vitrines : le musée pousse (ou
         // s'agrandit) sous les yeux du joueur.
         village.setRelics(game.save.relics)
+        persistPlan()
   {
     // La Merveille : le chantier en cours, sinon la dernière achevée.
     const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
@@ -531,8 +569,10 @@ game.on((e) => {
     if (cur) {
       const ws = game.wonderState()
       village.setWonder(cur.age, ws ? stageOf(ws.progress) : 0)
+      persistPlan()
     } else if (game.save.wonders.length > 0) {
       village.setWonder(game.save.wonders[game.save.wonders.length - 1]!, 4)
+      persistPlan()
     }
   }
         const name = e.relic.name.charAt(0).toLowerCase() + e.relic.name.slice(1)
@@ -659,6 +699,7 @@ game.on((e) => {
       hud.toast(e.text)
       notify(e.text)
       if (e.relic) village.setRelics(game.save.relics)
+      persistPlan()
       break
     }
     case 'outpostTribute': {
@@ -672,6 +713,7 @@ game.on((e) => {
     }
     case 'wonderStage': {
       village.setWonder(e.def.age, e.stage)
+      persistPlan()
       hud.refreshTechList()
       hud.toast(
         e.stage === 0
@@ -686,6 +728,7 @@ game.on((e) => {
     }
     case 'wonderDone':
       village.setWonder(e.def.age, 4)
+      persistPlan()
       ambience.chime()
       hud.refreshTechList()
       hud.showStory('La Merveille', e.def.name, e.def.fact)
@@ -1314,6 +1357,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
       if (!def) return
       void sendGift(t.id, t.secret, to.id, def.id)
       village.setRelics(game.save.relics)
+      persistPlan()
       hud.toast(`${def.name} part pour ${to.name}`)
       render()
     })
