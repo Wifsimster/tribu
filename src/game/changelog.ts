@@ -10,6 +10,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.62.0',
+    title: 'Le troupeau marche, la basse-cour picore',
+    items: [
+      "Les moutons et les chevaux marchent sur leurs pattes au lieu de glisser sur l'herbe : leurs quatre pattes avancent l'une après l'autre, et chaque sabot reste posé au sol tant qu'il porte la bête. La toison du mouton roule à chaque pas, la tête du cheval hoche avec la foulée et sa queue balance.",
+      "Pour brouter, le mouton baisse la tête jusqu'à l'herbe et le cheval abaisse l'encolure, au lieu de basculer tout le corps.",
+      "Les poules trottinent à petits pas rapides : à chaque pas, la tête reste immobile pendant que le corps avance, puis elle rattrape le corps d'un coup. Elles picorent le sol à petits coups de bec, et battent parfois des ailes.",
+      "La nuit, chevreuils, moutons, chevaux et poules se couchent chacun à son heure : le corps descend au ras de l'herbe, les pattes se replient dessous, la tête s'abaisse, et le dos se soulève au rythme de la respiration. Au matin, ils se relèvent l'un après l'autre.",
+      "Les mouettes battent des ailes plus amplement, pour qu'on les voie voler même sur un petit écran.",
+      "Ta partie, tes bâtiments et ta production restent tels quels.",
+    ],
+  },
+  {
     version: '3.61.0',
     title: 'Le chevreuil marche, la mouette bat des ailes',
     items: [
