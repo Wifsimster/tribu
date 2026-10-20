@@ -48,7 +48,7 @@ import { GROUND_Y, Island } from './render/island'
 import { Ground } from './render/ground'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
-import { Fauna } from './render/fauna'
+import { Fauna, loadFaunaModels } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
 import { attachControls } from './render/controls'
@@ -179,6 +179,9 @@ function buildWorld(): void {
   // qui le donne à la faune (`setBlockers`) — un seul chemin pour les deux.
   fauna = new Fauna(island, village.obstaclePoints)
   fauna.onFishJump = () => ambience.plop()
+  // Les bêtes modelées dans Blender : la faune d'ALORS (celle de l'île en
+  // cours, pas forcément celle qui a lancé le chargement) passe à ses modèles.
+  void loadFaunaModels().then(() => fauna.useModels())
   // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
   // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
   // tribu n'a pas l'agriculture.

@@ -6,8 +6,10 @@ import { MeshToonMaterial } from 'three'
 // nombres d'état (`aAnim`), et le vertex shader plie les pièces. Pourquoi pas
 // une animation cuite dans Blender : à 3–40 px on ne verrait pas la finesse
 // d'un rig, et chaque retouche de silhouette (fréquentes) obligerait à
-// recuire. Ici la géométrie reste en TS ; on bouge les pattes, le cou, les
-// ailes — les seules pièces qui se lisent à cette taille.
+// recuire. Ici le mouvement reste en TS ; on bouge les pattes, le cou, les
+// ailes — les seules pièces qui se lisent à cette taille. Depuis la v3.66.0,
+// la géométrie vient de Blender (un nœud par pièce, pivot = translation du
+// nœud, voir fauna-glb.ts) ; le squelette n'y voit aucune différence.
 //
 // Le même morceau de GLSL et sa copie TS (`rigPose`) vivent dans ce fichier,
 // côte à côte : les tests mesurent le patinage et les jonctions avec la copie
@@ -117,9 +119,11 @@ export const DEER_GAIT: Gait = {
   aTrotHind: 32 * DEG,
   liftWalk: 0.05,
   liftTrot: 0.08,
-  // Le cou plonge de 75° depuis le garrot : avec 30 % du tangage d'avant
-  // (`grazePitch`), le museau passe sous la ligne du ventre.
-  neckGraze: 75 * DEG,
+  // Le cou plonge de 105° depuis le garrot (75° jusqu'à la 3.65) : avec 30 %
+  // du tangage d'avant (`grazePitch`), le museau du modèle Blender touche
+  // l'herbe — à 75°, il restait à 0,13 u du sol. La houle garde sa part
+  // (6/75 de la plongée), celle du contrat de rig de l'artiste.
+  neckGraze: 105 * DEG,
   neckWalk: 4 * DEG,
   // Tête portée en avant dans la fuite (même sens que la plongée du broutage).
   neckTrot: 8 * DEG,

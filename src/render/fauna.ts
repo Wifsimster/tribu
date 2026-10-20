@@ -24,6 +24,13 @@ import { CAMP_BLOCKERS, CAMP_FIRE } from './village'
 import { GROUND_Y, type Island } from './island'
 import { follow, type Footprint, type Ground, type GroundSource, type Pt } from './ground'
 import { DEER_GAIT, GULL_WING, HEN_FLAP, HEN_GAIT, HORSE_GAIT, PART, SHEEP_GAIT, SLEEP, gaitUniform, rigMaterial, wingUniform, type Gait } from './fauna-rig'
+import { faunaGeometry } from './fauna-glb'
+// `?url`, comme les modèles du village : Vite les hache sous /assets/.
+import deerUrl from '../assets/models/deer.glb?url'
+import sheepUrl from '../assets/models/sheep.glb?url'
+import henUrl from '../assets/models/hen.glb?url'
+import horseUrl from '../assets/models/horse.glb?url'
+import gullUrl from '../assets/models/gull.glb?url'
 
 /** Pièce animée : identifiant (`PART`) et pivot (x, y, z) en espace objet. */
 type Rig = readonly [number, number, number, number]
@@ -74,10 +81,12 @@ function weld(parts: BufferGeometry[]): BufferGeometry {
 // ── Silhouettes ────────────────────────────────────────────────────────────
 // Toutes construites face à +z. À quarante pixels, seul le profil compte : un
 // cerf, c'est un cou dressé et des bois ; un mouton, une boule sur pattes.
+// Depuis la v3.66.0, ce sont les REPLIS des modèles Blender (plus bas) : la
+// faune naît avec elles et les quitte dès que les glb sont chargés. Mêmes
+// pièces, mêmes pivots (test « contrat » de fauna-models).
 
-/** Le corps du chevreuil (capsule couchée sur z, aplatie en y) : la référence
- *  des jonctions. Hanches et garrot doivent rester DEDANS (test A5). */
-export const DEER_BODY = { y: 0.64, z: -0.04, r: 0.15, half: 0.23, sy: 1.14 } as const
+/** Le corps du chevreuil (capsule couchée sur z, aplatie en y). */
+const DEER_BODY = { y: 0.64, z: -0.04, r: 0.15, half: 0.23, sy: 1.14 } as const
 
 export function deerGeo(): BufferGeometry {
   const coat = new Color('#a97a4e')
@@ -153,15 +162,14 @@ function shrink(geo: BufferGeometry, k: number): BufferGeometry {
   return geo
 }
 
-/** Le mouton est construit à l'échelle 1 puis réduit (`SHEEP_SCALE`). */
+/** La silhouette du mouton est construite à l'échelle 1 puis réduite
+ *  (`SHEEP_SCALE`). Le modèle Blender, lui, est livré à l'échelle du jeu et
+ *  ne passe pas par `shrink`. */
 export const SHEEP_SCALE = 0.62
 /** Hanche du mouton (avant réduction), dans la toison ; base du cou, au
  *  poitrail, dans la toison aussi. */
 const SHEEP_HIP_Y = 0.36
 const SHEEP_NECK: Rig = [PART.NECK, 0, 0.38, 0.14]
-/** La toison du mouton, après réduction (ellipsoïde) : la référence de ses
- *  jonctions. */
-export const SHEEP_BODY = { x: 0, y: 0.4 * SHEEP_SCALE, z: -0.02 * SHEEP_SCALE, rx: 0.24 * 1.28 * SHEEP_SCALE, ry: 0.24 * 0.95 * SHEEP_SCALE, rz: 0.24 * SHEEP_SCALE } as const
 
 export function sheepGeo(): BufferGeometry {
   const fleece = new Color('#e9e2cf')
@@ -221,10 +229,9 @@ export function sheepGeo(): BufferGeometry {
   return shrink(weld(p), SHEEP_SCALE)
 }
 
-/** Hanche de la poule, base du cou, et l'ellipsoïde de son corps. */
+/** Hanche de la poule et base du cou. */
 const HEN_HIP_Y = 0.1
 const HEN_NECK: Rig = [PART.NECK, 0, 0.18, 0.04]
-export const HEN_BODY = { x: 0, y: 0.13, z: 0, rx: 0.085, ry: 0.085 * 0.95, rz: 0.085 * 1.25 } as const
 
 export function henGeo(): BufferGeometry {
   const body = new Color('#f2efe4')
@@ -281,11 +288,10 @@ export function henGeo(): BufferGeometry {
 }
 
 /** Hanche du cheval, base de l'encolure (au garrot) et racine de la queue
- *  (dans la croupe), et la capsule de son tronc. */
+ *  (dans la croupe). */
 const HORSE_HIP_Y = 0.85
 const HORSE_NECK: Rig = [PART.NECK, 0, 1.0, 0.2]
 const HORSE_TAIL: Rig = [PART.TAIL, 0, 1.0, -0.42]
-export const HORSE_BODY = { y: 0.95, z: -0.02, r: 0.22, half: 0.31, sy: 1.05 } as const
 
 export function horseGeo(): BufferGeometry {
   const coat = new Color('#6b4630')
@@ -380,6 +386,58 @@ export function gullGeo(): BufferGeometry {
       p.push(part(new BoxGeometry(0.07, 0.009, 0.022).rotateZ(s * 0.34).rotateY(s * (0.1 + k * 0.12)), tip, s * 0.6, 0.11, -0.05 + k * 0.03, hand))
   }
   return weld(p)
+}
+
+// ── Les modèles Blender (v3.66.0) ──────────────────────────────────────────
+// Les cinq bêtes sont modelées dans Blender, pièce par pièce, avec les mêmes
+// pivots et les mêmes identifiants que les silhouettes ci-dessus : le
+// squelette (fauna-rig.ts) les plie sans rien savoir d'où elles viennent.
+// Les silhouettes restent le repli : la faune naît avec elles, et chaque
+// espèce passe à son modèle dès qu'il est chargé (`useModels`). Un fichier
+// absent ou abîmé ne coûte qu'un avertissement.
+
+export type Species = 'deer' | 'sheep' | 'hen' | 'horse' | 'gull'
+
+const MODEL_URLS: Record<Species, string> = { deer: deerUrl, sheep: sheepUrl, hen: henUrl, horse: horseUrl, gull: gullUrl }
+const PROCEDURAL: Record<Species, () => BufferGeometry> = { deer: deerGeo, sheep: sheepGeo, hen: henGeo, horse: horseGeo, gull: gullGeo }
+/** Les modèles lus, une géométrie par espèce (copiée à chaque faune). */
+const models = new Map<Species, BufferGeometry>()
+let loading: Promise<boolean> | null = null
+
+/** Range un modèle déjà lu (le chargement passe par ici ; les tests, sous
+ *  Node, lisent le fichier eux-mêmes). Lève une erreur si le fichier ne
+ *  porte pas une bête lisible. */
+export function adoptFaunaModel(species: Species, glb: ArrayBuffer): void {
+  models.set(species, faunaGeometry(glb))
+}
+
+/** Le modèle d'une espèce (copie), ou null s'il n'est pas (encore) là. */
+export function faunaModel(species: Species): BufferGeometry | null {
+  return models.get(species)?.clone() ?? null
+}
+
+/** Charge les cinq modèles en tâche de fond, une seule fois. La promesse dit
+ *  si au moins un est arrivé. */
+export function loadFaunaModels(): Promise<boolean> {
+  loading ??= Promise.all(
+    (Object.keys(MODEL_URLS) as Species[]).map(async (sp) => {
+      try {
+        const res = await fetch(MODEL_URLS[sp])
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        adoptFaunaModel(sp, await res.arrayBuffer())
+        return true
+      } catch (err) {
+        console.warn(`[tribu] modèle de faune « ${sp} » indisponible, silhouette conservée :`, err)
+        return false
+      }
+    }),
+  ).then((ok) => ok.some(Boolean))
+  return loading
+}
+
+/** La géométrie d'une espèce : son modèle s'il est là, sa silhouette sinon. */
+function speciesGeo(species: Species): BufferGeometry {
+  return faunaModel(species) ?? PROCEDURAL[species]()
 }
 
 // ── Comportement ───────────────────────────────────────────────────────────
@@ -832,11 +890,17 @@ export class Fauna implements GroundSource {
       this.group.add(mesh)
       return mesh
     }
-    this.deerMesh = build(deerGeo(), 3, 0.07, rigMaterial(gaitUniform(DEER_GAIT)))
-    this.sheepMesh = build(sheepGeo(), 4, 0.05, rigMaterial(gaitUniform(SHEEP_GAIT)))
-    this.henMesh = build(henGeo(), 3, 0.04, rigMaterial(gaitUniform(HEN_GAIT)))
-    this.horseMesh = build(horseGeo(), 2, 0.09, rigMaterial(gaitUniform(HORSE_GAIT)))
-    this.gullMesh = build(gullGeo(), 3, 0.03, rigMaterial(wingUniform(GULL_WING)))
+    this.deerMesh = build(speciesGeo('deer'), 3, 0.07, rigMaterial(gaitUniform(DEER_GAIT)))
+    this.sheepMesh = build(speciesGeo('sheep'), 4, 0.05, rigMaterial(gaitUniform(SHEEP_GAIT)))
+    this.henMesh = build(speciesGeo('hen'), 3, 0.04, rigMaterial(gaitUniform(HEN_GAIT)))
+    this.horseMesh = build(speciesGeo('horse'), 2, 0.09, rigMaterial(gaitUniform(HORSE_GAIT)))
+    this.gullMesh = build(speciesGeo('gull'), 3, 0.03, rigMaterial(wingUniform(GULL_WING)))
+    // Une faune refaite après le chargement (nouvelle île) naît modelée.
+    this.deerMesh.userData.model = models.has('deer')
+    this.sheepMesh.userData.model = models.has('sheep')
+    this.henMesh.userData.model = models.has('hen')
+    this.horseMesh.userData.model = models.has('horse')
+    this.gullMesh.userData.model = models.has('gull')
     this.sheepMesh.visible = false
     this.henMesh.visible = false
     this.horseMesh.visible = false
@@ -875,6 +939,24 @@ export class Fauna implements GroundSource {
     }
   }
 
+  /** Passe chaque espèce à son modèle Blender s'il est arrivé depuis la
+   *  construction. Même mesh, même matériau, mêmes instances : seule la
+   *  géométrie change, et elle reprend l'état des bêtes (`aAnim`, `aRest`)
+   *  tel quel. Un appel par chargement, jamais par image. */
+  useModels(): void {
+    const meshes: [Species, InstancedMesh][] = [['deer', this.deerMesh], ['sheep', this.sheepMesh], ['hen', this.henMesh], ['horse', this.horseMesh], ['gull', this.gullMesh]]
+    for (const [sp, mesh] of meshes) {
+      if (mesh.userData.model) continue
+      const geo = faunaModel(sp)
+      if (!geo) continue
+      const old = mesh.geometry
+      geo.setAttribute('aAnim', old.getAttribute('aAnim'))
+      geo.setAttribute('aRest', old.getAttribute('aRest'))
+      mesh.geometry = geo
+      mesh.userData.model = true
+      old.dispose()
+    }
+  }
 
   /** LA règle de l'enclos, au tirage comme au passage du quai : sa
    *  palissade ne touche ni un bâtiment ni le quai. Centre à PEN_WALL au
