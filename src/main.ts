@@ -218,6 +218,8 @@ function buildWorld(): void {
   village.setRelics(game.save.relics)
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
+  // Le marchand mouille là où toute sa coque flotte, sur la côte de CETTE île.
+  caravan.fitShore((x, z) => island.isLand(x, z))
   // La barque mouille au bout du ponton : la flotte se voit sans partir.
   boat.setTier(game.boatTier)
   boat.moorAt(village.jettyEnd)
@@ -234,7 +236,7 @@ function buildWorld(): void {
   ground = new Ground(island, [village, fauna])
   // L'auto ne roule que là où sa caisse passe, l'avion se gare où ses ailes
   // tiennent : le cadastre le dit.
-  village.fitMovers((x, z) => ground.clearAt(x, z))
+  village.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
   settler.setGround(ground)
   fauna.setGround(ground)
   villagers.setGround(ground)
@@ -1743,7 +1745,7 @@ function frame(now: number): void {
   // quiconque ne marche.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   if (ground.refresh()) {
-    village.fitMovers((x, z) => ground.clearAt(x, z))
+    village.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
     // La carte refaite a pu effacer du décor sous la nouvelle pose : les
     // nœuds de récolte se relèvent, et si le colon marchait vers un buisson
     // ou un rocher qui n'existe plus, il repart vers un nœud debout.

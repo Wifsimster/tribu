@@ -57,6 +57,7 @@ export class Caravan {
   private readonly spawn: Vector3
   private readonly dock: Vector3
   private readonly exit: Vector3
+  private isLand: ((x: number, z: number) => boolean) | null = null
 
   constructor() {
     const wood = PALETTE.trunk
@@ -124,6 +125,52 @@ export class Caravan {
     this.exit = new Vector3(Math.sin(exitA) * SPAWN_R, 0, Math.cos(exitA) * SPAWN_R)
   }
 
+  /** La côte de l'île : la barque mouille au premier rayon, à partir de
+   *  DOCK_R, où toute sa coque flotte (0,2 u de marge), à l'approche, à quai
+   *  et au départ — comme l'appareillage de la barque d'expédition. Une langue
+   *  de terre dans l'axe d'arrivée (graines 20, 41, 777) mordait la coque. */
+  fitShore(isLand: (x: number, z: number) => boolean): void {
+    this.isLand = isLand
+    this.fitDock()
+  }
+
+  private fitDock(): void {
+    const isLand = this.isLand
+    if (!isLand) return
+    const geo = this.hull.geometry
+    geo.computeBoundingBox()
+    const bb = geo.boundingBox!
+    const m = 0.2 / SCALE
+    /** La coque posée en (x, z), proue vers (dx, dz) : flotte-t-elle ? */
+    const floats = (x: number, z: number, dx: number, dz: number): boolean => {
+      const L = Math.hypot(dx, dz)
+      const fx = dx / L
+      const fz = dz / L
+      for (let u = bb.min.x - m; u <= bb.max.x + m + 1e-6; u += 0.1)
+        for (let v = bb.min.z - m; v <= bb.max.z + m + 1e-6; v += 0.1)
+          if (isLand(x + (fx * u - fz * v) * SCALE, z + (fz * u + fx * v) * SCALE)) return false
+      return true
+    }
+    const ax = Math.sin(APPROACH)
+    const az = Math.cos(APPROACH)
+    for (let r = DOCK_R; r <= DOCK_R + 12; r += 0.25) {
+      const x = ax * r
+      const z = az * r
+      // À quai et sur l'approche (l'axe d'arrivée, vers le centre)…
+      let ok = floats(x, z, -ax, -az)
+      for (let d = r + 0.5; ok && d < SPAWN_R; d += 0.5) ok = floats(ax * d, az * d, -ax, -az)
+      // …puis au départ, cap sur la sortie.
+      const ex = this.exit.x - x
+      const ez = this.exit.z - z
+      for (let s = 0.02; ok && s <= 1; s += 0.02) ok = floats(x + ex * s, z + ez * s, ex, ez)
+      if (ok) {
+        this.dock.set(x, 0, z)
+        return
+      }
+    }
+    this.dock.set(ax * DOCK_R, 0, az * DOCK_R)
+  }
+
   get docked(): boolean {
     return this.state === 'docked'
   }
@@ -148,6 +195,8 @@ export class Caravan {
     this.hull.geometry.dispose()
     this.hull.geometry = geo
     this.modelled = true
+    // La coque du modèle n'a pas tout à fait la forme de la primitive.
+    this.fitDock()
   }
 
   depart(): void {
