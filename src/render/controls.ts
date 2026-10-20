@@ -1,4 +1,5 @@
 import type { Stage } from './scene'
+import { ORBIT, clamp, zoomBy } from './orbit'
 
 const TAP_MS = 250
 const TAP_SLOP = 12
@@ -17,9 +18,6 @@ export function attachControls(
   let moved = 0
   let pinchDist = 0
   let velocity = 0
-
-  const MIN_POLAR = 0.18
-  const MAX_POLAR = Math.PI * 0.44
 
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId)
@@ -46,10 +44,10 @@ export function attachControls(
       const k = 0.0055
       stage.azimuth -= dx * k
       velocity = -dx * k
-      stage.polar = clamp(stage.polar - dy * k, MIN_POLAR, MAX_POLAR)
+      stage.polar = clamp(stage.polar - dy * k, ORBIT.minPolar, ORBIT.maxPolar)
     } else if (pointers.size === 2) {
       const d = spread(pointers)
-      if (pinchDist > 0) stage.distance = clamp(stage.distance * (pinchDist / d), 8, 58)
+      if (pinchDist > 0) stage.distance = zoomBy(stage.distance, pinchDist / d, stage.zoomMin)
       pinchDist = d
     }
   })
@@ -72,7 +70,7 @@ export function attachControls(
     'wheel',
     (e) => {
       e.preventDefault()
-      stage.distance = clamp(stage.distance * (1 + Math.sign(e.deltaY) * 0.09), 8, 58)
+      stage.distance = zoomBy(stage.distance, 1 + Math.sign(e.deltaY) * 0.09, stage.zoomMin)
     },
     { passive: false },
   )
@@ -92,8 +90,4 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
   const [a, b] = [...pointers.values()]
   if (!a || !b) return 0
   return Math.hypot(a.x - b.x, a.y - b.y)
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v))
 }
