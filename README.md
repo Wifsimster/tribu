@@ -136,6 +136,10 @@ Les deux derniers ouvrent le build (`dist/`) dans Chromium headless, servi par
 `corepack pnpm exec playwright install --only-shell chromium`, ou
 `PW_CHROME=/chemin/vers/chrome-headless-shell` pour un Chromium déjà installé.
 
+`pnpm test` fait tourner deux fichiers de test à la fois au plus
+(`--test-concurrency=2`). Chaque fichier occupe un processus Node de 250 à
+900 Mo ; un processus par cœur saturait la mémoire d'une machine partagée.
+
 Trois tests gardent ce qu'aucun autre ne voyait :
 - `tests/save-reload.test.mjs` : 18 sauvegardes (graines 7, 1337042 et 3333 ;
   âges 4, 7 et 10 ; sans parcelle et avec 9 à 12) produites par une partie
