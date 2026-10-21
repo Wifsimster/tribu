@@ -20,6 +20,7 @@ export const CHANGELOG: Release[] = [
       "Pendant l'absence, la nourriture, le bois, la pierre et les autres matériaux sont crédités comme avant, tout comme le butin des expéditions et les trocs du marchand.",
       "Les découvertes demandent maintenant des provisions : la nourriture sert enfin, et la fibre ne bloque plus le Néolithique. Les coûts en matériaux suivent ce que l'île produit à chaque âge, du Paléolithique à l'âge du fer. La Taille du silex ne demande plus que 3 pierres.",
       "Le rythme des découvertes ne change pas pour qui joue sans s'absenter. Les découvertes déjà faites ne sont ni repayées ni remboursées.",
+      "Les messages du retour (ton absence, ta réserve, les terres qui attendent ton choix) s'affichent quand tu quittes le menu d'accueil, au lieu de passer derrière lui.",
     ],
   },
   {

@@ -480,10 +480,10 @@ hud.onPlaceCancel = () => {
 }
 hud.refreshLand()
 // La file héritée d'une session précédente (ou d'un rattrapage) se signale
-// une fois, après le chargement — sans rien ouvrir.
+// une fois, après le chargement et le menu d'accueil — sans rien ouvrir.
 if (game.save.landPending.length > 0) {
   const n = game.save.landPending.length
-  setTimeout(() => hud.toast(n > 1 ? `${n} terres attendent ton choix` : 'Une terre attend ton choix'), 1500)
+  setTimeout(() => toastAfterMenu(n > 1 ? `${n} terres attendent ton choix` : 'Une terre attend ton choix'), 1500)
 }
 
 // L'ambiance sonore : coupée par défaut, activée au menu, reprise au premier
@@ -519,10 +519,10 @@ const techOfBuilding = new Map<string, (typeof TECHS)[number]>()
 for (const t of TECHS)
   for (const e of t.effects) if (e.kind === 'building') techOfBuilding.set(e.building, t)
 
-// Les nouvelles du chargement (absence, réserve de savoir) tombent pendant que
-// le menu d'accueil couvre l'écran : affichées là, elles s'effaceraient sans
-// être lues. Elles attendent qu'il se ferme. Déclaré AVANT l'abonnement, qui
-// rejoue dès maintenant les événements du constructeur.
+// Les nouvelles du chargement (absence, réserve de savoir, terres en attente)
+// tombent pendant que le menu d'accueil couvre l'écran : affichées là, elles
+// s'effaceraient sans être lues. Elles attendent qu'il se ferme. Déclaré AVANT
+// l'abonnement, qui rejoue dès maintenant les événements du constructeur.
 let menuOpen = true
 const heldToasts: string[] = []
 function toastAfterMenu(message: string): void {
