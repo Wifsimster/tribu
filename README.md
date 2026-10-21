@@ -39,7 +39,7 @@ Le jeu se joue tout seul. Le joueur n'est **pas** nécessaire — il est invité
 | Taper sur le colon | Il redouble d'ardeur : ×2 pendant 15 s, puis 45 s de repos |
 | Lancer une expédition | 10 🍖, ~90 s, revient chargé — et parfois avec une trouvaille à regarder |
 | Ouvrir « Savoir » | Dépenser des points de savoir pour une technologie, et lire son fait historique |
-| Fermer l'onglet | La tribu continue, jusqu'à 8 h de progression hors ligne créditée au retour |
+| Fermer l'onglet | La tribu continue, jusqu'à 8 h de progression hors ligne créditée au retour ; le savoir de l'absence passe surtout en réserve et rentre en jouant, deux fois plus vite |
 
 ## Boucle de jeu
 

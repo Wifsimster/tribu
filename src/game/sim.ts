@@ -28,7 +28,15 @@ import {
   type ToolDef,
 } from './content'
 import { cycleMean, dayPhaseAt } from './clock'
-import { OFFLINE_CAP_SECONDS, emptySave, loadSave, writeSave, type SaveV1 } from './state'
+import {
+  INSIGHT_RESERVE_HOURS,
+  OFFLINE_CAP_SECONDS,
+  OFFLINE_INSIGHT_TAU,
+  emptySave,
+  loadSave,
+  writeSave,
+  type SaveV1,
+} from './state'
 
 export type GameEvent =
   | { type: 'tech'; tech: TechDef }
@@ -61,7 +69,11 @@ export type GameEvent =
   | { type: 'visitDone'; neighborId: string; name: string }
   /** Une nouvelle venue d'une autre tribu, appliquée au retour du joueur. */
   | { type: 'mail'; text: string; relic: RelicDef | null }
-  | { type: 'offline'; seconds: number; gained: Partial<Record<ResourceId, number>> }
+  /** `reserve` : le savoir de l'absence mis en réserve, en plus de `gained`. */
+  | { type: 'offline'; seconds: number; gained: Partial<Record<ResourceId, number>>; reserve: number }
+  /** Une partie d'avant la réserve de savoir : son stock au-delà du prochain
+   *  savoir est passé en réserve, une fois, sans rien retirer. */
+  | { type: 'reserveMigrated'; kept: number; reserve: number }
   | { type: 'caravanArrive'; merchant: string }
   | {
       type: 'caravanTrade'
@@ -357,12 +369,14 @@ export class Game {
   private wasNight = false
 
   constructor(now: number) {
-    const { save, offlineSeconds } = loadSave(now)
+    const { save, offlineSeconds, migrateReserve } = loadSave(now)
     this.save = save
     this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
     this.buildings = new Set()
     this.rates = { ...BASE_RATE, insight: 0 }
     this.recompute()
+
+    if (migrateReserve) this.migrateInsightReserve()
 
     if (offlineSeconds > 60) this.creditAbsence(offlineSeconds)
     this.catchUpAge()
@@ -404,12 +418,18 @@ export class Game {
         workSeconds = 0
       }
     }
+    let reserve = 0
     if (workSeconds > 0) {
       // Une absence couvre des cycles entiers : on produit au facteur moyen
       // d'un tour, tiré de la même courbe que le jeu en direct.
       this.lightFactor = meanLightFactor(this.nightFloor)
       this.refreshRates()
+      const insight = this.amount('insight')
       this.produce(workSeconds)
+      // Le savoir produit suit sa propre règle : les matériaux, eux, sont
+      // crédités en entier.
+      this.save.res.insight = insight
+      reserve = this.creditAbsentInsight(workSeconds)
     }
     // Le commerce continue sans le joueur : quelques passages de barque sont
     // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
@@ -422,7 +442,48 @@ export class Game {
       const delta = (this.save.res[id] ?? 0) - (before[id] ?? 0)
       if (delta > 0.5) gained[id] = delta
     }
-    if (seconds > 90) this.emit({ type: 'offline', seconds, gained })
+    if (seconds > 90) this.emit({ type: 'offline', seconds, gained, reserve })
+  }
+
+  /** Taux de savoir moyen d'un tour, nuit comprise, d'après la vraie courbe
+   *  jour/nuit. */
+  private meanInsightRate(): number {
+    const lf = this.lightFactor
+    this.lightFactor = meanLightFactor(this.nightFloor)
+    this.refreshRates()
+    const r = this.rates.insight
+    this.lightFactor = lf
+    this.refreshRates()
+    return r
+  }
+
+  /** Le savoir de `seconds` secondes de travail sans le joueur. Une absence
+   *  avance la partie sans la jouer à sa place : r·τ·(1 − e^(−s/τ)) tout de
+   *  suite (presque tout d'une courte pause, ~10 min de savoir pour une nuit),
+   *  le reste en réserve jusqu'à deux heures de savoir. Rend ce qui est entré
+   *  en réserve. */
+  private creditAbsentInsight(seconds: number): number {
+    const r = this.meanInsightRate()
+    const now = r * OFFLINE_INSIGHT_TAU * (1 - Math.exp(-seconds / OFFLINE_INSIGHT_TAU))
+    this.save.res.insight = this.amount('insight') + now
+    const R = this.save.insightReserve
+    const added = Math.max(0, Math.min(r * seconds - now, r * INSIGHT_RESERVE_HOURS * 3600 - R))
+    this.save.insightReserve = R + added
+    return added
+  }
+
+  /** Une partie d'avant la réserve, au premier chargement : le stock garde de
+   *  quoi payer le prochain savoir (ou dix minutes de savoir), le surplus part
+   *  en réserve, sans plafond. Rien n'est retiré : il rentre en jouant, deux
+   *  fois plus vite. La sauvegarde porte ensuite le champ, on ne repasse pas. */
+  private migrateInsightReserve(): void {
+    const cheapest = Math.min(...this.available().map((t) => t.cost))
+    const keep = Math.max(Number.isFinite(cheapest) ? cheapest : 0, this.meanInsightRate() * OFFLINE_INSIGHT_TAU)
+    const stock = this.amount('insight')
+    this.save.insightReserve = Math.max(0, stock - keep)
+    this.save.res.insight = Math.min(stock, keep)
+    if (this.save.insightReserve > 0.5)
+      this.emit({ type: 'reserveMigrated', kept: this.save.res.insight, reserve: this.save.insightReserve })
   }
 
   static fresh(now: number): Game {
@@ -1457,6 +1518,14 @@ export class Game {
     if (this.encourageCooldown > 0) this.encourageCooldown = Math.max(0, this.encourageCooldown - dt)
 
     this.produce(dt)
+    // La réserve d'une absence rentre au rythme du savoir produit : il coule
+    // deux fois plus vite tant qu'elle dure. Encourager l'accélère, une
+    // expédition l'arrête, comme la récolte.
+    if (this.save.insightReserve > 0) {
+      const d = Math.min(this.save.insightReserve, Math.max(0, this.rates.insight) * dt)
+      this.save.res.insight = this.amount('insight') + d
+      this.save.insightReserve -= d
+    }
 
     const exp = this.save.expedition
     if (exp) {

@@ -108,7 +108,8 @@ test('8 h hors ligne avec deux cartes en attente : gains exacts, cartes toujours
   const g = new Game(NOW)
   assert.equal(g.save.landPending.length, 2, 'les cartes attendent le retour du joueur')
   assert.equal(g.save.land.length, 0)
-  for (const id of ['food', 'wood', 'stone', 'fiber', 'insight']) {
+  // Le savoir suit la règle de la réserve (tests/insight-reserve.test.mjs).
+  for (const id of ['food', 'wood', 'stone', 'fiber']) {
     const expected = g.rates[id] * OFFLINE_CAP_SECONDS
     const got = g.save.res[id] - save.res[id]
     assert.ok(Math.abs(got - expected) < 1e-6 * Math.max(1, expected), `${id} : ${got} vs ${expected}`)
@@ -299,7 +300,8 @@ test('8 h hors ligne avec deux forêts voisines : gains exacts au taux majoré',
   g.flush(NOW - OFFLINE_CAP_SECONDS * 1000)
   const save = JSON.parse(store.get(SAVE_KEY))
   const back = new Game(NOW)
-  for (const id of ['food', 'wood', 'stone', 'fiber', 'insight']) {
+  // Le savoir suit la règle de la réserve (tests/insight-reserve.test.mjs).
+  for (const id of ['food', 'wood', 'stone', 'fiber']) {
     const expected = back.rates[id] * OFFLINE_CAP_SECONDS
     const got = back.save.res[id] - save.res[id]
     assert.ok(Math.abs(got - expected) < 1e-6 * Math.max(1, expected), `${id} : ${got} vs ${expected}`)
