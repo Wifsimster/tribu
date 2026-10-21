@@ -19,8 +19,7 @@ globalThis.localStorage = {
 const { Game } = await import('../src/game/sim.ts')
 const { SAVE_KEY } = await import('../src/game/state.ts')
 const { TECHS, TOOLS, RELICS, livingBuildings } = await import('../src/game/content.ts')
-const { Island } = await import('../src/render/island.ts')
-const { Village } = await import('../src/render/village.ts')
+const { raiseWorld, planOf } = await import('../src/render/plan.ts')
 const { Fauna } = await import('../src/render/fauna.ts')
 
 export const NOW = 1_800_000_000_000
@@ -37,29 +36,32 @@ export function seeded(seed) {
 }
 
 /** Les étapes de `buildWorld` (src/main.ts) qui décident du plan, dans le
- *  même ordre ; `placeGoods` compris. Le test « l'ordre suit main.ts » de
+ *  même ordre ; `raiseWorld` (src/render/plan.ts, celui du jeu) et
+ *  `placeGoods` compris. Le test « l'ordre suit main.ts » de
  *  save-reload.test.mjs casse si main.ts change cet ordre sans ce fichier. */
 export function load(game) {
   const s = game.save
-  const island = new Island(s.seed, s.age, s.land)
-  const village = new Village(island, s.age, game.knows('electricity'), false)
-  village.setCargo(game.rates)
-  const plan = s.layoutV === 3 ? s.layout : []
-  const kept = plan.every((p) => island.isLand(p.x, p.z))
-  village.adoptLayout(kept ? plan : [])
-  village.adoptGoods(kept && s.layoutV === 3 ? s.goods : null)
-  s.layoutV = 3
-  const fauna = new Fauna(island, village.obstaclePoints)
   const stageOf = (v) => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
-  if (s.wonder) {
-    const ws = game.wonderState()
-    village.setWonder(s.wonder.age, ws ? stageOf(ws.progress) : 0)
-  } else if (s.wonders.length > 0) {
-    village.setWonder(s.wonders[s.wonders.length - 1], 4)
-  }
+  const ws = s.wonder ? game.wonderState() : null
+  const wonder = s.wonder
+    ? { age: s.wonder.age, stage: ws ? stageOf(ws.progress) : 0 }
+    : s.wonders.length > 0
+      ? { age: s.wonders[s.wonders.length - 1], stage: 4 }
+      : null
+  const raised = raiseWorld(s, {
+    electric: game.knows('electricity'),
+    yule: false,
+    rates: game.rates,
+    wonder,
+    relics: s.relics,
+  })
+  const { island, village } = raised
+  s.layoutV = raised.layoutV
+  const fauna = new Fauna(island, village.faunaObstacles)
+  if (wonder) village.setWonder(wonder.age, wonder.stage)
   village.sync(livingBuildings(game.buildings, s.age))
-  s.layout = village.layout
   village.setRelics(s.relics)
+  Object.assign(s, planOf(village))
   const pen = fauna.pen
   village.goodsAvoid = pen ? [pen] : []
   village.setTools(s.tools)

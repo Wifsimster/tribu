@@ -80,9 +80,16 @@ test("l'ordre de load() suit buildWorld et placeGoods (src/main.ts)", () => {
   const src = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
   const body = src.slice(src.indexOf('function buildWorld('), src.indexOf('function surveyNodes('))
   const goods = src.slice(src.indexOf('function placeGoods('))
-  const calls = (s) => [...s.matchAll(/village\.(setCargo|adoptLayout|adoptGoods|setWonder|sync|setRelics|setTools)\(|village\.goodsAvoid =|(?<!function )placeGoods\(\)/g)].map((m) => m[1] ?? m[0])
-  const world = calls(body)
+  const calls = (s) => [...s.matchAll(/village\.(setCargo|adoptLayout|adoptGoods|setWonder|sync|setRelics|setTools)\(|village\.goodsAvoid =|(?<!function )placeGoods\(\)|(?<!function )raiseWorld\(/g)].map((m) => m[1] ?? m[0])
+  // Le plan se lève dans `raiseWorld` (src/render/plan.ts, partagé avec les
+  // tests depuis la ceinture ferrée) : ses appels prennent la place du sien.
+  const plan = readFileSync(new URL('../src/render/plan.ts', import.meta.url), 'utf8')
+  const raise = plan.slice(plan.indexOf('export function raiseWorld('))
+  const lifted = calls(raise.slice(0, raise.indexOf('\n}\n')))
+  const world = calls(body).flatMap((c) => (c === 'raiseWorld(' ? lifted : [c]))
   const at = world.indexOf('placeGoods()')
   const order = [...world.slice(0, at), ...calls(goods.slice(0, goods.indexOf('\n}\n'))), ...world.slice(at + 1)]
-  assert.deepEqual(order, ['setCargo', 'adoptLayout', 'adoptGoods', 'setWonder', 'setWonder', 'sync', 'setRelics', 'village.goodsAvoid =', 'setTools'])
+  // Un seul setWonder : `shownWonder()` choisit entre chantier et dernière
+  // Merveille achevée (deux branches dans main.ts avant la ceinture).
+  assert.deepEqual(order, ['setCargo', 'adoptLayout', 'adoptGoods', 'setWonder', 'sync', 'setRelics', 'village.goodsAvoid =', 'setTools'])
 })
