@@ -28,6 +28,7 @@
 //                         spec (section 9), au lieu de ceux de content.ts
 //   --json                sortie JSON au lieu du tableau
 //   --seed=<n>            graine du hasard (défaut 7)
+//   --no-tools            joueur qui refuse tous les outils du marchand
 
 const store = new Map()
 globalThis.localStorage = {
@@ -246,6 +247,9 @@ while (t < MAX) {
   }
   if (args.focus !== 'food') chooseFocus()
   if (ENCOURAGE && g.canEncourage()) g.encourage()
+  // Depuis la 3.71.1, le marchand propose ses outils au lieu de se payer
+  // seul : le joueur raisonnable accepte (avec --no-tools, il refuse tout).
+  if (g.toolOffer) args['no-tools'] ? g.declineTool() : g.acceptTool()
   {
     const b = bucket(g.save.age)
     b.seconds += DT

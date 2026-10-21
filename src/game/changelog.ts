@@ -10,6 +10,24 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.71.1',
+    title: 'Le marchand demande, la Merveille avance sans toi',
+    items: [
+      "Le marchand ne se sert plus tout seul dans tes réserves. Quand il ouvre sa cale, il te montre l'objet, ce qu'il change et son prix : tu achètes, ou tu dis « Pas cette fois ». Refuser ne coûte rien, il te le reproposera à un prochain passage. Pendant ton absence, il troque mais ne vend aucun outil.",
+      "Il sort toujours le plus ancien objet qui te manque. S'il est trop cher pour toi, il attend que tu puisses le payer au lieu de te proposer le suivant.",
+      "Ta Merveille avance pendant ton absence, au même rythme que si tu étais là, sans jamais vider tes réserves. Quand le colon part en expédition, le chantier attend son retour au lieu de puiser dans tes stocks.",
+      "Le temps passé avec le menu ouvert et l'onglet caché compte enfin comme une absence : la tribu a continué, tu la retrouves avec ce qu'elle a récolté.",
+      "Encourager juste avant de partir ne double plus toute ton absence : le geste dure ses quinze secondes, pas huit heures. Et pendant ton absence, la nourriture suit la moyenne des quatre saisons, au lieu de rester figée sur la saison de ton départ.",
+      "Le savoir tiré de la récolte ne compte plus deux fois Encourager, la nuit et la constellation. Encourager double désormais exactement ton savoir, et chaque étoile de la constellation ajoute bien 8 %. Le rythme des découvertes reste celui de la 3.71 pour qui encourage à chaque fois, et devient un peu plus rapide pour qui ne le fait pas.",
+      "Les savoirs de vitesse tiennent parole : un savoir ×1,6 rend tes voyages 1,6 fois plus courts, même en fin d'arbre où les derniers ne gagnaient plus qu'une poignée de secondes. Le gouvernail raccourcit les expéditions de près d'un quart. Une tribu équipée garde les mêmes durées qu'avant à chaque âge.",
+      "Le savoir rapporté d'expédition vaut toujours 30 % de plus que ce que le camp aurait produit pendant le voyage, à tous les âges. En fin d'arbre, il n'en valait plus que le sixième.",
+      "L'épave, le tribut du comptoir et le savoir du troc grandissent avec ton île à partir de l'Antiquité. Jusqu'à l'âge du bronze, rien ne change.",
+      "Le fût de terres rares donne maintenant +8 % de savoir, et la balle de caoutchouc +40 de portage (de 6 à 10 % sur toute la récolte) : ils valent enfin leur prix. L'Intelligence artificielle accélère vraiment ton savoir, de 10 %.",
+      "L'Exode garde tes hauts faits et le nom de ton village : plus de « Première vitrine » rejouée en débarquant. La réserve de savoir, elle, reste à quai avec les savoirs, comme le dit la fenêtre de l'Exode.",
+      "Ta sauvegarde se charge telle quelle. Les outils déjà achetés restent les tiens.",
+    ],
+  },
+  {
     version: '3.71.0',
     title: 'La réserve de savoir',
     items: [
