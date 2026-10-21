@@ -5,7 +5,7 @@ Aucun code du jeu n'est modifié par cette spec. Les chiffres viennent de `tools
 
 ## 1. Le retour
 
-Capture de l'humain en prod, au Néolithique, 0/4 : nourriture 16,1 k (1,58/s), bois 3,17 k, fibre 9,3, savoir 6,71 k (0,34/s). Lampe à graisse et cordage végétal déjà connus. Agriculture coûte 110 de savoir, la Grenier 340 : le stock de savoir couvre 20 à 60 fois chaque coût, et seule la fibre bloque.
+Capture de l'humain en prod, au Néolithique, 0/4 : nourriture 16,1 k (1,58/s), bois 3,17 k, fibre 9,3, savoir 6,71 k (0,34/s). Lampe à graisse et cordage végétal déjà connus. Agriculture coûte 110 de savoir, le Grenier 340 : le stock de savoir couvre 20 à 60 fois chaque coût, et seule la fibre bloque.
 Son verdict : « Les savoirs se débloquent facilement dès le début. »
 
 Reproduction : 6,71 k de savoir à 0,25/s de moyenne (taux du Néolithique, nuit comprise), c'est 7,4 h de production. C'est une seule absence au plafond (`OFFLINE_CAP_SECONDS = 8 h`). La fibre à 9,3 dit la même chose : le cordage a été acheté au retour, sinon l'absence aurait aussi crédité ~1 500 fibres.
