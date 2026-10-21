@@ -1,0 +1,5 @@
+{
+  "_doc": "Plafonds de `pnpm perf:budget` (tools/perf-budget.mjs) : île figée de l'âge 10 (tools/saves/age10.json), cadrage par défaut, h=0.25, maximum sur 20 images. Plafond = mesure de référence + ~10 %. Une PR qui dépasse la référence de plus de 5 % le dit dans sa description ; une PR qui dépasse le plafond ne passe pas la CI. Relever un plafond est une décision écrite dans la PR, avec la mesure.",
+  "desktop": { "calls": 90, "triangles": 140000, "reference": { "calls": 82, "triangles": 126678, "measured": "2026-10-21, v3.67.0, 640×400 DPR 1, SwiftShader, 6 passes" } },
+  "mobile": { "calls": 90, "triangles": 140000, "reference": { "calls": 81, "triangles": 126518, "measured": "2026-10-21, v3.67.0, 390×844 DPR 1 tactile, SwiftShader, 6 passes" } }
+}
