@@ -65,7 +65,7 @@ function checkLighthouse(v, label) {
   }
   const c = v.crossing
   if (c) assert.ok(Math.hypot(c.x - p.x, c.z - p.z) >= r + 2.2 - 1e-6, `${label} : phare sur le passage à niveau`)
-  for (const q of v.roadExt) assert.ok(Math.hypot(q.x - p.x, q.z - p.z) >= r + 1.2 - 1e-6, `${label} : phare sur la route du ponton`)
+  assert.ok(v.laneDist(p.x, p.z) >= r + 1.2 - 1e-6, `${label} : phare à ${v.laneDist(p.x, p.z).toFixed(2)} u d'une rue`)
   assert.ok(v.island.isLand(p.x, p.z), `${label} : phare dans l'eau`)
   return coast ? 'côte' : 'voie'
 }

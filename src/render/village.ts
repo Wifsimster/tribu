@@ -2758,10 +2758,32 @@ export class Village implements GroundSource {
         if (d < need) continue
         const slot = new Vector3(x, GROUND_Y, z)
         if (!this.fits(slot, r, 2.6, 0, false)) continue
+        // Ni sur une rue : contre la voie, le cap est souvent là où la route
+        // du ponton descend (sauvegarde réelle 44444 : socle sur la chaussée).
+        if (this.laneDist(x, z) < r + 1.2) continue
         this.lots.push({ x, z, r })
         return slot
       }
     return null
+  }
+
+  /** Distance en plan à l'axe de la rue la plus proche (rues du bourg, route
+   *  du ponton jusqu'à la plage). */
+  private laneDist(x: number, z: number): number {
+    this.buildLanes()
+    let best = Infinity
+    const polys = [...this.lanes!.map((l) => l.pts), this.roadExt]
+    for (const pts of polys)
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i]!
+        const b = pts[Math.min(i + 1, pts.length - 1)]!
+        const dx = b.x - a.x
+        const dz = b.z - a.z
+        const L = dx * dx + dz * dz
+        const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L))
+        best = Math.min(best, Math.hypot(x - a.x - u * dx, z - a.z - u * dz))
+      }
+    return best
   }
   /** « Contre la voie » : le centre du phare à 4,5 u au plus de l'axe. Au
    *  plus près, 3,9 u (halo 2,7 + 1,2 de dégagement, la règle de tout le
