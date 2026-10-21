@@ -7,6 +7,7 @@ import {
   SEASON_DAYS,
   SEASONS,
   FEATS,
+  HALF_TECHS,
   LAND_BY_ID,
   LANDS,
   type LandDef,
@@ -27,7 +28,7 @@ import {
   type TechDef,
   type ToolDef,
 } from './content'
-import { cycleMean, dayPhaseAt } from './clock'
+import { cycleMean, dayPhaseAt, isNightHour } from './clock'
 import {
   INSIGHT_RESERVE_HOURS,
   OFFLINE_CAP_SECONDS,
@@ -217,12 +218,12 @@ export function meanLightFactor(floor: number): number {
   return cycleMean((u) => lightFactorFor(floor, daylightOfHour(u)))
 }
 
-/** Sans lumière, on se couche au crépuscule — la même heure que le cadran du
- *  HUD. Toute la lumière du monde ne repousse le coucher que jusqu'à
+/** Sans lumière, on se couche au coucher du soleil — quand la lune prend la
+ *  place du soleil sur le cadran du HUD. Toute la lumière du monde ne repousse le coucher que jusqu'à
  *  SLEEP_DEEP : le cœur de la nuit appartient au sommeil à toutes les époques,
  *  et l'île doit être vue endormie. Le feu grignote l'aube, le lampadaire
  *  grignote beaucoup plus — mais aucun savoir ne supprime la nuit. */
-const SLEEP_DUSK = -0.09
+const SLEEP_DUSK = 0
 const SLEEP_DEEP = -0.75
 
 /** Le marchand paie en histoires autant qu'en métal : chaque anecdote est un
@@ -709,7 +710,9 @@ export class Game {
   private updateLight(): void {
     const k = daylightAt(this.save.totalPlaySeconds)
     this.lightFactor = lightFactorFor(this.nightFloor, k)
-    const night = this.wasNight ? k < 0.55 : k < 0.4 // hystérésis, comme le HUD
+    // La nuit du cadran : soleil sous l'horizon. L'heure ne fait qu'avancer,
+    // la bascule ne peut pas battre — pas besoin d'hystérésis.
+    const night = isNightHour(dayPhaseAt(this.save.totalPlaySeconds))
     if (night !== this.wasNight) {
       this.wasNight = night
       this.emit(night ? { type: 'nightfall', floor: this.nightFloor } : { type: 'daybreak' })
@@ -1344,10 +1347,10 @@ export class Game {
     const ok: Record<string, boolean> = {
       etincelle: S.techs.length >= 1,
       bronze: S.age >= 2,
-      michemin: S.techs.length >= 26,
+      michemin: S.techs.length >= HALF_TECHS,
       sage: this.treeComplete,
       relique: S.relics.length >= 1,
-      musee: S.relics.length >= 14,
+      musee: S.relics.length >= RELICS.length,
       outil: S.tools.length >= 1,
       atelier: S.tools.length >= TOOLS.length,
       merveille: S.wonders.length >= 1,

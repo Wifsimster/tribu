@@ -1,5 +1,5 @@
 import { AGES, DAY_SECONDS, DESTINATIONS, LAND_BY_ID, RESOURCES, SEASONS, SEASON_DAYS, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
-import { dayPhaseAt, secondsUntilDayHour } from '../game/clock'
+import { DAWN_HOUR, DUSK_HOUR, dayPhaseAt, isNightHour, secondsUntilDayHour } from '../game/clock'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -264,6 +264,14 @@ export class Hud {
   /** Un seul voile pour la feuille et la carte : la scène reste le sujet. */
   private syncScrim(): void {
     el('scrim').classList.toggle('on', this.sheetOpen || this.factOpen || this.landOpen)
+    if (this.modalOpen) this.holdToasts()
+    else this.pumpToasts()
+  }
+
+  /** Une fiche (découverte, Merveille, grand tracé) ou les cartes de la mer
+   *  couvrent le milieu de l'écran, là où montent les toasts sur téléphone. */
+  private get modalOpen(): boolean {
+    return this.factOpen || this.landOpen
   }
 
   /** L'arbre complet, âge par âge : l'acquis, l'atteignable, et la route qui
@@ -734,7 +742,40 @@ export class Hud {
     banner.classList.add('show')
   }
 
+  /** Les toasts passent en file : trois à l'écran au plus, et aucun pendant
+   *  qu'une fiche est ouverte — ils glissaient derrière elle sur téléphone, à
+   *  moitié lus. Ils sortent à la fermeture, chacun en entier. */
+  private toastQueue: string[] = []
+  private static readonly TOASTS_SHOWN = 3
+  /** Au-delà, les plus anciens en attente sont oubliés : une file de plusieurs
+   *  minutes raconterait un passé que le joueur a déjà sous les yeux. */
+  private static readonly TOASTS_WAITING = 9
+
   toast(message: string): void {
+    this.toastQueue.push(message)
+    if (this.toastQueue.length > Hud.TOASTS_WAITING) this.toastQueue.shift()
+    this.pumpToasts()
+  }
+
+  private pumpToasts(): void {
+    if (this.modalOpen) return
+    const host = el('toasts')
+    while (this.toastQueue.length > 0 && host.childElementCount < Hud.TOASTS_SHOWN) this.showToast(this.toastQueue.shift()!)
+  }
+
+  /** Une fiche s'ouvre : les toasts à l'écran repartent dans la file, sauf
+   *  ceux qui finissaient de toute façon. */
+  private holdToasts(): void {
+    const host = el('toasts')
+    const back: string[] = []
+    for (const node of [...host.children] as HTMLElement[]) {
+      if (Number(node.dataset.until) - performance.now() > 1200) back.push(node.dataset.msg ?? '')
+      node.remove()
+    }
+    this.toastQueue.unshift(...back.filter(Boolean))
+  }
+
+  private showToast(message: string): void {
     const host = el('toasts')
     const node = document.createElement('div')
     node.className = 'toast'
@@ -742,9 +783,14 @@ export class Hud {
     // Une anecdote de deux lignes mérite plus que 3,4 s ; un « De retour » non.
     const seconds = Math.min(9, 2.6 + message.length * 0.045)
     node.style.animationDuration = `${seconds}s`
+    node.dataset.msg = message
+    node.dataset.until = String(performance.now() + seconds * 1000)
     host.appendChild(node)
-    setTimeout(() => node.remove(), seconds * 1000 + 200)
-    while (host.childElementCount > 3) host.firstElementChild?.remove()
+    setTimeout(() => {
+      if (!node.isConnected) return
+      node.remove()
+      this.pumpToasts()
+    }, seconds * 1000 + 200)
   }
 
   /** L'heure du monde, en tour de cadran (0 = lever, 0,5 = coucher). */
@@ -752,20 +798,17 @@ export class Hud {
     return dayPhaseAt(this.game.save.totalPlaySeconds)
   }
 
-  /** La nuit commence quand la part de jour touche zéro (sin = −0,06). */
-  private static readonly DUSK = 0.515
-  private static readonly DAWN = 0.985
-
   private dayDialHint(): string {
     const u = this.dayU()
     const dur = (s: number): string => (s < 75 ? `${Math.max(5, Math.round(s / 5) * 5)} s` : `${Math.round(s / 60)} min`)
-    if (u < Hud.DUSK) {
-      const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, Hud.DUSK)
+    // La nuit du cadran est celle du jeu (clock.ts) : soleil sous l'horizon.
+    if (!isNightHour(u)) {
+      const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, DUSK_HOUR)
       return u < 0.06
         ? `Le soleil se lève — la nuit tombera dans ${dur(s)}`
         : `Le soleil suit sa course — la nuit tombe dans ${dur(s)}`
     }
-    const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, Hud.DAWN)
+    const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, DAWN_HOUR)
     // Tant que la veillée dure, on le dit ; ensuite la tribu dort, à toutes les
     // époques — aucun savoir n'abolit le cœur de la nuit.
     const veille = !this.game.sleepTime
@@ -830,7 +873,7 @@ export class Hud {
     const key = u.toFixed(3)
     if (key === this.lastDialKey) return
     this.lastDialKey = key
-    const day = u < Hud.DUSK
+    const day = !isNightHour(u)
     const sun = el('daydial-sun')
     const moon = el('daydial-moon')
     const place = (node: HTMLElement, p: number): void => {

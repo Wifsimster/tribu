@@ -47,7 +47,7 @@ export const AGES: AgeDef[] = [
   {
     id: 0,
     name: 'Paléolithique',
-    period: '−300 000 à −10 000',
+    period: '−3,3 millions à −10 000',
     techsToAdvance: 4,
     sky: 0x9fd4e8,
     fog: 0xbfe0ee,
@@ -56,7 +56,7 @@ export const AGES: AgeDef[] = [
   {
     id: 1,
     name: 'Néolithique',
-    period: '−10 000 à −3 300',
+    period: '−10 000 à −3 500',
     techsToAdvance: 4,
     sky: 0xa8dcea,
     fog: 0xc9e6ef,
@@ -65,7 +65,7 @@ export const AGES: AgeDef[] = [
   {
     id: 2,
     name: 'Âge du bronze',
-    period: '−3 300 à −1 200',
+    period: '−3 500 à −1 200',
     techsToAdvance: 4,
     sky: 0xb6dfe4,
     fog: 0xd4e8e6,
@@ -119,7 +119,7 @@ export const AGES: AgeDef[] = [
   {
     id: 8,
     name: 'Ère moderne',
-    period: '1900 à 1970',
+    period: '1900 à 1960',
     techsToAdvance: 5,
     sky: 0xcfdde6,
     fog: 0xe2eaea,
@@ -128,7 +128,7 @@ export const AGES: AgeDef[] = [
   {
     id: 9,
     name: 'Ère contemporaine',
-    period: '1970 à nos jours',
+    period: '1960 à nos jours',
     techsToAdvance: 5,
     sky: 0xcbdcea,
     fog: 0xdfe9ee,
@@ -413,7 +413,7 @@ export const TECHS: TechDef[] = [
     requires: ['granary'],
     fact: "Ötzi, l'homme des glaces mort vers −3300, portait une hache en cuivre pur à 99,7 %. Son minerai vient de Toscane, à 500 km de là.",
     funFact:
-      "Ötzi, mort dans les Alpes vers −3300, portait une hache de cuivre presque pur. Ses cheveux contiennent de l'arsenic : il avait respiré les fumées d'une fonte.",
+      "Le cuivre doit son nom à une île : les Romains l'appelaient aes Cyprium, « le métal de Chypre », d'où le latin cuprum — et le symbole Cu du tableau périodique. Chypre en fournissait la Méditerranée depuis l'âge du bronze.",
     effects: [
       { kind: 'unlockResource', resource: 'copper' },
       { kind: 'gatherRate', resource: 'stone', mult: 1.5 },
@@ -428,7 +428,7 @@ export const TECHS: TechDef[] = [
     requires: ['copper'],
     fact: "Le bronze demande du cuivre et de l'étain, qu'on ne trouve presque jamais au même endroit. L'âge du bronze est donc d'abord un âge du commerce longue distance.",
     funFact:
-      "L'étain est rare et ne gît jamais près du cuivre : le bronze impose des routes commerciales longues. Quand ces routes se rompent, vers −1200, plusieurs civilisations s'effondrent presque en même temps.",
+      "Avec un cinquième d'étain, le bronze devient l'« airain » des cloches : assez dur pour vibrer longtemps sans se fendre. La recette n'a presque pas changé — les fondeurs coulent encore les cloches dans un bronze à 78 % de cuivre et 22 % d'étain.",
     effects: [
       { kind: 'building', building: 'furnace' },
       { kind: 'gatherRate', resource: 'wood', mult: 1.6 },
@@ -516,9 +516,9 @@ export const TECHS: TechDef[] = [
     cost: 2700,
     materials: { clay: 230, food: 4700 },
     requires: ['ironworking'],
-    fact: "L'alphabet proto-sinaïtique, vers −1800, réduit l'écriture à une trentaine de signes. Pour la première fois, écrire n'est plus un métier.",
+    fact: "L'alphabet phénicien, vers −1050, ne garde que vingt-deux signes, des consonnes seules. Pour la première fois, écrire n'est plus un métier : les marchands l'emportent de port en port, et les Grecs y ajoutent les voyelles.",
     funFact:
-      "La plupart des alphabets du monde — grec, latin, cyrillique, hébreu, arabe — descendent du même ancêtre proto-sinaïtique. Notre « A » est une tête de bœuf retournée : aleph.",
+      "La plupart des alphabets du monde — grec, latin, cyrillique, hébreu, arabe — descendent d'un même ancêtre, gravé vers −1800 par des mineurs de turquoise du Sinaï. Notre « A » est une tête de bœuf retournée : aleph.",
     effects: [
       { kind: 'insightRate', add: 1.5 }],
   },
@@ -656,6 +656,8 @@ export const TECHS: TechDef[] = [
     materials: { fiber: 180, iron: 80 },
     requires: ['roads'],
     fact: "Venu de Chine, le collier d'épaule augmente fortement la traction utile du cheval : il appuie sur les épaules là où l'attelage antique comprimait la gorge.",
+    funFact:
+      "Les plus anciennes images de collier d'épaule sont peintes dans les grottes de Dunhuang, en Chine, à la fin du Ve siècle. L'Europe ne le dessine qu'à partir du IXe siècle : trois siècles de route pour un bourrelet de cuir rembourré de paille.",
     effects: [
       { kind: 'building', building: 'collar' },
       { kind: 'gatherRate', resource: 'food', mult: 1.6 },
@@ -857,7 +859,7 @@ export const TECHS: TechDef[] = [
     requires: ['railway'],
     fact: "Le convertisseur Bessemer (1856) souffle de l'air à travers la fonte en fusion : l'acier tombe à un dixième de son prix — les rails, les ponts et les charpentes suivent.",
     funFact:
-      "Le convertisseur souffle de l'air dans la fonte en fusion et la transforme en acier en vingt minutes, contre plusieurs jours auparavant. Le prix de l'acier s'effondre : les rails, les ponts et les gratte-ciel deviennent possibles.",
+      "Le convertisseur de Bessemer ne savait pas chasser le phosphore : la minette de Lorraine, trop phosphoreuse, restait inutilisable. En 1877, deux cousins anglais, Thomas et Gilchrist, garnissent le convertisseur de dolomie, qui piège le phosphore dans le laitier — et la Lorraine devient l'un des grands bassins de l'acier européen.",
     effects: [
       { kind: 'building', building: 'bessemer' },
       { kind: 'gatherRate', resource: 'iron', mult: 2.2 },
@@ -887,7 +889,7 @@ export const TECHS: TechDef[] = [
     cost: 250000,
     materials: { copper: 900, iron: 500 },
     requires: ['telegraph', 'gaslight'],
-    fact: "Pearl Street, 1882 : la centrale d'Edison allume quatre cents lampes dans Manhattan. En une génération, la nuit domestique disparaît.",
+    fact: "En 1907, 8 % des foyers américains ont l'électricité ; en 1930, près de 70 %. La centrale d'Edison, à Pearl Street, n'allumait en 1882 que quatre cents lampes : c'est au XXe siècle que la nuit domestique disparaît, en une génération.",
     funFact:
       "La « guerre des courants » opposa le continu d'Edison à l'alternatif de Tesla et Westinghouse. L'alternatif l'emporta parce qu'il voyage loin : c'est le transformateur, plus que la dynamo, qui a électrifié le monde.",
     effects: [
@@ -1315,7 +1317,7 @@ export const RELICS: RelicDef[] = [
   { id: 'tablette', name: 'Une tablette d’argile griffée', fact: 'À Uruk, vers −3300, on comptait moutons et grain sur l’argile : l’écriture est née de la comptabilité, pas de la poésie.' },
   { id: 'disquenebra', name: 'Un disque de bronze étoilé', fact: 'Le disque de Nebra (~−1600) est la plus ancienne représentation connue du ciel : soleil, croissant et les Pléiades en or incrusté.' },
   { id: 'amphore', name: 'Une amphore incrustée de sel', fact: 'L’épave d’Uluburun (~−1300) portait dix tonnes de cuivre, une tonne d’étain et de l’ambre balte : la mondialisation a 3 300 ans.' },
-  { id: 'monnaie', name: 'Une pièce d’électrum frappée', fact: 'Les premières monnaies frappées apparaissent en Lydie vers −620, en électrum, alliage naturel d’or et d’argent du fleuve Pactole.' },
+  { id: 'monnaie', name: 'Une pièce d’électrum frappée', fact: 'Les premières monnaies frappées apparaissent en Lydie vers −630, en électrum, alliage naturel d’or et d’argent du fleuve Pactole.' },
   { id: 'anticythere', name: 'Un mécanisme aux engrenages verdis', fact: 'La machine d’Anticythère (~−100) calculait éclipses et positions planétaires avec ~30 engrenages de bronze — un ordinateur antique retrouvé dans une épave.' },
   { id: 'astrolabe', name: 'Un astrolabe gravé', fact: 'Perfectionné par les astronomes du monde islamique, l’astrolabe donnait l’heure, la latitude et la direction de La Mecque — le smartphone du IXe siècle.' },
   { id: 'boussole', name: 'Une aiguille aimantée sur liège', fact: 'La boussole, née en Chine (aiguille flottante décrite en 1088), a atteint la Méditerranée en un siècle et ouvert la navigation hauturière.' },
@@ -1469,11 +1471,11 @@ export interface WonderDef {
 }
 
 export const WONDERS: WonderDef[] = [
-  { age: 0, id: 'menhirs', name: "L'alignement de menhirs", cost: { stone: 900, wood: 300 }, fact: "À Carnac, près de 3 000 menhirs s'alignent sur quatre kilomètres. Dressés entre −4500 et −3300, certains pèsent plus de vingt tonnes — déplacés sans roue ni métal." },
+  { age: 0, id: 'stalagmites', name: 'Le cercle de stalagmites', cost: { stone: 900, wood: 300 }, fact: "Au fond de la grotte de Bruniquel, dans le Tarn-et-Garonne, quelque 400 stalagmites brisées dessinent deux cercles, marqués de traces de feu. Elles ont 176 500 ans : l'une des plus anciennes constructions humaines connues, bâtie par des Néandertaliens à plus de 300 mètres de l'entrée — sans autre lumière que celle qu'ils apportaient." },
   { age: 1, id: 'dolmen', name: 'Le grand dolmen', cost: { stone: 2200, wood: 900 }, fact: 'La dalle de couverture du dolmen de Browne’s Hill, en Irlande, pèse environ 100 tonnes : la plus lourde d’Europe, levée il y a plus de 5 000 ans.' },
   { age: 2, id: 'ziggurat', name: 'La ziggourat', cost: { stone: 4500, clay: 2500, wood: 1500 }, fact: "La ziggourat d'Ur (~−2100) alignait des millions de briques crues gainées de briques cuites au bitume. Son cœur d'origine porte encore les restaurations de Nabonide, quinze siècles plus tard." },
-  { age: 3, id: 'trophee', name: 'La colonne trophée', cost: { stone: 8000, iron: 2000, copper: 1500 }, fact: 'La colonne Trajane (113) déroule 200 mètres de bas-reliefs en spirale — 2 500 personnages racontant deux guerres, lisibles comme une bande dessinée de marbre.' },
-  { age: 4, id: 'phare', name: 'Le grand phare', cost: { stone: 15000, wood: 4000, iron: 3000 }, fact: "Le phare d'Alexandrie (~−280) montait à plus de 100 mètres ; son feu, réfléchi par un miroir de bronze, se voyait à 50 kilomètres. Il tint dix-sept siècles avant les séismes." },
+  { age: 3, id: 'phare', name: 'Le grand phare', cost: { stone: 8000, iron: 2000, copper: 1500 }, fact: "Le phare d'Alexandrie (~−280) montait à plus de 100 mètres ; son feu, réfléchi par un miroir de bronze, se voyait à 50 kilomètres. Il tint dix-sept siècles avant les séismes." },
+  { age: 4, id: 'trophee', name: 'La colonne trophée', cost: { stone: 15000, wood: 4000, iron: 3000 }, fact: 'La colonne Trajane (113) déroule 200 mètres de bas-reliefs en spirale — 2 500 personnages racontant deux guerres, lisibles comme une bande dessinée de marbre.' },
   { age: 5, id: 'cathedrale', name: 'La cathédrale', cost: { stone: 30000, wood: 9000, iron: 5000 }, fact: 'Une cathédrale gothique était le chantier de plusieurs générations : à Strasbourg, 424 ans séparent la première pierre de la flèche — un maçon pouvait y naître, y travailler et mourir sans la voir finie.' },
   { age: 6, id: 'dome', name: 'Le grand dôme', cost: { stone: 55000, clay: 20000, iron: 9000 }, fact: 'Le dôme de Brunelleschi à Florence (1436) fut bâti SANS cintrage : quatre millions de briques posées en spirale autoportante — personne ne savait si ça tiendrait. Ça tient depuis six siècles.' },
   { age: 7, id: 'tour', name: 'La tour de fer', cost: { iron: 60000, stone: 25000, wood: 10000 }, fact: "La tour Eiffel (1889) assemble 18 038 pièces de fer puddlé par 2,5 millions de rivets, posés à quatre ouvriers par rivet. Montée en deux ans, deux mois et cinq jours." },
@@ -1485,17 +1487,20 @@ export const WONDERS: WonderDef[] = [
 export const WONDER_BY_AGE = new Map(WONDERS.map((w) => [w.age, w]))
 
 
+/** « À mi-chemin » : la moitié de l'arbre, comptée sur l'arbre lui-même. */
+export const HALF_TECHS = Math.ceil(TECHS.length / 2)
+
 /** Les hauts faits : des jalons, pas des corvées — chacun se lit d'un état. */
 export interface FeatDef { id: string; name: string; desc: string }
 export const FEATS: FeatDef[] = [
   { id: 'etincelle', name: "L'étincelle", desc: 'Faire une première découverte.' },
   { id: 'bronze', name: "L'âge des métaux", desc: "Atteindre l'âge du bronze." },
-  { id: 'michemin', name: 'À mi-chemin', desc: 'Connaître 26 savoirs.' },
+  { id: 'michemin', name: 'À mi-chemin', desc: `Connaître ${HALF_TECHS} savoirs.` },
   { id: 'sage', name: 'La tribu sage', desc: 'Réunir tous les savoirs.' },
   { id: 'relique', name: 'Première vitrine', desc: 'Rapporter une relique.' },
   { id: 'outil', name: 'La cale ouverte', desc: 'Acheter un outil au marchand.' },
   { id: 'atelier', name: 'L’atelier complet', desc: 'Réunir les neuf outils du marchand.' },
-  { id: 'musee', name: 'Le musée plein', desc: 'Exposer les 14 reliques.' },
+  { id: 'musee', name: 'Le musée plein', desc: `Exposer les ${RELICS.length} reliques.` },
   { id: 'merveille', name: 'Bâtisseurs', desc: 'Achever une Merveille.' },
   { id: 'comptoir', name: 'Les feux répondent', desc: "Fonder le comptoir de l'îlot." },
   { id: 'exode', name: 'Le grand départ', desc: 'Accomplir un Exode.' },

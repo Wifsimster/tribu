@@ -67,7 +67,6 @@ test('un maillage sans normales est refusé, pas fondu de travers', () => {
 
 /** Triangles par stade (cumulés), relevés sur les fichiers livrés. */
 const WONDER_TRIS = {
-  menhirs: [280, 490, 665, 770, 875],
   dolmen: [102, 134, 166, 198, 290],
   ziggurat: [144, 420, 504, 528, 552],
   trophee: [72, 420, 672, 1176, 1414],
@@ -82,8 +81,15 @@ const WONDER_TRIS = {
 
 const { WONDERS } = await import('../src/game/content.ts')
 
-test('chaque Merveille du jeu a son fichier', () => {
-  assert.deepEqual(WONDERS.map((w) => w.id).sort(), Object.keys(WONDER_TRIS).sort())
+/** Les Merveilles dessinées dans le code, sans fichier : le cercle de
+ *  stalagmites de Bruniquel (âge 0). */
+const DRAWN_IN_CODE = ['stalagmites']
+
+test('chaque Merveille du jeu a son fichier, sauf celles dessinées dans le code', () => {
+  assert.deepEqual(
+    WONDERS.map((w) => w.id).filter((id) => !DRAWN_IN_CODE.includes(id)).sort(),
+    Object.keys(WONDER_TRIS).sort(),
+  )
 })
 
 for (const [name, tris] of Object.entries(WONDER_TRIS)) {
@@ -112,7 +118,7 @@ for (const [name, tris] of Object.entries(WONDER_TRIS)) {
 }
 
 test('un stade qui ne pose encore rien rend null, pas une géométrie vide', async () => {
-  const src = await load('menhirs')
+  const src = await load('dolmen')
   assert.equal(asPart(src, -1), null)
 })
 
@@ -141,9 +147,19 @@ test('dans le village, chaque Merveille tient sur son socle et garde sa silhouet
     return v
   }
   // Les primitives d'abord : sans modèle chargé, c'est ce que dessine le jeu.
+  const modelled = WONDERS.filter((w) => !DRAWN_IN_CODE.includes(w.id))
   const prim = new Map(WONDERS.map((w) => [w.id, measure(town(w.age, 4))]))
-  for (const w of WONDERS) assert.ok(adoptModel(w.id, await load(w.id)), w.id)
-  for (const w of WONDERS) {
+  for (const w of modelled) assert.ok(adoptModel(w.id, await load(w.id)), w.id)
+  // Le cercle dessiné dans le code tient aussi sur son socle, à chaque stade.
+  for (const id of DRAWN_IN_CODE) {
+    const w = WONDERS.find((x) => x.id === id)
+    for (let s = 0; s <= 4; s++) {
+      const m = measure(town(w.age, s))
+      assert.ok(m.r <= Village.WONDER_R + 1e-6, `${id} stade ${s} : ${m.r.toFixed(2)} > ${Village.WONDER_R}`)
+      if (s > 0) assert.notEqual(m.tris, measure(town(w.age, s - 1)).tris, `${id} : le stade ${s} change l'ouvrage`)
+    }
+  }
+  for (const w of modelled) {
     const done = measure(town(w.age, 4))
     assert.notEqual(done.tris, prim.get(w.id).tris, `${w.id} : le modèle remplace la primitive`)
     // Le rayon d'occupation couvre la géométrie réelle, perches comprises.

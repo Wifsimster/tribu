@@ -26,9 +26,9 @@ import caoutchoucUrl from '../assets/models/caoutchouc.glb?url'
 import roulementUrl from '../assets/models/roulement.glb?url'
 import conteneurUrl from '../assets/models/conteneur.glb?url'
 import terresraresUrl from '../assets/models/terresrares.glb?url'
-// Les onze Merveilles, une par âge. Chacune porte ses cinq stades de chantier
-// dans un seul fichier (attribut `_STAGE`, voir model-geo.ts).
-import menhirsUrl from '../assets/models/menhirs.glb?url'
+// Dix des onze Merveilles, une par âge. Chacune porte ses cinq stades de
+// chantier dans un seul fichier (attribut `_STAGE`, voir model-geo.ts). Le
+// cercle de stalagmites de l'âge 0 est dessiné dans village.ts.
 import dolmenUrl from '../assets/models/dolmen.glb?url'
 import ziggouratUrl from '../assets/models/ziggurat.glb?url'
 import tropheeUrl from '../assets/models/trophee.glb?url'
@@ -92,7 +92,6 @@ const URLS: Record<string, string> = {
   roulement: roulementUrl,
   conteneur: conteneurUrl,
   terresrares: terresraresUrl,
-  menhirs: menhirsUrl,
   dolmen: dolmenUrl,
   ziggurat: ziggouratUrl,
   trophee: tropheeUrl,

@@ -20,6 +20,21 @@ import { DAY_SECONDS } from './content'
 export const DAY_SHARE = 2 / 3
 const STRETCH = DAY_SHARE - 0.5
 
+/** Le coucher et le lever, en heure du soleil. */
+export const DUSK_HOUR = 0.5
+export const DAWN_HOUR = 0
+
+/** LA nuit du jeu, la seule : le soleil sous l'horizon (u ≥ ½). C'est elle que
+ *  disent le cadran, ses comptes à rebours et le journal des versions, et
+ *  c'est elle qui ferme la mer (sim.isNight). Le rendement, lui, suit la part
+ *  de jour, qui décline en douceur autour du coucher. */
+export function isNightHour(u: number): boolean {
+  return frac(u) >= DUSK_HOUR
+}
+
+/** Durée d'une nuit en secondes de jeu : 1 min 20 s sur une journée de 4 min. */
+export const NIGHT_SECONDS = (1 - DAY_SHARE) * DAY_SECONDS
+
 /** L'heure de la première aube d'une partie neuve : peu après midi. */
 const FIRST_HOUR = 0.32
 

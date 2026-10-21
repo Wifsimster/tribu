@@ -1261,13 +1261,35 @@ function wonderParts(age: number, stage: number): BufferGeometry[] {
   const s3 = stage >= 3
   const s4 = stage >= 4
   switch (age) {
-    case 0:
-      for (let i = 0; i < 7; i++) {
-        if (i / 7 > stage / 4 && stage < 4) break
-        const a = (i / 7) * Math.PI * 2
-        put(new BoxGeometry(0.5, 1.9 + (i % 3) * 0.5, 0.66).rotateY(a), tint(C.stone, i * 7, 0.08), Math.sin(a) * 1.7, 1.2, Math.cos(a) * 1.7)
+    case 0: {
+      // Bruniquel : des tronçons de stalagmites couchés bout à bout en deux
+      // anneaux, sur deux ou trois rangs, calés par des tronçons debout — et
+      // un foyer au milieu. Pas de modèle Blender : c'est la seule Merveille
+      // dessinée ici, la seule aussi qu'on n'a pas bâtie au grand jour.
+      const calcite = new Color('#d8ccb2')
+      const ring = (cx: number, cz: number, r: number, n: number, rows: number, from: number): void => {
+        for (let row = 0; row < rows; row++)
+          for (let i = 0; i < n; i++) {
+            // Chaque tronçon couché le long de l'anneau, un rang sur deux décalé
+            // d'un demi-tronçon, comme des briques.
+            const a = ((i + 0.5 + row * 0.5) / n) * Math.PI * 2
+            const len = ((2 * Math.PI * r) / n) * 0.96
+            const g = new CylinderGeometry(0.13, 0.16, len, 6).rotateZ(Math.PI / 2).rotateY(a)
+            put(g, tint(calcite, from + row * n + i, 0.07), cx + Math.sin(a) * r, PLAZA_TOP + 0.14 + row * 0.25, cz + Math.cos(a) * r)
+          }
+      }
+      ring(-0.25, 0.1, 1.55, 14, 1, 0)
+      if (s1) ring(-0.25, 0.1, 1.55, 14, 2, 0)
+      if (s2) ring(-0.25, 0.1, 1.55, 14, 3, 0)
+      if (s3) ring(1.25, -1.15, 0.42, 6, 2, 50)
+      if (s4) {
+        for (const a of [0.4, 1.5, 2.6, 3.7, 4.8, 5.9])
+          put(new CylinderGeometry(0.1, 0.17, 1.15, 6), tint(calcite, a * 10, 0.07), -0.25 + Math.sin(a) * 1.78, PLAZA_TOP + 0.57, 0.1 + Math.cos(a) * 1.78)
+        put(new CylinderGeometry(0.42, 0.46, 0.05, 9), C.stoneDark, -0.25, PLAZA_TOP + 0.03, 0.1)
+        put(new SphereGeometry(0.14, 6, 4), new Color('#e07a3a'), -0.25, PLAZA_TOP + 0.1, 0.1)
       }
       break
+    }
     case 1:
       if (s1) put(new BoxGeometry(0.9, 2.2, 0.7), C.stone, -1.2, 1.4, 0)
       if (s2) put(new BoxGeometry(0.9, 2.2, 0.7), tint(C.stone, 5, 0.06), 1.2, 1.4, 0)
@@ -1284,14 +1306,9 @@ function wonderParts(age: number, stage: number): BufferGeometry[] {
         put(new BoxGeometry(0.5, 1.6, 4.05), C.stoneLight, 0, 1.0, 0)
       }
       break
+    // Le phare d'Alexandrie (−280) à l'âge du fer, la colonne Trajane (113)
+    // à l'Antiquité : chacun à son époque.
     case 3:
-      put(new CylinderGeometry(1.0, 1.2, 0.6, 9), C.stone, 0, 0.6, 0)
-      if (s1) put(new CylinderGeometry(0.42, 0.48, 2.2, 9), C.stoneLight, 0, 2.0, 0)
-      if (s2) put(new CylinderGeometry(0.42, 0.42, 2.0, 9), tint(C.stoneLight, 6, 0.05), 0, 4.0, 0)
-      if (s3) put(new CylinderGeometry(0.5, 0.44, 0.4, 9), C.stone, 0, 5.2, 0)
-      if (s4) put(new ConeGeometry(0.34, 0.9, 7), new Color('#d9b23f'), 0, 5.9, 0)
-      break
-    case 4:
       put(new CylinderGeometry(1.5, 1.8, 1.4, 8), C.stoneLight, 0, 1.0, 0)
       if (s1) put(new CylinderGeometry(1.0, 1.4, 2.2, 8), tint(C.stoneLight, 4, 0.05), 0, 2.7, 0)
       if (s2) put(new CylinderGeometry(0.7, 0.95, 2.2, 8), tint(C.stoneLight, 8, 0.05), 0, 4.9, 0)
@@ -1300,6 +1317,13 @@ function wonderParts(age: number, stage: number): BufferGeometry[] {
         put(new CylinderGeometry(0.62, 0.62, 0.5, 8), C.stoneDark, 0, 7.7, 0)
         put(new SphereGeometry(0.3, 7, 5), new Color('#ffd76a'), 0, 8.15, 0)
       }
+      break
+    case 4:
+      put(new CylinderGeometry(1.0, 1.2, 0.6, 9), C.stone, 0, 0.6, 0)
+      if (s1) put(new CylinderGeometry(0.42, 0.48, 2.2, 9), C.stoneLight, 0, 2.0, 0)
+      if (s2) put(new CylinderGeometry(0.42, 0.42, 2.0, 9), tint(C.stoneLight, 6, 0.05), 0, 4.0, 0)
+      if (s3) put(new CylinderGeometry(0.5, 0.44, 0.4, 9), C.stone, 0, 5.2, 0)
+      if (s4) put(new ConeGeometry(0.34, 0.9, 7), new Color('#d9b23f'), 0, 5.9, 0)
       break
     case 5:
       put(new BoxGeometry(2.2, 2.2, 3.8), C.stoneLight, 0, 1.4, 0)
@@ -1350,7 +1374,8 @@ function wonderParts(age: number, stage: number): BufferGeometry[] {
     }
   }
   // Échafaudages tant que l'œuvre n'est pas finie.
-  if (stage < 4) p.push(...wonderScaffold(1.6 + stage * 1.2))
+  // Le cercle de stalagmites ne monte pas : ses perches restent basses.
+  if (stage < 4) p.push(...wonderScaffold(age === 0 ? 1.1 : 1.6 + stage * 1.2))
   return p
 }
 
