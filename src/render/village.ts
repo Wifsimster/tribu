@@ -2700,6 +2700,12 @@ export class Village implements GroundSource {
         // même exigence de terre ferme que pour les bâtiments du village.
         if (!this.onLand(slot, 2.6)) continue
         if (!this.clearOfLots(ix, iz, this.reach('lighthouse'))) continue
+        // Ni sur la route du ponton, ni contre le passage à niveau : la
+        // barrière et la croix sont à 1,65 u de la chaussée (graine 1337042,
+        // douze parcelles : socle à 2,1 u du centre de la traversée).
+        const cross = this.crossing
+        if (this.laneDist(ix, iz) < this.reach('lighthouse') + 1.2) continue
+        if (cross && Math.hypot(ix - cross.x, iz - cross.z) < this.reach('lighthouse') + 2.2) continue
         // Dans la bande côtière, entre la voie et la mer, sans toucher la voie.
         if (
           this.beltRadii.length > 0 &&

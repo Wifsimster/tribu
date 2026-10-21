@@ -23,14 +23,14 @@ const atAge = (age) =>
 const tools = (age) => TOOLS.filter((t) => t.age <= age).map((t) => t.id)
 
 /** Un plan v3, posé comme le posait la 3.61 (île de base 1,45, sans ceinture). */
-function v3(seed, age) {
-  const island = new Island(seed, age, [], BASE_GROWTH)
+function v3(seed, age, land = []) {
+  const island = new Island(seed, age, land, BASE_GROWTH)
   const v = new Village(island, age, age >= 8, false, { legacy: true })
   v.setWonder(age, 4)
   v.sync(livingBuildings(atAge(age), age))
   v.setRelics(['amphore'])
   v.setTools(tools(age))
-  return { seed, age, land: [], layout: v.layout, layoutV: 3, goods: v.goodsAt, belt: null, streets: null, wonderAt: null, museumAt: null }
+  return { seed, age, land, layout: v.layout, layoutV: 3, goods: v.goodsAt, belt: null, streets: null, wonderAt: null, museumAt: null }
 }
 
 /** Un chargement, comme `buildWorld` (main.ts). */
@@ -45,6 +45,18 @@ function load(save, ageChanged = false) {
   v.setRelics(['amphore'])
   v.setTools(tools(save.age))
   return { r, v, save: { ...save, ...planOf(v), layoutV: r.layoutV, goods: v.goodsAt } }
+}
+
+const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
+/** `n` parcelles posées à l'ancre par défaut, comme « Pose-la pour moi ». */
+function plots(seed, n) {
+  const land = []
+  for (let i = 0; i < n; i++) {
+    const at = new Island(seed, 0, land, undefined, true).defaultAnchor()
+    if (!at) break
+    land.push({ kind: KINDS[i % 6], q: at.q, r: at.r })
+  }
+  return land
 }
 
 /** Le phare tient sa place : sur la côte (au-delà de la voie) ou contre la
@@ -74,10 +86,13 @@ test('grand tracé : le phare rejoint la côte, ou la voie côté terre sur le c
   const seen = { côte: 0, voie: 0 }
   // Graines où le repli d'avant posait le phare dans le bourg (sauvegardes
   // 3.62 générées, phare.mjs) et graines ordinaires.
-  for (const seed of [1_337_042, 42, 2024, 5, 99]) {
-    for (const age of [7, 10]) {
-      const label = `graine ${seed}, âge ${age}`
-      const l1 = load(v3(seed, age))
+  // Graine 1 337 042 à douze parcelles : posé sur la côte, le socle touchait
+  // la barrière du passage à niveau.
+  const cases = [1_337_042, 42, 2024, 5, 99].flatMap((seed) => [[seed, 7, 0], [seed, 10, 0]]).concat([[1_337_042, 7, 12], [1_337_042, 8, 12]])
+  for (const [seed, age, n] of cases) {
+    {
+      const label = `graine ${seed}, âge ${age}, ${n} parcelles`
+      const l1 = load(v3(seed, age, n ? plots(seed, n) : []))
       seen[checkLighthouse(l1.v, label)]++
       const l2 = load(l1.save)
       const l3 = load(l2.save)
@@ -90,18 +105,6 @@ test('grand tracé : le phare rejoint la côte, ou la voie côté terre sur le c
   // étroite au moins une fois.
   assert.ok(seen.voie > 0, `aucun phare contre la voie (${JSON.stringify(seen)})`)
 })
-
-const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
-/** `n` parcelles posées à l'ancre par défaut, comme « Pose-la pour moi ». */
-function plots(seed, n) {
-  const land = []
-  for (let i = 0; i < n; i++) {
-    const at = new Island(seed, 0, land, undefined, true).defaultAnchor()
-    if (!at) break
-    land.push({ kind: KINDS[i % 6], q: at.q, r: at.r })
-  }
-  return land
-}
 
 test('partie neuve : à l’âge 7, la mer recule et le phare quitte les terres', () => {
   // Graine 31337 à six parcelles : le phare des terres rendait sa place
