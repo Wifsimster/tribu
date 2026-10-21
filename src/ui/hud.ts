@@ -144,7 +144,7 @@ export class Hud {
   /** Un tap sur une ressource du bandeau explique ce qu'elle est, d'où elle
    *  vient et à quoi elle sert. */
   private static readonly RES_HELP: Record<ResourceId, string> = {
-    food: 'Nourriture — buissons, chasse, champs. Paie les expéditions et quelques découvertes.',
+    food: 'Nourriture — buissons, chasse, champs. Paie les expéditions et les provisions des découvertes.',
     wood: 'Bois — tape un arbre pour y envoyer le colon. Sert aux découvertes et aux bâtiments.',
     stone: 'Pierre — tape un rocher. La base des outils et des grandes constructions.',
     fiber: 'Fibres — récoltées depuis le cordage. Cordes, tissage, voiles.',
@@ -152,6 +152,13 @@ export class Hud {
     copper: 'Cuivre — récolté depuis la métallurgie du cuivre. Bronze, instruments, câbles.',
     iron: 'Fer — récolté depuis la forge. Outils, rails, machines.',
     insight: "Savoir — l'étincelle : il coule du travail de la tribu et paie chaque découverte.",
+  }
+
+  /** Le savoir expliqué au tap, réserve comprise quand elle coule. */
+  private insightHelp(): string {
+    const R = this.game.save.insightReserve
+    if (R <= 0.5) return Hud.RES_HELP.insight
+    return `Réserve de savoir : ${fmt(R)}. Le savoir accumulé pendant ton absence rentre en jouant — ton savoir coule deux fois plus vite jusqu'à ce qu'elle soit vide. Rien n'est perdu.`
   }
 
   private buildResources(): void {
@@ -163,7 +170,7 @@ export class Hud {
       root.className = 'res'
       root.hidden = def.hidden
       root.innerHTML = `${icon(id, 14)}<span class="sr">${def.name}</span><span class="val">0</span><span class="rate"></span>`
-      root.addEventListener('click', () => this.toast(Hud.RES_HELP[id]))
+      root.addEventListener('click', () => this.toast(id === 'insight' ? this.insightHelp() : Hud.RES_HELP[id]))
       host.appendChild(root)
       this.resNodes.set(id, {
         root,
@@ -171,6 +178,13 @@ export class Hud {
         rate: root.querySelector('.rate') as HTMLElement,
       })
     }
+    // La réserve de savoir, collée au savoir : sans elle, le joueur qui
+    // revient d'une absence croirait son stock perdu.
+    const reserve = document.createElement('span')
+    reserve.className = 'reserve'
+    reserve.id = 'res-reserve'
+    reserve.hidden = true
+    this.resNodes.get('insight')!.root.appendChild(reserve)
     // La pastille qui replie le bandeau : l'essentiel de l'époque d'abord,
     // tout le grenier au tap.
     const more = document.createElement('div')
@@ -810,6 +824,14 @@ export class Hud {
       } else if (prev === 0) {
         this.lastValues.set(id, amount)
       }
+    }
+
+    const R = g.save.insightReserve
+    const reserve = el('res-reserve')
+    const reserveText = R > 0.5 ? `réserve ${fmt(R)} ×2` : ''
+    if (reserve.textContent !== reserveText) {
+      reserve.textContent = reserveText
+      reserve.hidden = reserveText === ''
     }
 
     const more = el('res-more')

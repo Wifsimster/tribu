@@ -116,7 +116,8 @@ export function proportionalCost(tech, seen) {
 }
 
 /** La table que donne `proportionalCost` sur la partie de référence
- *  (tools/sim-savoirs.mjs --night=3.70 --no-encourage --until=4 --json). */
+ *  (tools/sim-savoirs.mjs --night=3.70 --no-encourage --until=4 --json, avant la
+ *  fusion de la 3.70.0). */
 export const PROPORTIONAL = {
   flint: {stone: 3},
   fire: {wood: 10},

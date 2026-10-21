@@ -12,7 +12,6 @@
 //   --max=<secondes>      plafond de temps actif (défaut 4 h)
 //   --away=<t>:<s>        une absence de <s> secondes après <t> s de jeu actif
 //                         (répétable : --away=1200:28800)
-//   --night=3.70          nuit au tiers du cycle (horloge de la 3.70.0)
 //   --rule=proposal       applique la règle de coût de la spec (sans toucher
 //                         au code du jeu : les coûts sont recalculés ici)
 //   --cycle=<jeu>:<abs>   sessions répétées : <jeu> s actives puis <abs> s
@@ -37,8 +36,8 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k),
 }
 
-const { Game } = await import('../src/game/sim.ts')
-const { TECHS, TECH_BY_ID, AGES, DAY_SECONDS } = await import('../src/game/content.ts')
+const { Game, meanLightFactor } = await import('../src/game/sim.ts')
+const { TECHS, TECH_BY_ID, AGES } = await import('../src/game/content.ts')
 const { SAVE_KEY, emptySave } = await import('../src/game/state.ts')
 
 const args = Object.fromEntries(
@@ -66,56 +65,15 @@ Math.random = () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296
 }
 
-// ── La nuit de la 3.70.0 : le jour couvre 2/3 du tour ─────────────────────
-// Copie de la formule de src/game/clock.ts (branche feat/nuit-plus-courte),
-// le temps qu'elle arrive sur master : c(u) = u + (S − ½)·sin²(πu).
-const smooth = (e0, e1, x) => {
-  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
-  return t * t * (3 - 2 * t)
-}
-if (args.night === '3.70') {
-  const STRETCH = 2 / 3 - 0.5
-  const cOf = (u) => u + STRETCH * Math.sin(Math.PI * u) ** 2
-  const frac = (x) => x - Math.floor(x)
-  const uOf = (c) => {
-    const p = frac(c)
-    let u = p
-    for (let i = 0; i < 6; i++) u -= (cOf(u) - p) / (1 + STRETCH * Math.PI * Math.sin(2 * Math.PI * u))
-    return frac(u)
-  }
-  const C0 = cOf(0.32)
-  const dayAt = (s) => smooth(-0.06, 0.2, Math.sin(2 * Math.PI * uOf(C0 + s / DAY_SECONDS)))
-  // Moyenne temporelle du facteur de lumière sur un tour, pour l'absence.
-  const meanK = (() => {
-    let sum = 0
-    const N = 2400
-    for (let i = 0; i < N; i++) sum += dayAt(((i + 0.5) / N) * DAY_SECONDS)
-    return sum / N
-  })()
-  const P = Game.prototype
-  P.updateLight = function () {
-    const k = dayAt(this.save.totalPlaySeconds)
-    this.lightFactor = this.nightFloor + (1 - this.nightFloor) * k
-    const night = this.wasNight ? k < 0.55 : k < 0.4
-    this.wasNight = night
-  }
-  // creditAbsence produit au facteur (1 + plancher)/2 ; on lui prête le
-  // plancher qui donne la moyenne de la 3.70 : plancher + (1 − plancher)·k̄.
-  const credit = P.creditAbsence
-  P.creditAbsence = function (s) {
-    const f = this.nightFloor
-    const mean = f + (1 - f) * meanK
-    this.nightFloor = 2 * mean - 1
-    try {
-      credit.call(this, s)
-    } finally {
-      this.nightFloor = f
-    }
-  }
-}
+if (args.night) console.error('(--night ignoré : depuis la 3.70.0, le jeu porte lui-même la nuit au tiers du cycle)')
 
 // ── La règle proposée (voir la spec) ──────────────────────────────────────
-const RULE = args.rule === 'proposal'
+// Depuis la 3.71, le jeu applique lui-même la réserve et la migration : la
+// règle modélisée ne sert plus qu'à rejouer les chiffres sur une version
+// d'avant.
+const BUILT_IN = typeof Game.prototype.creditAbsentInsight === 'function'
+const RULE = args.rule === 'proposal' && !BUILT_IN
+if (args.rule === 'proposal' && BUILT_IN) console.error('(--rule=proposal ignoré : la règle est dans le jeu)')
 const rule = RULE ? await import('./savoirs-rule.mjs') : null
 if (rule) rule.applyProposal(Game)
 if (args.costs === 'proportional') {
@@ -166,13 +124,17 @@ if (args.from === 'human') {
   s.seenFacts = [...s.techs]
   s.res = { food: 16100, wood: 3170, stone: 3000, fiber: 9.3, insight: 6710 }
   s.totalPlaySeconds = 3600
+  // Une sauvegarde d'avant la réserve : le champ n'existe pas.
+  delete s.insightReserve
   store.set(SAVE_KEY, JSON.stringify(s))
 }
 const g = new Game(NOW)
+if (args.from === 'human' && BUILT_IN)
+  log.push({ kind: 'migrate', t: 0, stock: { insight: Math.round(g.amount('insight')), reserve: Math.round(g.save.insightReserve) } })
 if (args.from === 'human' && rule) {
   // Taux moyen d'un cycle : celui que l'absence utilise.
   const lf = g.lightFactor
-  g.lightFactor = (1 + g.nightFloor) / 2
+  g.lightFactor = meanLightFactor(g.nightFloor)
   g.refreshRates()
   const mean = g.rates.insight
   g.lightFactor = lf
@@ -200,7 +162,6 @@ let lastAge = g.save.age
 // Pour la règle de coût proportionnel : à l'instant où chaque savoir
 // apparaît dans la liste, les taux MOYENS (nuit comprise, sans encourager)
 // de savoir et de chaque ressource focalisée.
-const meanK = args.night === '3.70' ? 0.6436 : 0.4777
 const avail = {}
 function noteAvail() {
   for (const tech of g.available()) {
@@ -209,7 +170,7 @@ function noteAvail() {
     const enc = g.encourageLeft
     const focus = g.save.focus
     g.encourageLeft = 0
-    g.lightFactor = g.nightFloor + (1 - g.nightFloor) * meanK
+    g.lightFactor = meanLightFactor(g.nightFloor)
     const rates = {}
     for (const r of RES) {
       if (r === 'insight' || !g.unlocked.has(r)) continue

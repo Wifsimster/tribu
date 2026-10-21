@@ -1,7 +1,9 @@
 # Équilibrage du coût des savoirs
 
-Base : master `9772d54` (v3.69.0). Tient compte de la nuit au tiers du cycle prévue en 3.70.0.
+Base : master `9772d54` (v3.69.0). Tient compte de la nuit au tiers du cycle prévue en 3.70.0 (fusionnée depuis, voir section 8).
 Aucun code du jeu n'est modifié par cette spec. Les chiffres viennent de `tools/sim-savoirs.mjs`, qui fait tourner le vrai `Game` de `src/game/sim.ts` sous Node.
+
+Implémentée en 3.71.0 : réserve et migration dans `src/game/sim.ts` et `src/game/state.ts`, table 9.3 dans `src/game/content.ts`, tests dans `tests/insight-reserve.test.mjs`. Le taux `r` de l'absence et de la migration est la moyenne de la vraie courbe jour/nuit (`meanLightFactor`), pas `(1 + plancher) / 2`. Depuis, `--rule=proposal` est ignoré par le simulateur (la règle est dans le jeu) et `--costs=proportional` ne change plus rien.
 
 ## 1. Le retour
 
@@ -15,10 +17,10 @@ Reproduction : 6,71 k de savoir à 0,25/s de moyenne (taux du Néolithique, nuit
 Joueur simulé : achète chaque savoir dès qu'il est abordable (le moins cher d'abord), travaille la ressource qui retarde le plus le prochain savoir, sinon la nourriture, pose chaque terre offerte. Pas d'expédition, pas de Merveille, pas de pêche. Graine 7, pas de 0,5 s. « Abordable » = premier instant où `canResearch` est vrai ; ce joueur achète au même instant.
 
 ```
-node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --night=3.70 --no-encourage --until=3
-node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --night=3.70 --no-encourage --away=660:28800 --until=3
-node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --night=3.70 --no-encourage --cycle=1200:28800 --until=6 --max=20000
-node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --night=3.70 --no-encourage --from=human --until=3
+node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --until=3
+node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --away=660:28800 --until=3
+node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --cycle=1200:28800 --until=6 --max=20000
+node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --from=human --until=3
 # même chose avec --rule=proposal pour la règle de la section 5
 ```
 
@@ -182,7 +184,7 @@ Les intervalles mesurés tombent dans la cible de la section 4. Les pistes écar
 - **Coûts multipliés par un facteur global** : même défaut. Pour que 8 h ne couvrent plus un âge, il faudrait multiplier les coûts par ~7, et un joueur actif mettrait 40 min par savoir au Néolithique.
 - **Simple baisse du plafond d'absence** (8 h → 1 h) : casse aussi l'idle des matériaux, alors que seuls les savoirs posent problème.
 
-Pour les savoirs à venir, la formule reste celle que les coûts suivent déjà : **coût = T(âge) × taux de savoir actif mesuré à l'entrée de l'âge**, avec T de la section 4 (2-3 min, 6, 10, puis 10-12 min). Toute nouvelle table se vérifie avec `tools/sim-savoirs.mjs --night=3.70 --no-encourage` : chaque intervalle doit tomber dans la fourchette, à ±25 %.
+Pour les savoirs à venir, la formule reste celle que les coûts suivent déjà : **coût = T(âge) × taux de savoir actif mesuré à l'entrée de l'âge**, avec T de la section 4 (2-3 min, 6, 10, puis 10-12 min). Toute nouvelle table se vérifie avec `tools/sim-savoirs.mjs --no-encourage` : chaque intervalle doit tomber dans la fourchette, à ±25 %.
 
 ## 6. Parties existantes
 
@@ -211,7 +213,7 @@ Il achète l'Agriculture dès que sa fibre arrive, puis un savoir toutes les 4 �
 
 ## 7. Critères d'acceptation
 
-1. `tools/sim-savoirs.mjs --night=3.70 --no-encourage --until=3` donne la même sortie avant et après l'implémentation (le jeu actif ne change pas).
+1. `tools/sim-savoirs.mjs --no-encourage --until=3` donne la même sortie avant et après l'implémentation (le jeu actif ne change pas).
 2. Néolithique, `creditAbsence(28800)` : savoir versé tout de suite ≤ `r · 600` (± 1), réserve ≤ `r · 7200`, matériaux identiques à aujourd'hui.
 3. `creditAbsence(300)` verse au moins 78 % du savoir d'aujourd'hui, et le reste va en réserve sans perte.
 4. Absence d'1 h : versé + réserve = gain d'aujourd'hui (rien n'est perdu sous le plafond).
@@ -221,14 +223,14 @@ Il achète l'Agriculture dès que sa fibre arrive, puis un savoir toutes les 4 �
 8. Exode : réserve à 0.
 9. Sauvegarde transférée (`transfer.ts`) : la réserve suit.
 10. Coûts en matériaux (section 9) : ceux de `content.ts` égalent la table 9.3 pour les âges 0 à 3.
-11. `tools/sim-savoirs.mjs --night=3.70 --no-encourage --until=4 --eco` : aucune ressource débloquée à l'âge 1 ou 2 n'a « dépensé 0 » à son âge, et aucun ratio produit/dépensé n'est < 0,8 (hors savoir).
+11. `tools/sim-savoirs.mjs --no-encourage --until=4 --eco` : aucune ressource débloquée à l'âge 1 ou 2 n'a « dépensé 0 » à son âge, et aucun ratio produit/dépensé n'est < 0,8 (hors savoir).
 12. Même commande avec `--focus=food` : chaque âge est atteint au plus 5 % plus tard que sans (le joueur qui ne change jamais de récolte n'est plus bloqué par un matériau).
 
 ## 8. Limites de la simulation
 
 - Pas d'expéditions, de Merveille ni de pêche : elles ajoutent un peu de savoir (≤ 12 + 25 × âge par voyage) et ne changent pas le diagnostic.
 - Le joueur achète par coût croissant et pose toujours la première terre offerte.
-- La nuit 3.70 est une copie de la formule de `src/game/clock.ts` (branche `feat/nuit-plus-courte`) dans `tools/sim-savoirs.mjs`. Une fois la 3.70 mergée, ce mode et le patch de l'absence (`(1 + plancher) / 2`) sont à retirer du script.
+- Les mesures des sections 2 à 9 ont été faites avec une copie de la nuit 3.70 dans `tools/sim-savoirs.mjs` (`--night=3.70`, courbe sans mise à l'échelle), avant la fusion de la 3.70.0. Depuis, le jeu porte la nuit et `lightScaleFor` garde le rendement d'un tour : le mode est retiré du script, le savoir de l'absence et de la migration passe par `meanLightFactor` de `src/game/sim.ts`.
 - Le bilan par âge range la production par âge courant et la dépense par âge du savoir : un savoir d'un âge acheté au suivant (le Grenier, la Voile) décale un peu les ratios.
 - Les taux de référence de la section 9 sont relevés sur la partie de référence, avec la saison du moment : ±12 % sur la nourriture.
 - Pierre de la sauvegarde de l'humain : supposée à 3 000 (illisible sur la capture). Elle ne joue que sur la Hache polie, et elle n'est jamais limitante dans les deux runs.
@@ -237,7 +239,7 @@ Il achète l'Agriculture dès que sa fibre arrive, puis un savoir toutes les 4 �
 
 ### 9.1 Mesure : production et besoins par âge
 
-`tools/sim-savoirs.mjs --night=3.70 --no-encourage --until=4 --eco` (joueur qui focalise ce qui manque) et la même chose avec `--focus=food` (joueur qui ne change jamais de récolte, comme la capture). « Produit » : récolté en jouant pendant l'âge. « Dépensé » : matériaux des savoirs de l'âge. Les taux sont ceux de l'entrée dans l'âge, focalisé / au repos.
+`tools/sim-savoirs.mjs --no-encourage --until=4 --eco` (joueur qui focalise ce qui manque) et la même chose avec `--focus=food` (joueur qui ne change jamais de récolte, comme la capture). « Produit » : récolté en jouant pendant l'âge. « Dépensé » : matériaux des savoirs de l'âge. Les taux sont ceux de l'entrée dans l'âge, focalisé / au repos.
 
 | Âge | Ressource | Produit | Dépensé | Ratio | Taux focalisé / au repos |
 |---|---|---|---|---|---|

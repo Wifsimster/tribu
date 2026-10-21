@@ -10,6 +10,19 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.71.0',
+    title: 'La réserve de savoir',
+    items: [
+      "Le savoir accumulé pendant ton absence rentre maintenant en jouant. Au retour, tu touches tout de suite une dizaine de minutes de savoir : de quoi faire une ou deux découvertes. Le reste va dans ta réserve.",
+      "Tant que ta réserve n'est pas vide, ton savoir coule deux fois plus vite. Elle s'affiche en doré à côté du savoir, en haut de l'écran : « réserve » et ce qu'il en reste. Touche le savoir pour le détail.",
+      "Une absence remplit la réserve jusqu'à deux heures de savoir. Une courte pause, elle, est versée presque en entier tout de suite.",
+      "Tu ne perds rien. Si ta partie avait déjà un gros stock de savoir, il garde de quoi payer ta prochaine découverte, et tout le reste passe en réserve, sans limite : il te revient en jouant, deux fois plus vite.",
+      "Pendant l'absence, la nourriture, le bois, la pierre et les autres matériaux sont crédités comme avant, tout comme le butin des expéditions et les trocs du marchand.",
+      "Les découvertes demandent maintenant des provisions : la nourriture sert enfin, et la fibre ne bloque plus le Néolithique. Les coûts en matériaux suivent ce que l'île produit à chaque âge, du Paléolithique à l'âge du fer. La Taille du silex ne demande plus que 3 pierres.",
+      "Le rythme des découvertes ne change pas pour qui joue sans s'absenter. Les découvertes déjà faites ne sont ni repayées ni remboursées.",
+    ],
+  },
+  {
     version: '3.70.0',
     title: 'Des journées plus longues',
     items: [

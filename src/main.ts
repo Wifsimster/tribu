@@ -519,6 +519,21 @@ const techOfBuilding = new Map<string, (typeof TECHS)[number]>()
 for (const t of TECHS)
   for (const e of t.effects) if (e.kind === 'building') techOfBuilding.set(e.building, t)
 
+// Les nouvelles du chargement (absence, réserve de savoir) tombent pendant que
+// le menu d'accueil couvre l'écran : affichées là, elles s'effaceraient sans
+// être lues. Elles attendent qu'il se ferme. Déclaré AVANT l'abonnement, qui
+// rejoue dès maintenant les événements du constructeur.
+let menuOpen = true
+const heldToasts: string[] = []
+function toastAfterMenu(message: string): void {
+  if (menuOpen) heldToasts.push(message)
+  else hud.toast(message)
+}
+function setMenuOpen(open: boolean): void {
+  menuOpen = open
+  if (!open) for (const m of heldToasts.splice(0)) hud.toast(m)
+}
+
 game.on((e) => {
   switch (e.type) {
     case 'tech':
@@ -621,9 +636,18 @@ game.on((e) => {
       break
     case 'offline': {
       const mins = Math.round(e.seconds / 60)
-      hud.toast(`Pendant ton absence (${mins} min), la tribu a continué`)
+      toastAfterMenu(`Pendant ton absence (${mins} min), la tribu a continué`)
+      if (e.reserve > 0.5)
+        toastAfterMenu(
+          `Savoir +${fmt(e.gained.insight ?? 0)} tout de suite, réserve +${fmt(e.reserve)} : elle rentre en jouant, ton savoir coule deux fois plus vite`,
+        )
       break
     }
+    case 'reserveMigrated':
+      toastAfterMenu(
+        `Ton savoir accumulé passe en réserve (${fmt(e.reserve)}) : il rentre en jouant, deux fois plus vite. Tu ne perds rien.`,
+      )
+      break
     case 'caravanArrive':
       caravan.arrive()
       hud.toast(`Une barque marchande ${e.merchant} accoste`)
@@ -1145,11 +1169,13 @@ function menuEl<T extends HTMLElement>(id: string): T {
     showHome()
     menu.classList.add('open')
     paused = true
+    setMenuOpen(true)
   }
 
   const close = () => {
     menu.classList.remove('open')
     paused = false
+    setMenuOpen(false)
   }
 
   continueBtn.addEventListener('click', close)
@@ -1758,6 +1784,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
   // ?nomenu=1 : le harnais de capture juge le jeu, pas l'écran d'accueil.
   if (new URLSearchParams(location.search).has('nomenu')) {
     paused = false
+    setMenuOpen(false)
   } else {
     showHome()
     menu.classList.add('open')

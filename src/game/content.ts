@@ -250,7 +250,7 @@ export const TECHS: TechDef[] = [
     name: 'Taille du silex',
     age: 0,
     cost: 8,
-    materials: { stone: 12 },
+    materials: { stone: 3 },
     requires: [],
     fact: "Les plus anciens outils de pierre taillée connus, à Lomekwi au Kenya, ont environ 3,3 millions d'années — soit bien avant l'apparition d'Homo sapiens.",
     funFact:
@@ -263,7 +263,7 @@ export const TECHS: TechDef[] = [
     name: 'Maîtrise du feu',
     age: 0,
     cost: 18,
-    materials: { wood: 15 },
+    materials: { wood: 10 },
     requires: ['flint'],
     fact: "À Gesher Benot Ya'aqov, en Israël, des foyers vieux de 780 000 ans montrent un feu entretenu volontairement, pas un incendie naturel.",
     funFact:
@@ -279,7 +279,7 @@ export const TECHS: TechDef[] = [
     name: 'Abri de branchages',
     age: 0,
     cost: 30,
-    materials: { wood: 30, stone: 10 },
+    materials: { wood: 10, stone: 6 },
     requires: ['fire'],
     fact: "À Terra Amata, près de Nice, des trous de poteaux vieux de 400 000 ans dessinent des huttes ovales de 8 à 15 mètres de long.",
     funFact:
@@ -291,7 +291,7 @@ export const TECHS: TechDef[] = [
     name: 'Épieu de chasse',
     age: 0,
     cost: 45,
-    materials: { wood: 20, stone: 15 },
+    materials: { wood: 15, stone: 15 },
     requires: ['fire'],
     fact: "Les épieux de Schöningen, en Allemagne, ont entre 200 000 et 300 000 ans selon les datations. Taillés dans l'épicéa, ils sont équilibrés comme des javelots de compétition.",
     funFact:
@@ -306,7 +306,7 @@ export const TECHS: TechDef[] = [
     name: 'Lampe à graisse',
     age: 0,
     cost: 55,
-    materials: { stone: 12, food: 25 },
+    materials: { food: 60, stone: 10 },
     requires: ['fire'],
     fact: "À Lascaux, plus d'une centaine de lampes de pierre brûlaient de la graisse animale avec des mèches de genévrier : les peintres travaillaient sous terre, en pleine nuit.",
     funFact:
@@ -319,7 +319,7 @@ export const TECHS: TechDef[] = [
     name: 'Cordage végétal',
     age: 0,
     cost: 70,
-    materials: { wood: 30 },
+    materials: { wood: 25, food: 80 },
     requires: ['spear'],
     fact: "Un fragment de corde à trois brins retrouvé à l'Abri du Maras, en Ardèche, a environ 45 000 à 50 000 ans : il a été fabriqué par des Néandertaliens.",
     funFact:
@@ -336,7 +336,7 @@ export const TECHS: TechDef[] = [
     name: 'Agriculture',
     age: 1,
     cost: 110,
-    materials: { wood: 40, fiber: 25 },
+    materials: { food: 200, wood: 20, fiber: 10 },
     requires: ['cordage'],
     fact: "Le blé amidonnier et l'orge sont domestiqués dans le Croissant fertile vers −9500. Il a fallu près d'un millénaire pour que l'épi cesse de s'égrener tout seul.",
     funFact:
@@ -351,7 +351,7 @@ export const TECHS: TechDef[] = [
     name: 'Poterie',
     age: 1,
     cost: 150,
-    materials: { wood: 50 },
+    materials: { wood: 35, food: 330 },
     requires: ['agriculture'],
     fact: "Les plus vieux pots du monde viennent de la grotte de Xianrendong, en Chine : 20 000 ans, soit près de 8 500 ans avant l'agriculture.",
     funFact:
@@ -366,7 +366,7 @@ export const TECHS: TechDef[] = [
     name: 'Tissage',
     age: 1,
     cost: 200,
-    materials: { fiber: 60 },
+    materials: { fiber: 40, food: 300 },
     requires: ['pottery'],
     fact: "Des empreintes de textiles tissés sur argile, à Dolní Věstonice en Moravie, datent de 27 000 ans — le tissu précède de loin le métier à tisser retrouvé.",
     funFact:
@@ -379,7 +379,7 @@ export const TECHS: TechDef[] = [
     name: 'Hache polie',
     age: 1,
     cost: 260,
-    materials: { stone: 50, wood: 30 },
+    materials: { stone: 90, wood: 45 },
     requires: ['pottery'],
     fact: "La plus ancienne hache à tranchant poli connue vient d'Australie et a entre 44 000 et 49 000 ans. En Europe, la technique n'arrive qu'au Néolithique.",
     funFact:
@@ -392,7 +392,7 @@ export const TECHS: TechDef[] = [
     name: 'Grenier',
     age: 1,
     cost: 340,
-    materials: { wood: 80, fiber: 40 },
+    materials: { food: 820, wood: 65, clay: 15 },
     requires: ['agriculture', 'weaving'],
     fact: "À Dhra', en Jordanie, des greniers surélevés vieux de 11 300 ans stockaient l'orge sauvage : on a stocké les céréales avant de savoir les cultiver.",
     funFact:
@@ -409,7 +409,7 @@ export const TECHS: TechDef[] = [
     name: 'Métallurgie du cuivre',
     age: 2,
     cost: 450,
-    materials: { stone: 60, wood: 40 },
+    materials: { stone: 130, wood: 120, food: 640 },
     requires: ['granary'],
     fact: "Ötzi, l'homme des glaces mort vers −3300, portait une hache en cuivre pur à 99,7 %. Son minerai vient de Toscane, à 500 km de là.",
     funFact:
@@ -424,7 +424,7 @@ export const TECHS: TechDef[] = [
     name: 'Alliage de bronze',
     age: 2,
     cost: 600,
-    materials: { copper: 60 },
+    materials: { copper: 50, wood: 160 },
     requires: ['copper'],
     fact: "Le bronze demande du cuivre et de l'étain, qu'on ne trouve presque jamais au même endroit. L'âge du bronze est donc d'abord un âge du commerce longue distance.",
     funFact:
@@ -441,7 +441,7 @@ export const TECHS: TechDef[] = [
     name: 'Roue',
     age: 2,
     cost: 780,
-    materials: { wood: 100, copper: 30 },
+    materials: { wood: 660, copper: 35, food: 1350 },
     requires: ['bronze'],
     fact: "La roue apparaît d'abord comme tour de potier vers −4000 ; vers −3500 elle porte les premiers chariots. Les Mésoaméricains l'ont mise sur des jouets, faute d'animaux de trait.",
     funFact:
@@ -456,7 +456,7 @@ export const TECHS: TechDef[] = [
     name: 'Écriture',
     age: 2,
     cost: 950,
-    materials: { clay: 60 },
+    materials: { clay: 110, food: 1600 },
     requires: ['bronze'],
     fact: "Le cunéiforme naît vers −3400 à Uruk pour compter des sacs d'orge et des têtes de bétail. La comptabilité précède la littérature de plusieurs siècles.",
     funFact:
@@ -469,7 +469,7 @@ export const TECHS: TechDef[] = [
     name: 'Voile',
     age: 2,
     cost: 1200,
-    materials: { fiber: 120, wood: 60 },
+    materials: { fiber: 190, wood: 1050 },
     requires: ['wheel', 'weaving'],
     fact: "Les premières voiles attestées sont peintes sur des vases égyptiens vers −3100 : un carré de lin tendu, qui ne sait remonter au vent qu'à peine.",
     funFact:
@@ -485,7 +485,7 @@ export const TECHS: TechDef[] = [
     name: 'Forge du fer',
     age: 3,
     cost: 1600,
-    materials: { stone: 90, copper: 60 },
+    materials: { stone: 170, copper: 110, food: 3000 },
     requires: ['sail', 'writing'],
     fact: "Les plus anciens objets en fer sont des perles égyptiennes de −3200, martelées dans une météorite. Le mot hiéroglyphique signifie « fer du ciel ».",
     funFact:
@@ -501,7 +501,7 @@ export const TECHS: TechDef[] = [
     name: 'Charrue',
     age: 3,
     cost: 2100,
-    materials: { iron: 50, wood: 60 },
+    materials: { iron: 70, wood: 95, food: 3650 },
     requires: ['ironworking'],
     fact: "Le soc en fer permet de retourner les sols lourds du nord de l'Europe, restés incultes tant qu'on n'avait que l'araire en bois.",
     funFact:
@@ -514,7 +514,7 @@ export const TECHS: TechDef[] = [
     name: 'Alphabet',
     age: 3,
     cost: 2700,
-    materials: { clay: 40 },
+    materials: { clay: 230, food: 4700 },
     requires: ['ironworking'],
     fact: "L'alphabet proto-sinaïtique, vers −1800, réduit l'écriture à une trentaine de signes. Pour la première fois, écrire n'est plus un métier.",
     funFact:
@@ -527,7 +527,7 @@ export const TECHS: TechDef[] = [
     name: 'Monnaie frappée',
     age: 3,
     cost: 3400,
-    materials: { copper: 40, iron: 30 },
+    materials: { copper: 35, iron: 30, food: 5450 },
     requires: ['alphabet'],
     fact: "Les premières pièces sont frappées en Lydie vers −630, en électrum, un alliage naturel d'or et d'argent trouvé dans la rivière Pactole.",
     funFact:
@@ -543,7 +543,7 @@ export const TECHS: TechDef[] = [
     name: 'Tour à feu',
     age: 3,
     cost: 2400,
-    materials: { stone: 140, wood: 70 },
+    materials: { stone: 860, wood: 430, food: 4500 },
     requires: ['sail'],
     fact: "Les Grecs tenaient des feux allumés au sommet des caps — les phryktories. Dans l'Agamemnon d'Eschyle, la nouvelle de la chute de Troie franchit la mer Égée en une seule nuit, de brasier en brasier.",
     funFact:
@@ -558,7 +558,7 @@ export const TECHS: TechDef[] = [
     name: 'Aqueduc',
     age: 3,
     cost: 4200,
-    materials: { stone: 150, iron: 60 },
+    materials: { stone: 180, iron: 70, food: 6250 },
     requires: ['coinage', 'plough'],
     fact: "L'Aqua Appia, à Rome en −312, descend de 10 mètres sur 16 kilomètres. Une pente de 0,06 % tenue à la main, sans niveau à bulle.",
     funFact:

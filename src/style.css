@@ -196,6 +196,29 @@ body {
   display: none;
 }
 
+/* La réserve de savoir d'une absence : une pastille dorée collée au savoir,
+   qui dit qu'il coule double tant qu'elle dure. */
+.res .reserve {
+  margin-left: 2px;
+  padding: 2px 5px;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #6b4a0f;
+  background: rgba(255, 215, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(217, 164, 65, 0.6);
+}
+
+.res .reserve[hidden] {
+  display: none;
+}
+
+body.night .res .reserve {
+  color: #2a1d05;
+  background: rgba(255, 215, 106, 0.8);
+}
+
 .res.bump {
   animation: bump 0.4s cubic-bezier(0.2, 0.9, 0.25, 1);
 }

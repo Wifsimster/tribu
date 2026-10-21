@@ -107,6 +107,11 @@ export interface SaveV1 {
    *  sauvegarde d'avant les parcelles : il vaut alors 0, et tous les jalons
    *  déjà franchis arrivent en file au chargement. */
   landN: number
+  /** La réserve de savoir : ce qu'une absence a produit au-delà de ce qu'elle
+   *  verse tout de suite. Elle rentre en jouant, au rythme du savoir produit
+   *  — le savoir coule deux fois plus vite tant qu'elle n'est pas vide.
+   *  Absente d'une sauvegarde d'avant la règle : la migration la crée. */
+  insightReserve: number
 }
 
 export const SAVE_KEY = 'tribu.save.v1'
@@ -114,6 +119,11 @@ export const SAVE_KEY = 'tribu.save.v1'
 /** Offline progress is credited, but capped so the game cannot be beaten by
  *  closing the tab for a month. */
 export const OFFLINE_CAP_SECONDS = 8 * 3600
+/** Le savoir d'une absence verse tout de suite r·τ·(1 − e^(−s/τ)) : presque
+ *  tout d'une courte pause, au plus τ secondes de savoir pour une nuit. */
+export const OFFLINE_INSIGHT_TAU = 600
+/** Le reste va en réserve, plafonnée à deux heures de savoir. */
+export const INSIGHT_RESERVE_HOURS = 2
 
 export function emptySave(now: number): SaveV1 {
   return {
@@ -152,6 +162,7 @@ export function emptySave(now: number): SaveV1 {
     land: [],
     landPending: [],
     landN: 0,
+    insightReserve: 0,
   }
 }
 
@@ -217,7 +228,9 @@ function cleanPending(v: unknown): SaveV1['landPending'] {
   return out
 }
 
-export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } {
+/** `migrateReserve` : la sauvegarde date d'avant la réserve de savoir, son
+ *  stock doit passer une fois par la migration (voir Game). */
+export function loadSave(now: number): { save: SaveV1; offlineSeconds: number; migrateReserve?: boolean } {
   let raw: string | null = null
   try {
     raw = localStorage.getItem(SAVE_KEY)
@@ -265,7 +278,9 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
     save.streets = cleanStreets(save.streets)
     save.wonderAt = cleanPoint(save.wonderAt)
     save.museumAt = cleanPoint(save.museumAt)
-    return { save, offlineSeconds: elapsed }
+    const reserve = (parsed as Partial<SaveV1>).insightReserve
+    save.insightReserve = typeof reserve === 'number' && Number.isFinite(reserve) && reserve > 0 ? reserve : 0
+    return { save, offlineSeconds: elapsed, migrateReserve: reserve === undefined }
   } catch {
     return { save: emptySave(now), offlineSeconds: 0 }
   }
