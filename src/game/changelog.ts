@@ -10,6 +10,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.70.0',
+    title: 'Des journées plus longues',
+    items: [
+      "La nuit dure moitié moins que le jour : sur les quatre minutes d'une journée de jeu, le soleil reste levé 2 min 40 s, et la nuit ne dure plus que 1 min 20 s. Avant, chacun durait deux minutes.",
+      "C'est le plein jour et le cœur de la nuit qui changent de durée. L'aube et le crépuscule durent autant qu'avant, une dizaine de secondes chacun, et le soleil et la lune ne font aucun saut dans le ciel.",
+      "La tribu dort toujours au cœur de la nuit, à toutes les époques. Avec toute la lumière découverte, la veillée et le sommeil durent chacun un peu moins longtemps, à proportion de la nuit.",
+      "Le cadran du jour, le campanile et les comptes à rebours (« la nuit tombe dans… ») suivent la nouvelle heure.",
+      "La production ne change pas : sur une journée entière, ton village récolte autant qu'avant, en jeu comme pendant ton absence. Le plein jour rapporte un peu moins par seconde au début de la partie, parce qu'il dure plus longtemps.",
+      "Ta sauvegarde est gardée telle quelle. Au premier chargement, l'heure de ton île peut avancer ou reculer un peu.",
+    ],
+  },
+  {
     version: '3.69.0',
     title: 'La cueillette, geste par geste',
     items: [

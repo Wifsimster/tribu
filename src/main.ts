@@ -42,7 +42,8 @@ import { FEATS, LAND_BY_ID, TOOLS, WONDER_BY_AGE } from './game/content'
 import { Ambience } from './audio/ambience'
 import { Villagers } from './render/villagers'
 import type { ResourceId } from './game/content'
-import { DAY_SECONDS, DAY_START } from './game/content'
+import { DAY_SECONDS } from './game/content'
+import { dayPhaseAt } from './game/clock'
 import { Stage } from './render/scene'
 import { GROUND_Y, Island } from './render/island'
 import { planOf, raiseWorld } from './render/plan'
@@ -1902,9 +1903,8 @@ function frame(now: number): void {
     stage.eclipseK = 1 - 0.78 * Math.sin(Math.PI * Math.min(1, p))
     if (eclipseLeft <= 0) stage.eclipseK = 1
   }
-  const daylight = stage.setDaylight(
-    forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1,
-  )
+  const hour = forcedHour ?? dayPhaseAt(game.save.totalPlaySeconds)
+  const daylight = stage.setDaylight(hour)
   // Retenue pour la frame SUIVANTE : le village s'anime avant que la lumière
   // du jour ne soit calculée, et l'éclairage public a besoin de la connaître.
   lastDaylight = daylight
@@ -1916,7 +1916,7 @@ function frame(now: number): void {
   island.setSeason(game.season.id, game.seasonU)
   // Les ailes du moulin tournent, et le cadran du campanile donne l'heure
   // qu'il est sur l'île — la même fraction de journée que celle du soleil.
-  village.tickMovers(dt, forcedHour ?? (DAY_START + game.save.totalPlaySeconds / DAY_SECONDS) % 1)
+  village.tickMovers(dt, hour)
   stage.driftSky(dt)
   // Hystérésis : l'encre du HUD ne doit pas clignoter pendant tout un crépuscule.
   if (hudNight ? daylight > 0.55 : daylight < 0.4) {

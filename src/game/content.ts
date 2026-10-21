@@ -170,10 +170,9 @@ export function yuleState(now = new Date()): YuleState {
 export const YULE_STORY =
   "Le 25 décembre ne doit rien à une date de naissance : l'Église l'a fixé au IVe siècle sur le solstice romain du Sol Invictus, la fête du soleil qui renaît. Le personnage, lui, vient de saint Nicolas de Myre, évêque du IVe siècle réputé pour ses dons secrets, que les Néerlandais emportent en Amérique sous le nom de Sinterklaas. Le traîneau et ses huit rennes n'apparaissent qu'en 1823, dans un poème américain ; Rudolph, le neuvième, est inventé en 1939 par un grand magasin de Chicago pour son catalogue de Noël. Et non : ce n'est pas Coca-Cola qui l'a habillé de rouge — le dessinateur Thomas Nast le représentait déjà ainsi dans les années 1860, quarante ans avant la marque."
 
-/** Une journée complète en secondes de jeu, et l'heure de la première aube.
- *  Vivent ici parce que la nuit est une règle du jeu, pas un habillage. */
+/** Une journée complète en secondes de jeu. Vit ici parce que la nuit est une
+ *  règle du jeu, pas un habillage ; l'heure, elle, se lit dans clock.ts. */
 export const DAY_SECONDS = 240
-export const DAY_START = 0.32
 
 /** Une saison dure trois jours de jeu : l'année entière tient en 48 minutes.
  *  Les saisons sont une règle (la récolte suit) autant qu'un décor. */
