@@ -81,10 +81,11 @@ try {
     })
     if (info.phase !== 'work' || !info.clip) throw new Error(`${tool} : le colon ne joue pas de geste Blender (${JSON.stringify(info)})`)
 
-    // Une image : le rendu complet de la scène par une caméra posée face au
-    // colon, dans l'axe de la caméra du jeu, puis recadrée autour de lui.
+    // Une image : le rendu complet de la scène par une caméra posée sur le
+    // colon, puis recadrée autour de lui.
     // `view` : 'jeu' = l'axe de la caméra du jeu (ce que voit le joueur),
-    // 'profil' = de côté, caméra basse, pour juger le geste.
+    // 'droite' / 'gauche' = de profil, caméra basse, pour juger le geste ;
+    // 'haut' = en plongée.
     const shot = (px, crop, view) =>
       page.evaluate(
         ({ px, crop, view, W, H }) => {
@@ -102,14 +103,23 @@ try {
           let dir
           if (view === 'jeu') dir = st.camera.position.clone().sub(st.target).normalize()
           else {
-            // De profil, côté main droite (x+ du colon), un peu de face.
-            const yaw = s.group.rotation.y + Math.PI / 2 - 0.35
-            dir = new look.constructor(Math.sin(yaw), 0.42, Math.cos(yaw)).normalize()
+            // De profil, un peu de face : côté main droite pour la faucille et
+            // la faux, côté gauche pour le panier ; en plongée (`haut`) pour le
+            // retour, qui passe entre les maisons.
+            const side = view === 'gauche' ? -1 : 1
+            const yaw = s.group.rotation.y + side * (Math.PI / 2 - 0.35)
+            dir = new look.constructor(Math.sin(yaw), view === 'haut' ? 1.6 : 0.42, Math.cos(yaw)).normalize()
           }
           const d = (H * 1.85) / (2 * px * Math.tan((cam.fov * Math.PI) / 360))
           cam.position.copy(look).addScaledVector(dir, d)
           cam.lookAt(look)
+          // Gros plan : on étudie le geste ; bâtiments, véhicules, bêtes et
+          // villageois ne doivent pas le cacher. L'île (sol, buissons, arbres)
+          // reste.
+          const hide = view === 'jeu' ? [] : [t.village().group, t.fauna().group, t.villagers().group].filter((g) => g.visible)
+          for (const g of hide) g.visible = false
           st.renderer.render(st.scene, cam)
+          for (const g of hide) g.visible = true
           const c = document.createElement('canvas')
           c.width = c.height = crop
           c.getContext('2d').drawImage(st.renderer.domElement, (W - crop) / 2, (H - crop) / 2, crop, crop, 0, 0, crop, crop)
@@ -117,6 +127,7 @@ try {
         },
         { px, crop, view, W, H },
       )
+    const side = tool === 'hand' ? 'gauche' : 'droite'
     const step = (seconds) =>
       page.evaluate((n) => {
         const s = window.__tribu.settler()
@@ -134,12 +145,12 @@ try {
       e = target
       frames.push({ ...st, label: `travail ${target.toFixed(1)} s` })
       await write(`${tool}-jeu-${k}.png`, await shot(50, 160, 'jeu'))
-      await write(`${tool}-gros-${k}.png`, await shot(260, 380, 'profil'))
+      await write(`${tool}-gros-${k}.png`, await shot(260, 380, side))
     }
     const home = await step(info.length - e + 0.4)
     frames.push({ ...home, label: 'retour' })
     await write(`${tool}-jeu-7.png`, await shot(50, 160, 'jeu'))
-    await write(`${tool}-gros-7.png`, await shot(260, 380, 'profil'))
+    await write(`${tool}-gros-7.png`, await shot(260, 380, 'haut'))
 
     // GIF : le travail suivant, en entier, à 10 i/s (un tour de retour au feu
     // puis un nouveau départ prendrait trop de temps sous SwiftShader).
@@ -158,7 +169,7 @@ try {
       })
       const n = Math.round(info.length * 10) + 8
       for (let i = 0; i < n; i++) {
-        await write(`gif-${tool}-${String(i).padStart(3, '0')}.png`, await shot(260, 380, 'profil'))
+        await write(`gif-${tool}-${String(i).padStart(3, '0')}.png`, await shot(260, 380, side))
         await step(0.1)
       }
       gif = join(out, `${tool}.gif`)

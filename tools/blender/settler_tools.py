@@ -27,8 +27,8 @@ COL = {
     'shaft': srgb('#7d5d41'),     # PALETTE.trunk, la hampe des outils du jeu
     'bone': srgb('#efe6d2'),
     'flint': srgb('#cdd2d6'),     # tranchant de silex : marqueur de reteinte
-    'wicker': srgb('#b07a42'),
-    'wickerDark': srgb('#6e4a2a'),
+    'wicker': srgb('#d0a060'),
+    'wickerDark': srgb('#7a5232'),
     'leaf': srgb('#4a7340'),
     'berry': srgb('#c0392b'),
     'berryLight': srgb('#e8553f'),
@@ -173,15 +173,15 @@ def scythe():
     return g, pts[-1], nib + side * 0.07
 
 
-BASKET = {'sides': 7, 'top': -0.125, 'bot': -0.31, 'ro': 0.135, 'rb': 0.1}
+BASKET = {'sides': 7, 'top': -0.14, 'bot': -0.33, 'ro': 0.155, 'rb': 0.115}
 
 
 def basket():
     """Panier vide, tenu par l'anse ; il pend sous la main."""
     g = Geo()
     sides = 7
-    arc = [Vector((0.125 * math.cos(a), -0.125 + 0.125 * math.sin(a), 0)) for a in
-           [math.pi * k / 6 for k in range(7)]]
+    r = -BASKET['top']
+    arc = [Vector((r * math.cos(a), -r + r * math.sin(a), 0)) for a in [math.pi * k / 6 for k in range(7)]]
     g.tube(arc, 0.014, 4, COL['wickerDark'], up=(0, 0, 1), caps=(False, False))
     top, bot, ro, rb = (BASKET[k] for k in ('top', 'bot', 'ro', 'rb'))
     ax, az = Vector((1, 0, 0)), Vector((0, 0, 1))
@@ -204,8 +204,8 @@ def basket_fill(level):
     g = Geo()
     sides, top, bot, ro, rb = (BASKET[k] for k in ('sides', 'top', 'bot', 'ro', 'rb'))
     if level:
-        fill = {1: -0.25, 2: -0.19, 3: -0.135}[level]
-        heap = {1: 0.025, 2: 0.04, 3: 0.075}[level]
+        fill = {1: -0.27, 2: -0.21, 3: -0.15}[level]
+        heap = {1: 0.025, 2: 0.04, 3: 0.08}[level]
         r = rb + (ro - rb) * (fill - bot) / (top - bot) - 0.016
         g.cone((0, fill, 0), (0, fill + heap, 0), r, sides, COL['leaf'])
         count = {1: 3, 2: 6, 3: 10}[level]

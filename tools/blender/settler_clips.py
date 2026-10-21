@@ -52,10 +52,19 @@ def look(axis1, dir1, axis2, dir2):
 
 
 class Pose:
-    """Résout une pose : rotations locales de chaque os (repère du jeu)."""
+    """Résout une pose : rotations locales de chaque os (repère du jeu).
+    Une visée peut dépendre d'un autre os (`lambda P: …`, P = la pose) : elle
+    se résout en deux passes, la seconde sur la pose de la première."""
 
     def __init__(self, rig, spec, rest):
         self.off = offsets(rig)
+        self.solve(spec, rest, None)
+        if any(callable(v) for v in spec.values()):
+            first = Pose.__new__(Pose)
+            first.world = dict(self.world)
+            self.solve(spec, rest, first)
+
+    def solve(self, spec, rest, ctx):
         self.world = {}
         self.local = {}
         for name in ORDER:
@@ -64,7 +73,7 @@ class Pose:
             t = pt + pr @ self.off[name]
             s = spec.get(name, rest.get(name, (0, 0, 0)))
             if callable(s):
-                s = s(self)
+                s = s(ctx) if ctx else rest.get(name, (0, 0, 0))
             if isinstance(s, tuple) and s and s[0] == 'aim':
                 d = (Vector(s[1]) - t).normalized()
                 wq = DOWN.rotation_difference(d)
@@ -85,10 +94,6 @@ class Pose:
         return t + r @ Vector(local)
 
 
-def lerp(a, b, k):
-    return Vector(a).lerp(Vector(b), k)
-
-
 def rot_y(v, a):
     v = Vector(v)
     return Vector((v.x * math.cos(a) + v.z * math.sin(a), v.y, -v.x * math.sin(a) + v.z * math.cos(a)))
@@ -100,8 +105,11 @@ def rot_y(v, a):
 
 def gather_hand(rig):
     legs = {'legL': (0.08, 0, -0.04), 'legR': (-0.1, 0, 0.04)}
-    held = (-0.16, 0.47, 0.33)          # main gauche : l'anse du panier, devant le ventre
-    basket = {'armL': ('aim', held), 'toolL': ('upright', (0, 0, 0))}
+    # Le panier pend à côté de la hanche gauche, bras écarté : il se voit de
+    # dos comme de profil. Il vient devant le ventre recevoir les baies.
+    side = (-0.72, 0.46, 0.26)
+    front = (-0.18, 0.48, 0.34)
+    basket = {'armL': ('aim', side), 'toolL': ('upright', (0, 0, 0))}
 
     def lean(**kw):
         p = {'body': (1.05, 0, 0), 'head': (-0.62, 0, 0), **legs, **basket}
@@ -110,7 +118,12 @@ def gather_hand(rig):
 
     p1, p1in = (0.16, 0.3, 0.5), (0.11, 0.22, 0.54)
     p2, p2in = (0.0, 0.31, 0.52), (-0.03, 0.23, 0.56)
-    rim = (-0.14, 0.42, 0.3)
+
+    def rim(P):
+        """Les doigts au-dessus du bord du panier, où qu'il soit."""
+        return ('aim', P.point('toolL', (0, -0.05, 0)))
+
+    pour = lean(body=(0.95, -0.3, 0), armL=('aim', front), armR=rim)
     keys = [
         (0.0, {**legs}),
         (0.4, lean(armR=('aim', p1))),
@@ -118,8 +131,8 @@ def gather_hand(rig):
         (0.7, lean(armR=('aim', p1))),
         (0.85, lean(armR=('aim', p2in))),
         (1.0, lean(armR=('aim', (0.02, 0.38, 0.5)))),
-        (1.3, lean(body=(0.95, -0.3, 0), armR=('aim', rim))),
-        (1.4, lean(body=(0.95, -0.3, 0), armR=('aim', rim))),
+        (1.3, pour),
+        (1.4, pour),
         (1.8, lean(body=(0.5, 0, 0), head=(-0.22, 0, 0), armR=('aim', (0.5, 0.42, 0.28)))),
         (2.2, lean(armR=('aim', p1))),
         (2.6, {**legs}),
