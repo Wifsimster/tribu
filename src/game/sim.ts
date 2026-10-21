@@ -82,15 +82,12 @@ export type GameEvent =
       insight: number
       tale: string | null
     }
-  | {
-      /** Le marchand ouvre sa cale : un objet que l'île ne fabrique pas change
-       *  de mains. `silent` distingue le passage rattrapé pendant l'absence du
-       *  troc joué sous les yeux du joueur — le second mérite sa fiche. */
-      type: 'caravanTool'
-      def: ToolDef
-      paid: Partial<Record<ResourceId, number>>
-      silent: boolean
-    }
+  /** Le marchand ouvre sa cale et tend un objet : au joueur de dire oui. */
+  | { type: 'caravanOffer'; def: ToolDef }
+  /** L'offre n'a pas eu de réponse avant le départ de la barque. */
+  | { type: 'caravanOfferGone' }
+  /** Le joueur a accepté : l'objet change de mains. */
+  | { type: 'caravanTool'; def: ToolDef; paid: Partial<Record<ResourceId, number>> }
   | { type: 'caravanLeave' }
   /** La mer recule : `count` nouvelles cartes en file. `catchUp` signale le
    *  rattrapage d'une sauvegarde au chargement, pas un jalon vécu en direct. */
@@ -116,12 +113,35 @@ const BASE_RATE: Record<ResourceId, number> = {
 /** Resources the settler still works while focused elsewhere, at this fraction. */
 const IDLE_FRACTION = 0.3
 
+/** Savoir tiré de chaque unité de matériau récoltée par seconde. 0,05 jusqu'à
+ *  la 3.71, quand encourager, la lumière et le legs comptaient deux fois sur
+ *  cette part ; 0,07 depuis la 3.71.1, qui ne les compte qu'une fois, pour
+ *  garder le rythme actif de la 3.71 (tools/sim-savoirs.mjs --until=10,
+ *  outils du marchand acceptés : chaque âge entre −4 % et 0 %, l'âge 10 à
+ *  377 min contre 392). */
+const INSIGHT_PER_MATERIAL = 0.07
+
 const ENCOURAGE_SECONDS = 15
 const ENCOURAGE_MULT = 2
 const ENCOURAGE_COOLDOWN = 45
 
 const EXPEDITION_SECONDS = 90
 const EXPEDITION_FOOD_COST = 10
+/** Savoir rapporté = taux moyen du camp × durée × ce coefficient × lootK/durationK
+ *  de la destination. Calé pour que la côte (lootK/durationK = 1,12) rende
+ *  1,3 fois le savoir du camp, le rapport des âges 1 et 2 jusqu'à la 3.71. */
+const COAST = DESTINATION_BY_ID.get('cote')!
+const EXPEDITION_INSIGHT_K = 1.3 / (COAST.lootK / COAST.durationK)
+
+/** Les récompenses fixes (épave, tribut du comptoir, savoir du troc) suivent
+ *  la production à partir de cet âge, l'Antiquité... */
+const INDEXED_FROM_AGE = 3
+/** ... et valent au moins ces secondes de production moyenne : ce que valait
+ *  le barème fixe à la fin de l'âge du bronze, tous ses savoirs connus. Pas
+ *  de saut à l'entrée de l'Antiquité, où le barème reste encore au-dessus. */
+const WRECK_SECONDS = { wood: 45, insight: 14 }
+const OUTPOST_SECONDS = { food: 6, wood: 11, insight: 9 }
+const TRADE_INSIGHT_SECONDS = 13
 
 // Le commerce ouvre avec l'âge du bronze : le fait historique de la techno
 // « bronze » explique déjà pourquoi (cuivre et étain ne gisent jamais ensemble).
@@ -129,6 +149,17 @@ const CARAVAN_AGE = 2
 const CARAVAN_PERIOD = 210
 const CARAVAN_VISIT = 26
 const CARAVAN_OFFLINE_MAX = 3
+/** La vitesse en mer d'une tribu qui entre dans chaque âge avec tous les
+ *  savoirs et outils de vitesse des âges d'avant : l'étalon des durées. */
+const SPEED_BY_AGE: number[] = AGES.map((a) =>
+  [...TECHS, ...TOOLS]
+    .filter((t) => t.age < a.id)
+    .flatMap((t) => t.effects)
+    .reduce((m, e) => (e.kind === 'expeditionSpeed' ? m * e.mult : m), 1),
+)
+
+/** Le temps que la barque reste à quai quand le marchand tend un outil. */
+const TOOL_OFFER_WAIT = 40
 
 const MERCHANTS = ['de Chypre', "d'Anatolie", 'du Levant', 'des Cyclades', "d'Égypte"]
 
@@ -405,6 +436,11 @@ export class Game {
     // chaque changement d'application.
     if (seconds <= 3) return
     const before = { ...this.save.res }
+    // Encourager dure quinze secondes, pas toute l'absence : le geste est
+    // décompté, et l'absence se crédite sans lui.
+    const encourageLeft = Math.max(0, this.encourageLeft - seconds)
+    this.encourageCooldown = Math.max(0, this.encourageCooldown - seconds)
+    this.encourageLeft = 0
     // Une expédition en cours se poursuit sans le joueur ; le camp ne produit
     // qu'une fois le colon rentré.
     let workSeconds = seconds
@@ -421,8 +457,11 @@ export class Game {
     let reserve = 0
     if (workSeconds > 0) {
       // Une absence couvre des cycles entiers : on produit au facteur moyen
-      // d'un tour, tiré de la même courbe que le jeu en direct.
+      // d'un tour, tiré de la même courbe que le jeu en direct. L'horloge de
+      // jeu, elle, n'avance pas : la saison resterait figée sur celle du
+      // départ, alors on prend la moyenne des quatre.
       this.lightFactor = meanLightFactor(this.nightFloor)
+      this.seasonMean = true
       this.refreshRates()
       const insight = this.amount('insight')
       this.produce(workSeconds)
@@ -430,7 +469,13 @@ export class Game {
       // crédités en entier.
       this.save.res.insight = insight
       reserve = this.creditAbsentInsight(workSeconds)
+      // Le chantier continue sans le joueur, au débit du jeu en direct, sur
+      // ce que l'absence a rentré.
+      this.tickWonder(workSeconds)
+      this.seasonMean = false
     }
+    this.encourageLeft = encourageLeft
+    this.refreshRates()
     // Le commerce continue sans le joueur : quelques passages de barque sont
     // crédités en silence, plafonnés pour ne pas vider les stocks du retour.
     if (this.save.age >= CARAVAN_AGE) {
@@ -445,16 +490,38 @@ export class Game {
     if (seconds > 90) this.emit({ type: 'offline', seconds, gained, reserve })
   }
 
+  /** Crédite un écart de l'horloge murale vu par la boucle de jeu (onglet
+   *  caché, écran verrouillé), menu ouvert ou non : un jeu en pause est un
+   *  joueur absent. La sauvegarde est réécrite tout de suite, sans quoi un
+   *  rechargement recréditerait le même écart depuis l'ancienne date. */
+  creditGap(seconds: number, now: number): void {
+    if (!(seconds > 5)) return
+    this.creditAbsence(seconds)
+    writeSave(this.save, now)
+  }
+
+  /** Les taux du camp au facteur moyen d'un tour, colon au travail et sans
+   *  encourager : ce que le camp rapporte « en moyenne », même pendant une
+   *  expédition. */
+  private campMeanRates(): Record<ResourceId, number> {
+    const { lightFactor, encourageLeft } = this
+    const expedition = this.save.expedition
+    this.save.expedition = null
+    this.encourageLeft = 0
+    this.lightFactor = meanLightFactor(this.nightFloor)
+    this.refreshRates()
+    const rates = { ...this.rates }
+    this.save.expedition = expedition
+    this.encourageLeft = encourageLeft
+    this.lightFactor = lightFactor
+    this.refreshRates()
+    return rates
+  }
+
   /** Taux de savoir moyen d'un tour, nuit comprise, d'après la vraie courbe
    *  jour/nuit. */
   private meanInsightRate(): number {
-    const lf = this.lightFactor
-    this.lightFactor = meanLightFactor(this.nightFloor)
-    this.refreshRates()
-    const r = this.rates.insight
-    this.lightFactor = lf
-    this.refreshRates()
-    return r
+    return this.campMeanRates().insight
   }
 
   /** Le savoir de `seconds` secondes de travail sans le joueur. Une absence
@@ -610,6 +677,10 @@ export class Game {
     }
     const encourage = this.encourageLeft > 0 ? ENCOURAGE_MULT : 1
     const carryBonus = 1 + this.carry * 0.02
+    // Encourager, la lumière et le legs s'appliquent UNE fois, à la fin. La
+    // part matériaux du savoir se lit donc avant eux : lue après, elle les
+    // comptait deux fois (encourager ×2,7 au lieu de ×2, nuit au carré).
+    const pace = encourage * this.lightFactor * this.legacyBonus
     let material = 0
     for (const id of Object.keys(RESOURCES) as ResourceId[]) {
       if (id === 'insight') continue
@@ -623,17 +694,14 @@ export class Game {
         this.mult[id] *
         focusFactor *
         carryBonus *
-        encourage *
-        this.lightFactor *
-        this.legacyBonus *
         this.wonderBonus *
         (id === 'food' ? this.seasonFood : 1)
-      this.rates[id] = r
+      this.rates[id] = r * pace
       material += r
     }
     // Knowledge grows out of what the tribe actually does, not out of nothing.
     this.rates.insight =
-      (0.2 + this.insightAdd + material * 0.05) * encourage * this.lightFactor * this.legacyBonus
+      (0.2 + this.insightAdd + material * INSIGHT_PER_MATERIAL) * pace * this.mult.insight
   }
 
   /** La nuit ralentit la tribu : le rendement glisse entre le plancher de nuit
@@ -808,16 +876,19 @@ export class Game {
     }
   }
 
-  /** Les voyages s'allongent avec les âges — le monde à explorer grandit —
-   *  et la vitesse AMORTIT au lieu de diviser : cumulées, les technos de
-   *  vitesse atteignent ×63 et réduisaient tout voyage tardif au plancher,
-   *  les rendant inutiles. Ici : ~90 s au Paléolithique, ~2 min à l'âge du
-   *  fer équipé, ~4 min à l'ère contemporaine — et le butin suit la durée. */
+  /** Les voyages s'allongent avec les âges — le monde à explorer grandit. La
+   *  vitesse DIVISE la durée : un savoir ×1,6 rend le voyage 1,6 fois plus
+   *  court, comme il l'annonce. Jusqu'à la 3.71 elle s'amortissait
+   *  (0,45 + 0,55/vitesse) et les savoirs tardifs ne gagnaient plus que 1 à
+   *  4 %. La base de chaque âge est celle de la 3.71 pour une tribu qui a
+   *  l'équipement des âges d'avant : ~90 s au Paléolithique, ~4 min en fin
+   *  d'arbre, et le butin suit la durée. */
   expeditionDuration(destId = 'cote'): number {
-    const base = EXPEDITION_SECONDS + this.save.age * 45
-    const damp = 0.45 + 0.55 / this.expeditionSpeed
+    const age = Math.min(this.save.age, AGES.length - 1)
+    const ref = SPEED_BY_AGE[age]!
+    const base = (EXPEDITION_SECONDS + age * 45) * (0.45 + 0.55 / ref) * ref
     const k = destProfile(destId).durationK
-    return Math.max(45, base * damp * k)
+    return Math.max(45, (base * k) / this.expeditionSpeed)
   }
 
   /** Les provisions suivent l'économie réelle : ~30 secondes de récolte de
@@ -986,7 +1057,11 @@ export class Game {
       if (id === 'insight') continue
       loot[id] = Math.round(scale * BASE_RATE[id] * this.mult[id])
     }
-    loot.insight = Math.round((12 + this.save.age * 25 + this.insightAdd * 20) * ratio * lootBias)
+    // Le savoir rapporté vaut 1,3 fois celui que le camp aurait produit sur
+    // la même durée (vers la côte, à tous les âges) : un barème par âge ne
+    // suivait pas la part matériaux du savoir, et tombait à 0,15 en fin d'arbre.
+    const total = this.save.expedition?.total ?? EXPEDITION_SECONDS
+    loot.insight = Math.round(this.campMeanRates().insight * total * EXPEDITION_INSIGHT_K * lootBias)
     for (const [id, n] of Object.entries(loot) as [ResourceId, number][]) {
       this.save.res[id] = this.amount(id) + n
     }
@@ -1080,8 +1155,9 @@ export class Game {
   }
 
   /** L'Exode : la tribu embarque vers une île inconnue. Nouveau seed, savoirs
-   *  remis à zéro — mais le musée voyage dans la cale, et une étoile de plus
-   *  brille au-dessus de la récolte. */
+   *  et réserve de savoir remis à zéro — mais le musée voyage dans la cale,
+   *  avec les hauts faits et le nom du village, et une étoile de plus brille
+   *  au-dessus de la récolte. */
   exodus(): boolean {
     if (!this.treeComplete) return false
     // Ce qui monte dans la cale se nomme ici, et rien d'autre : les OUTILS
@@ -1095,7 +1171,11 @@ export class Game {
     // L'identité du voisinage traverse l'Exode : c'est la même tribu qui
     // recommence, et les voisins doivent continuer à la reconnaître.
     const tribe = this.save.tribe
-    this.save = { ...emptySave(Date.now()), relics, legacy, chronicle, tribe }
+    // Les hauts faits et le nom du village sont ceux de la tribu, pas de
+    // l'île : remis à zéro, chaque Exode rejouait « Première vitrine » dès
+    // le premier balayage, le musée étant du voyage.
+    const { feats, village } = this.save
+    this.save = { ...emptySave(Date.now()), relics, legacy, chronicle, tribe, feats, village }
     this.record('exodus', 'La tribu débarque sur une île inconnue')
     this.unlocked = new Set<ResourceId>(['food', 'wood', 'stone', 'insight'])
     this.buildings = new Set()
@@ -1104,6 +1184,7 @@ export class Game {
     this.lastFact = null
     this.wasNight = false
     this.currentMerchant = ''
+    this.toolOffer = null
     this.recompute()
     writeSave(this.save, Date.now())
     this.emit({ type: 'exodus', legacy })
@@ -1122,10 +1203,15 @@ export class Game {
     return SEASONS[Math.floor(this.save.totalPlaySeconds / (DAY_SECONDS * SEASON_DAYS)) % 4]!
   }
 
+  /** Vrai le temps de créditer une absence : la nourriture suit alors la
+   *  moyenne des quatre saisons, l'horloge de jeu n'avançant pas. */
+  private seasonMean = false
+
   /** L'hiver mord moins quand on sait stocker : le grenier amortit. */
   private get seasonFood(): number {
-    const f = this.season.food
-    return f < 1 && this.knows('granary') ? (f + 1) / 2 : f
+    const of = (f: number): number => (f < 1 && this.knows('granary') ? (f + 1) / 2 : f)
+    if (this.seasonMean) return SEASONS.reduce((s, x) => s + of(x.food), 0) / SEASONS.length
+    return of(this.season.food)
   }
 
   // ── La Merveille de l'âge ────────────────────────────────────────────────
@@ -1159,8 +1245,9 @@ export class Game {
       const paid = Math.min(total, cur.paid[id] ?? 0)
       // Le débit réellement versé : 60 % de la production, et seulement ce qui
       // dépasse le plancher de réserve (voir tickWonder).
-      const flow = paid >= total ? 0 : Math.max(0.4, this.rates[id] * 0.6)
-      return { id, paid, total, flow, eta: flow > 0 ? (total - paid) / flow : 0 }
+      const flow = paid >= total ? 0 : this.wonderFlow(id)
+      // Débit nul sur un reste dû (colon parti) : pas d'échéance.
+      return { id, paid, total, flow, eta: paid >= total ? 0 : flow > 0 ? (total - paid) / flow : Infinity }
     })
     return {
       def,
@@ -1168,6 +1255,14 @@ export class Game {
       lines,
       eta: Math.max(0, ...lines.map((l) => l.eta)),
     }
+  }
+
+  /** Ce que le chantier prend par seconde : 60 % de la production, avec un
+   *  petit minimum pour les matériaux à peine récoltés. Rien quand rien ne
+   *  rentre — colon en expédition : le chantier attend son retour. */
+  private wonderFlow(id: ResourceId): number {
+    const rate = this.rates[id]
+    return rate > 0 ? Math.max(0.4, rate * 0.6) : 0
   }
 
   private wonderProgress(def: WonderDef, paid: Partial<Record<ResourceId, number>>): number {
@@ -1213,7 +1308,7 @@ export class Game {
       // du fer produit et le joueur n'en voyait plus jamais un gramme — signalé
       // en jeu, et c'était bien ça. Il en reste donc 40 % pour la tribu, et la
       // Merveille avance au rythme de ce que l'île sait vraiment produire.
-      const flow = Math.max(0.4, this.rates[id] * 0.6)
+      const flow = this.wonderFlow(id)
       const take = Math.min(avail, flow * dt, total - paid)
       if (take <= 0) continue
       this.save.res[id] = this.amount(id) - take
@@ -1293,6 +1388,48 @@ export class Game {
     return TOOLS.filter((t) => this.save.tools.includes(t.id))
   }
 
+  /** Ce que l'île produit par seconde en moyenne d'un tour, colon au travail
+   *  sur cette ressource (le savoir : au travail en cours). L'étalon des
+   *  récompenses fixes. */
+  private referenceRate(id: ResourceId): number {
+    if (id === 'insight') return this.campMeanRates().insight
+    return (
+      BASE_RATE[id] *
+      this.mult[id] *
+      (1 + this.carry * 0.02) *
+      this.legacyBonus *
+      this.wonderBonus *
+      meanLightFactor(this.nightFloor)
+    )
+  }
+
+  /** Une récompense fixe gardée telle quelle jusqu'à l'âge du bronze, puis
+   *  jamais moins que `seconds` secondes de production : 40 bois d'épave par
+   *  âge, c'était une poignée à l'ère industrielle. */
+  private indexed(fixed: number, id: ResourceId, seconds: number): number {
+    if (this.save.age < INDEXED_FROM_AGE) return fixed
+    return Math.max(fixed, seconds * this.referenceRate(id))
+  }
+
+  /** L'épave : du bois et un peu de savoir. */
+  wreckLoot(): { wood: number; insight: number } {
+    const k = 1 + this.save.age
+    return {
+      wood: Math.round(this.indexed(40 * k, 'wood', WRECK_SECONDS.wood)),
+      insight: Math.round(this.indexed(8 * k, 'insight', WRECK_SECONDS.insight)),
+    }
+  }
+
+  /** Le tribut de la navette du comptoir. */
+  outpostLoot(): Partial<Record<ResourceId, number>> {
+    const k = 1 + this.save.age
+    return {
+      food: Math.round(this.indexed(18 * k, 'food', OUTPOST_SECONDS.food)),
+      wood: Math.round(this.indexed(10 * k, 'wood', OUTPOST_SECONDS.wood)),
+      insight: Math.round(this.indexed(5 * k, 'insight', OUTPOST_SECONDS.insight)),
+    }
+  }
+
   /** Les événements rares ne vivent qu'en direct : l'absence ne les simule
    *  pas — ce sont des raisons de REGARDER le jeu, pas des chiffres de plus. */
   private tickEvents(dt: number): void {
@@ -1307,8 +1444,7 @@ export class Game {
     if (this.save.age >= CARAVAN_AGE && !this.save.caravan.visiting) pool.push('merchant')
     const kind = pool[Math.floor(Math.random() * pool.length)]!
     if (kind === 'wreck') {
-      const wood = Math.round(40 * (1 + this.save.age))
-      const insight = Math.round(8 * (1 + this.save.age))
+      const { wood, insight } = this.wreckLoot()
       this.save.res.wood = this.amount('wood') + wood
       this.save.res.insight = this.amount('insight') + insight
       this.record('event', "Une épave s'est échouée sur la rive")
@@ -1340,11 +1476,7 @@ export class Game {
     // jour, ou le phare.
     if (this.save.outpostIn > 0 || !this.seaOpen) return
     this.save.outpostIn = 220 + Math.random() * 120
-    const loot: Partial<Record<ResourceId, number>> = {
-      food: Math.round(18 * (1 + this.save.age)),
-      wood: Math.round(10 * (1 + this.save.age)),
-      insight: Math.round(5 * (1 + this.save.age)),
-    }
+    const loot = this.outpostLoot()
     for (const [id, n] of Object.entries(loot) as [ResourceId, number][])
       this.save.res[id] = this.amount(id) + n
     this.emit({ type: 'outpostTribute', loot })
@@ -1373,12 +1505,18 @@ export class Game {
     if (!c.traded && c.visitLeft <= CARAVAN_VISIT * 0.5) {
       c.traded = true
       this.doTrade((c.haggled ? 1.3 : 1) * (this.goldenTrade ? 2.2 : 1), false)
+      this.offerTool()
     }
     // Et il ne repart pas non plus dans le noir : il dort à bord, amarré.
     if (c.visitLeft <= 0 && this.seaOpen) {
       c.visiting = false
       c.nextIn = CARAVAN_PERIOD * (0.8 + Math.random() * 0.5)
       this.goldenTrade = false
+      // Une offre restée sans réponse repart dans la cale : il la refera.
+      if (this.toolOffer) {
+        this.toolOffer = null
+        this.emit({ type: 'caravanOfferGone' })
+      }
       this.emit({ type: 'caravanLeave' })
     }
   }
@@ -1409,7 +1547,7 @@ export class Game {
     const gave = Math.min(this.amount(give) * 0.33, 40 + this.save.age * 50)
     const value = gave * price(give)
     const got = Math.max(1, Math.round((value * 0.75 * paying) / price(get)))
-    const insight = Math.round((6 + this.save.age * 8) * paying)
+    const insight = Math.round(this.indexed(6 + this.save.age * 8, 'insight', TRADE_INSIGHT_SECONDS) * paying)
 
     this.save.res[give] = this.amount(give) - gave
     this.save.res[get] = this.amount(get) + got
@@ -1428,8 +1566,6 @@ export class Game {
         tale,
       })
     }
-
-    this.offerTool(silent)
   }
 
   /** LA CALE. Un marchand n'apporte pas que des tas à rééquilibrer : il pose
@@ -1438,20 +1574,40 @@ export class Game {
    *  aucune expédition n'en ramène.
    *
    *  Il n'en sort qu'un par passage, le plus ancien qui manque, et seulement si
-   *  la tribu peut le payer d'un coup : le marchand ne fait pas crédit. Une
-   *  ressource encore inconnue ajourne l'offre plutôt que de l'annuler — on ne
-   *  paie pas en fer avant de savoir ce qu'est le fer. */
-  private offerTool(silent: boolean): void {
-    const def = TOOLS.find(
-      (t) =>
-        t.age <= this.save.age &&
-        !this.save.tools.includes(t.id) &&
-        Object.entries(t.price).every(
-          ([res, n]) => this.unlocked.has(res as ResourceId) && this.amount(res as ResourceId) >= n,
-        ),
-    )
-    if (!def) return
+   *  la tribu peut le payer d'un coup : le marchand ne fait pas crédit. S'il
+   *  n'est pas abordable — ou payable dans une ressource encore inconnue —, il
+   *  attend un prochain passage : il ne sort pas le suivant à sa place.
+   *
+   *  Il le PROPOSE, il ne se paie pas tout seul : le joueur accepte ou refuse
+   *  (acceptTool, declineTool). Ce n'est jamais une affaire d'absence — seul
+   *  le passage joué sous les yeux du joueur ouvre la cale. */
+  private offerTool(): void {
+    const def = TOOLS.find((t) => t.age <= this.save.age && !this.save.tools.includes(t.id))
+    if (!def || !this.canPayTool(def)) return
+    this.toolOffer = def
+    // Il laisse au joueur le temps de lire la fiche avant de reprendre la mer.
+    const c = this.save.caravan
+    c.visitLeft = Math.max(c.visitLeft, TOOL_OFFER_WAIT)
+    this.emit({ type: 'caravanOffer', def })
+  }
 
+  private canPayTool(def: ToolDef): boolean {
+    return Object.entries(def.price).every(
+      ([res, n]) => this.unlocked.has(res as ResourceId) && this.amount(res as ResourceId) >= n,
+    )
+  }
+
+  /** L'objet que le marchand tend, en attente de réponse. Hors sauvegarde :
+   *  la barque repartie, l'offre retourne dans la cale. */
+  toolOffer: ToolDef | null = null
+
+  /** Le joueur accepte : il paie, l'outil entre au village. Refuse net si
+   *  l'offre est tombée ou si les réserves ne suivent plus. */
+  acceptTool(): boolean {
+    const def = this.toolOffer
+    if (!def || !this.save.caravan.visiting) return false
+    if (!this.canPayTool(def)) return false
+    this.toolOffer = null
     const paid: Partial<Record<ResourceId, number>> = {}
     for (const [res, n] of Object.entries(def.price) as [ResourceId, number][]) {
       this.save.res[res] = this.amount(res) - n
@@ -1462,7 +1618,15 @@ export class Game {
     // sans quoi le gain n'apparaîtrait qu'au prochain savoir découvert.
     this.recompute()
     this.record('tool', `${def.name} entre au village — ${def.boon.toLowerCase()}.`)
-    this.emit({ type: 'caravanTool', def, paid, silent })
+    this.emit({ type: 'caravanTool', def, paid })
+    writeSave(this.save, Date.now())
+    return true
+  }
+
+  /** Le joueur refuse : l'objet reste dans la cale, rien n'est payé. Le
+   *  marchand le reproposera à un prochain passage. */
+  declineTool(): void {
+    this.toolOffer = null
   }
 
   /** Part du rendement conservée en pleine nuit — la meilleure lumière connue. */

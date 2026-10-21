@@ -1058,7 +1058,7 @@ export const TECHS: TechDef[] = [
     effects: [
       { kind: 'building', building: 'datacenter' },
       { kind: 'insightRate', add: 220 },
-      { kind: 'gatherRate', resource: 'insight', mult: 1 },
+      { kind: 'gatherRate', resource: 'insight', mult: 1.1 },
     ],
   },
   {
@@ -1396,7 +1396,7 @@ export const TOOLS: ToolDef[] = [
     icon: '⚓',
     age: 5,
     price: { wood: 900, iron: 250, fiber: 400 },
-    boon: 'Les expéditions raccourcissent d’environ un dixième',
+    boon: 'Les expéditions raccourcissent de près d’un quart',
     fact: 'Le gouvernail d’étambot — une pelle articulée sur l’arrière, au lieu d’un aviron tenu au flanc — est attesté en Chine dès le Ier siècle et apparaît en Europe vers 1180, sculpté sur des fonts baptismaux tournaisiens. Un seul homme tient alors un navire que trois ne dirigeaient plus : c’est ce qui autorise les gros porteurs de la Hanse.',
     effects: [{ kind: 'expeditionSpeed', mult: 1.3 }],
   },
@@ -1416,9 +1416,9 @@ export const TOOLS: ToolDef[] = [
     icon: '⚫',
     age: 7,
     price: { fiber: 1800, food: 900, wood: 1200 },
-    boon: 'Portage +8 (toute la récolte suit)',
+    boon: 'Portage +40 : toute la récolte +6 à 10 %',
     fact: 'Le caoutchouc naturel fond à la chaleur et casse au froid. En 1839, Charles Goodyear le cuit par accident avec du soufre sur un poêle : la vulcanisation le rend stable en toute saison, et lance un siècle de course à la sève — celle qui a bâti un opéra en plein cœur de l’Amazonie, à Manaus.',
-    effects: [{ kind: 'carry', add: 8 }],
+    effects: [{ kind: 'carry', add: 40 }],
   },
   {
     id: 'roulement',
@@ -1449,9 +1449,9 @@ export const TOOLS: ToolDef[] = [
     icon: '🧪',
     age: 10,
     price: { stone: 30000, copper: 12000, iron: 20000 },
-    boon: 'Savoir +2 par seconde',
+    boon: 'Savoir +8 %',
     fact: 'Les « terres rares » ne sont pas rares : le cérium est plus abondant dans la croûte terrestre que le cuivre. Ce qui est rare, c’est de les SÉPARER — dix-sept métaux aux propriétés chimiques presque identiques, qu’il faut trier par des centaines d’étapes d’extraction successives. Sans eux, ni aimant de moteur électrique, ni écran, ni éolienne.',
-    effects: [{ kind: 'insightRate', add: 2 }],
+    effects: [{ kind: 'gatherRate', resource: 'insight', mult: 1.08 }],
   },
 ]
 

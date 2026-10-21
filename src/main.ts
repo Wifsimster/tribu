@@ -360,9 +360,11 @@ function openWonderCard(): void {
       const when =
         l.paid >= l.total
           ? 'complet'
-          : l.eta > 90
-            ? `${Math.round(l.eta / 60)} min`
-            : `${Math.max(5, Math.round(l.eta / 5) * 5)} s`
+          : !Number.isFinite(l.eta)
+            ? 'en pause'
+            : l.eta > 90
+              ? `${Math.round(l.eta / 60)} min`
+              : `${Math.max(5, Math.round(l.eta / 5) * 5)} s`
       return (
         `<div class="wc-row"><span class="wc-res">${icon(l.id, 13)}${escapeHtml(RESOURCES[l.id].name)}</span>` +
         `<span class="wc-bar"><i style="width:${pct}%"></i></span>` +
@@ -375,8 +377,12 @@ function openWonderCard(): void {
   hud.showStory(
     'Le chantier',
     d.def.name,
-    `L'œuvre est accomplie à ${Math.round(d.progress * 100)} %. Le chantier prélève 60 % de ta production sur chaque matériau — il t'en reste toujours 40 %.`,
-    `${rows}<div class="wc-total">Achèvement estimé dans ${eta} au débit actuel</div>`,
+    `L'œuvre est accomplie à ${Math.round(d.progress * 100)} %. Le chantier prélève 60 % de ta production sur chaque matériau — il t'en reste toujours 40 %. Il avance aussi pendant ton absence.`,
+    `${rows}<div class="wc-total">${
+      Number.isFinite(d.eta)
+        ? `Achèvement estimé dans ${eta} au débit actuel`
+        : 'Le chantier attend le retour du colon'
+    }</div>`,
     'Détail du chantier',
   )
 }
@@ -660,25 +666,41 @@ game.on((e) => {
       if (e.tale) hud.toast(`Le marchand raconte : ${e.tale}`)
       break
     }
+    case 'caravanOffer': {
+      // Le marchand tend l'objet : rien n'est payé tant que le joueur n'a
+      // pas dit oui.
+      ambience.chime()
+      const price = Object.entries(e.def.price)
+        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
+        .join('  ')
+      hud.showOffer(
+        `Le marchand ouvre sa cale · ${AGES[e.def.age]?.name ?? game.age.name}`,
+        `${e.def.icon} ${e.def.name}`,
+        e.def.fact,
+        e.def.boon,
+        price,
+        (accepted) => {
+          if (accepted) {
+            if (!game.acceptTool()) hud.toast('Tes réserves ne suffisent plus : le marchand garde l’objet')
+            return
+          }
+          game.declineTool()
+          hud.toast('Le marchand range l’objet dans sa cale — il te le proposera encore')
+        },
+      )
+      break
+    }
+    case 'caravanOfferGone':
+      if (hud.withdrawOffer()) hud.toast('Le marchand a repris la mer avec son objet — il repassera')
+      break
     case 'caravanTool': {
       ambience.chime()
       const price = Object.entries(e.paid)
-        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
+        .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
         .join('  ')
-      hud.toast(`Le marchand ouvre sa cale : ${e.def.icon}\u202F${e.def.name.toLowerCase()} · ${price}`)
+      hud.toast(`Marché conclu : ${e.def.icon} ${e.def.name.toLowerCase()} · ${price}`)
       // L'objet débarque au campement — ou sur le quai — sous les yeux du joueur.
       placeGoods()
-      // Un objet acheté pendant l'absence se lit dans l'Atelier : on n'ouvre
-      // pas une fiche par-dessus le rattrapage de huit heures de jeu.
-      if (!e.silent)
-        hud.showStory(
-          `L’outil du marchand · ${AGES[e.def.age]?.name ?? game.age.name}`,
-          `${e.def.icon} ${e.def.name}`,
-          e.def.fact,
-          e.def.boon,
-          'Ce qu’il change',
-          true,
-        )
       break
     }
     case 'caravanLeave':
@@ -1199,7 +1221,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     confirmStep = 1
     home.hidden = true
     confirm.hidden = false
-    warn.textContent = `L'Exode : la tribu embarque vers une île inconnue — nouveau monde, savoirs remis à zéro. Elle emporte ses ${game.save.relics.length} reliques et gagne une étoile : récolte +8 % pour toujours.`
+    warn.textContent = `L'Exode : la tribu embarque vers une île inconnue — nouveau monde, savoirs et réserve de savoir remis à zéro. Elle emporte ses ${game.save.relics.length} reliques, ses hauts faits et le nom du village, et gagne une étoile : récolte +8 % pour toujours.`
     eraseLabel.textContent = 'Embarquer'
   })
 
@@ -1277,7 +1299,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
     const owned = game.save.tools
     menuEl('tools-intro').textContent =
       owned.length === 0
-        ? 'Le marchand ne fait pas que rééquilibrer les tas : il apporte ce que l’île ne sait pas faire. Il ouvre sa cale quand la tribu peut payer d’un coup — un objet par passage, le plus ancien qui manque.'
+        ? 'Le marchand ne fait pas que rééquilibrer les tas : il apporte ce que l’île ne sait pas faire. Il ouvre sa cale quand la tribu peut payer d’un coup — un objet par passage, le plus ancien qui manque — et te le propose : à toi d’accepter ou non.'
         : `${owned.length} outil${owned.length > 1 ? 's' : ''} sur ${TOOLS.length}. Chacun sert pour toujours — mais reste sur l’île le jour de l’Exode.`
     const list = menuEl('tools-list')
     list.textContent = ''
@@ -1826,11 +1848,12 @@ function frame(now: number): void {
   last = now
   // Détection de suspension à l'horloge murale : verrouillage d'écran, gel
   // d'onglet, throttling — tout écart réel est crédité au premier frame du
-  // retour, sans dépendre d'un événement de visibilité.
+  // retour, sans dépendre d'un événement de visibilité. Menu ouvert aussi :
+  // le jeu en pause n'empêche pas l'île de vivre pendant que l'onglet dort.
   const wall = Date.now()
   const gap = (wall - lastWall) / 1000
   lastWall = wall
-  if (gap > 5 && !paused) game.creditAbsence(gap)
+  game.creditGap(gap, wall)
   elapsed += dt
 
   if (!paused) game.tick(dt, Date.now())

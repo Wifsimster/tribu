@@ -93,6 +93,19 @@ test('choisir une terre : parcelle ajoutée, taux multiplié', () => {
 })
 
 /** Une save d'âge 1, deux cartes en file, absente depuis 8 h. */
+/** Une absence compte la nourriture à la moyenne des quatre saisons (3.71.1) :
+ *  le taux du retour, lui, est celui de la saison courante. */
+function seasonMeanRatio(g, id) {
+  if (id !== 'food') return 1
+  const now = g.rates.food
+  g.seasonMean = true
+  g.refreshRates()
+  const mean = g.rates.food
+  g.seasonMean = false
+  g.refreshRates()
+  return mean / now
+}
+
 function absentSave(pending) {
   const g = freshWith(99, 4)
   assert.equal(g.save.age, 1)
@@ -110,7 +123,7 @@ test('8 h hors ligne avec deux cartes en attente : gains exacts, cartes toujours
   assert.equal(g.save.land.length, 0)
   // Le savoir suit la règle de la réserve (tests/insight-reserve.test.mjs).
   for (const id of ['food', 'wood', 'stone', 'fiber']) {
-    const expected = g.rates[id] * OFFLINE_CAP_SECONDS
+    const expected = g.rates[id] * seasonMeanRatio(g, id) * OFFLINE_CAP_SECONDS
     const got = g.save.res[id] - save.res[id]
     assert.ok(Math.abs(got - expected) < 1e-6 * Math.max(1, expected), `${id} : ${got} vs ${expected}`)
   }
@@ -302,7 +315,7 @@ test('8 h hors ligne avec deux forêts voisines : gains exacts au taux majoré',
   const back = new Game(NOW)
   // Le savoir suit la règle de la réserve (tests/insight-reserve.test.mjs).
   for (const id of ['food', 'wood', 'stone', 'fiber']) {
-    const expected = back.rates[id] * OFFLINE_CAP_SECONDS
+    const expected = back.rates[id] * seasonMeanRatio(back, id) * OFFLINE_CAP_SECONDS
     const got = back.save.res[id] - save.res[id]
     assert.ok(Math.abs(got - expected) < 1e-6 * Math.max(1, expected), `${id} : ${got} vs ${expected}`)
   }

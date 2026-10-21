@@ -484,6 +484,10 @@ export class Hud {
     asideLabel?: string,
     asidePlain = false,
   ): void {
+    if (this.offerAnswer) {
+      this.factQueue.push(() => this.showStory(kicker, title, text, html, asideLabel, asidePlain))
+      return
+    }
     el('fact-kicker').textContent = kicker
     el('fact-title').textContent = title
     el('fact-text').textContent = text
@@ -503,6 +507,10 @@ export class Hud {
   }
 
   showFact(tech: TechDef): void {
+    if (this.offerAnswer) {
+      this.factQueue.push(() => this.showFact(tech))
+      return
+    }
     el('fact-kicker').textContent = `Découverte · ${this.game.age.name}`
     el('fact-title').textContent = tech.name
     el('fact-text').textContent = tech.fact
@@ -522,11 +530,86 @@ export class Hud {
     el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
+  /** L'offre du marchand à l'écran : la réponse attendue. Fermer la fiche,
+   *  d'une façon ou d'une autre, vaut refus. */
+  private offerAnswer: ((accepted: boolean) => void) | null = null
+  /** Une offre arrivée pendant qu'une autre fiche était lue : elle attend. */
+  private offerQueued: (() => void) | null = null
+  /** Les fiches arrivées pendant l'offre : elles passent après la réponse. */
+  private factQueue: (() => void)[] = []
+  private acceptBtn: HTMLButtonElement | null = null
+
+  /** La fiche d'un outil que le marchand tend, avec « Acheter » et « Pas
+   *  cette fois ». `answer` reçoit la réponse du joueur, une seule fois. */
+  showOffer(
+    kicker: string,
+    title: string,
+    text: string,
+    boon: string,
+    price: string,
+    answer: (accepted: boolean) => void,
+  ): void {
+    if (this.factOpen) {
+      this.offerQueued = () => this.showOffer(kicker, title, text, boon, price, answer)
+      return
+    }
+    this.offerQueued = null
+    this.showStory(kicker, title, text, boon, 'Ce qu’il change', true)
+    this.offerAnswer = answer
+    const close = el<HTMLButtonElement>('fact-close')
+    if (!this.acceptBtn) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.id = 'fact-accept'
+      b.className = 'btn primary wide'
+      b.addEventListener('click', () => this.endOffer(true))
+      close.before(b)
+      this.acceptBtn = b
+    }
+    this.acceptBtn.textContent = `Acheter · ${price}`
+    this.acceptBtn.hidden = false
+    close.classList.remove('primary')
+    ;(close.querySelector('.label') as HTMLElement).textContent = 'Pas cette fois'
+    this.acceptBtn.focus({ preventScroll: true })
+  }
+
+  /** La barque est repartie sans réponse : l'offre se retire d'elle-même. */
+  withdrawOffer(): boolean {
+    this.offerQueued = null
+    if (!this.offerAnswer) return false
+    this.offerAnswer = null
+    this.resetOfferButtons()
+    this.closeFact()
+    return true
+  }
+
+  private endOffer(accepted: boolean): void {
+    const answer = this.offerAnswer
+    this.offerAnswer = null
+    this.resetOfferButtons()
+    answer?.(accepted)
+    if (accepted) this.closeFact()
+  }
+
+  private resetOfferButtons(): void {
+    if (this.acceptBtn) this.acceptBtn.hidden = true
+    const close = el<HTMLButtonElement>('fact-close')
+    close.classList.add('primary')
+    ;(close.querySelector('.label') as HTMLElement).textContent = 'Continuer'
+  }
+
   private closeFact(): void {
+    if (this.offerAnswer) this.endOffer(false)
     const was = this.factOpen
     el('fact').classList.remove('open')
     this.factOpen = false
     this.syncScrim()
+    const next = this.factQueue.shift() ?? this.offerQueued
+    if (was && next) {
+      if (next === this.offerQueued) this.offerQueued = null
+      next()
+      return
+    }
     if (was && this.landAfterFact) {
       this.landAfterFact = false
       this.openLand()

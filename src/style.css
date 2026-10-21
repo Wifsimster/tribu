@@ -809,6 +809,12 @@ body.placing .dest-chooser {
   min-height: 46px;
 }
 
+/* L'offre du marchand : « Acheter » au-dessus de « Pas cette fois ». */
+#fact-accept {
+  margin-bottom: 10px;
+}
+#fact-accept[hidden] { display: none; }
+
 /* ── Toasts ──────────────────────────────────────────────────────────────── */
 
 .toasts {
