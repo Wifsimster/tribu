@@ -1,7 +1,6 @@
 import {
   AGES,
   DAY_SECONDS,
-  DAY_START,
   DESTINATION_BY_ID,
   DESTINATIONS,
   VISIT_DEST,
@@ -28,6 +27,7 @@ import {
   type TechDef,
   type ToolDef,
 } from './content'
+import { cycleMean, dayPhaseAt } from './clock'
 import { OFFLINE_CAP_SECONDS, emptySave, loadSave, writeSave, type SaveV1 } from './state'
 
 export type GameEvent =
@@ -133,14 +133,45 @@ function smoothstep01(edge0: number, edge1: number, x: number): number {
  *  part de jour, elle, reste plate à zéro d'un bout à l'autre et ne permet pas
  *  de distinguer le crépuscule du cœur de nuit. */
 export function sunHeightAt(totalPlaySeconds: number): number {
-  const u = (DAY_START + totalPlaySeconds / DAY_SECONDS) % 1
-  return Math.sin(u * Math.PI * 2)
+  return Math.sin(dayPhaseAt(totalPlaySeconds) * Math.PI * 2)
+}
+
+function daylightOfHour(u: number): number {
+  return smoothstep01(-0.06, 0.2, Math.sin(u * Math.PI * 2))
 }
 
 /** Part de jour, même formule que le rendu : les deux doivent tomber d'accord
  *  sur l'heure qu'il est. */
 export function daylightAt(totalPlaySeconds: number): number {
-  return smoothstep01(-0.06, 0.2, sunHeightAt(totalPlaySeconds))
+  return daylightOfHour(dayPhaseAt(totalPlaySeconds))
+}
+
+/** Part de jour moyenne d'un tour, dans le temps : le jour couvre deux tiers
+ *  du tour (voir clock.ts). */
+const DAYLIGHT_MEAN = cycleMean(daylightOfHour)
+/** La même sur un tour où jour et nuit durent autant — l'horloge d'avant la
+ *  3.70. C'est la référence du rendement : la nuit raccourcie est un confort
+ *  de jeu, pas un bonus de production. */
+const DAYLIGHT_MEAN_EVEN =
+  Array.from({ length: 720 }, (_, i) => daylightOfHour((i + 0.5) / 720)).reduce((a, b) => a + b) / 720
+
+/** Rendement moyen d'un tour pour un plancher de nuit donné : la courbe
+ *  instantanée est mise à l'échelle pour que ce rendement reste celui d'un
+ *  tour à parts égales. Plancher 1 : échelle 1, rien ne change. */
+export function lightScaleFor(floor: number): number {
+  return (floor + (1 - floor) * DAYLIGHT_MEAN_EVEN) / (floor + (1 - floor) * DAYLIGHT_MEAN)
+}
+
+/** Facteur de lumière instantané : de `floor` la nuit à 1 en plein jour, le
+ *  tout à l'échelle de lightScaleFor (la nuit garde `floor` du plein jour). */
+export function lightFactorFor(floor: number, daylight: number): number {
+  return lightScaleFor(floor) * (floor + (1 - floor) * daylight)
+}
+
+/** Facteur moyen d'un tour complet, calculé sur la courbe instantanée — c'est
+ *  celui de la production hors ligne. */
+export function meanLightFactor(floor: number): number {
+  return cycleMean((u) => lightFactorFor(floor, daylightOfHour(u)))
 }
 
 /** Sans lumière, on se couche au crépuscule — la même heure que le cadran du
@@ -375,8 +406,8 @@ export class Game {
     }
     if (workSeconds > 0) {
       // Une absence couvre des cycles entiers : on produit au facteur moyen
-      // (moitié jour, moitié nuit au plancher).
-      this.lightFactor = (1 + this.nightFloor) / 2
+      // d'un tour, tiré de la même courbe que le jeu en direct.
+      this.lightFactor = meanLightFactor(this.nightFloor)
       this.refreshRates()
       this.produce(workSeconds)
     }
@@ -545,10 +576,10 @@ export class Game {
   }
 
   /** La nuit ralentit la tribu : le rendement glisse entre le plancher de nuit
-   *  (selon la lumière découverte) et 1 en plein jour. */
+   *  (selon la lumière découverte) et le plein jour (voir lightFactorFor). */
   private updateLight(): void {
     const k = daylightAt(this.save.totalPlaySeconds)
-    this.lightFactor = this.nightFloor + (1 - this.nightFloor) * k
+    this.lightFactor = lightFactorFor(this.nightFloor, k)
     const night = this.wasNight ? k < 0.55 : k < 0.4 // hystérésis, comme le HUD
     if (night !== this.wasNight) {
       this.wasNight = night
@@ -1208,8 +1239,7 @@ export class Game {
     this.save.eventIn -= dt
     if (this.save.eventIn > 0) return
     this.save.eventIn = 360 + Math.random() * 420
-    const u = (DAY_START + this.save.totalPlaySeconds / DAY_SECONDS) % 1
-    const day = u < 0.5
+    const day = dayPhaseAt(this.save.totalPlaySeconds) < 0.5
     const pool: ('wreck' | 'migration' | 'eclipse' | 'aurora' | 'merchant')[] = ['wreck']
     if (day) pool.push('migration', 'eclipse')
     else pool.push('aurora')

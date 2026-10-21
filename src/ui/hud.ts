@@ -1,4 +1,5 @@
-import { AGES, DAY_SECONDS, DAY_START, DESTINATIONS, LAND_BY_ID, RESOURCES, SEASONS, SEASON_DAYS, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
+import { AGES, DAY_SECONDS, DESTINATIONS, LAND_BY_ID, RESOURCES, SEASONS, SEASON_DAYS, TECHS, TECH_BY_ID, type RelicDef, type ResourceId, type TechDef } from '../game/content'
+import { dayPhaseAt, secondsUntilDayHour } from '../game/clock'
 import type { Game } from '../game/sim'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -651,7 +652,7 @@ export class Hud {
 
   /** L'heure du monde, en tour de cadran (0 = lever, 0,5 = coucher). */
   private dayU(): number {
-    return (DAY_START + this.game.save.totalPlaySeconds / DAY_SECONDS) % 1
+    return dayPhaseAt(this.game.save.totalPlaySeconds)
   }
 
   /** La nuit commence quand la part de jour touche zéro (sin = −0,06). */
@@ -662,12 +663,12 @@ export class Hud {
     const u = this.dayU()
     const dur = (s: number): string => (s < 75 ? `${Math.max(5, Math.round(s / 5) * 5)} s` : `${Math.round(s / 60)} min`)
     if (u < Hud.DUSK) {
-      const s = (Hud.DUSK - u) * DAY_SECONDS
+      const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, Hud.DUSK)
       return u < 0.06
         ? `Le soleil se lève — la nuit tombera dans ${dur(s)}`
         : `Le soleil suit sa course — la nuit tombe dans ${dur(s)}`
     }
-    const s = ((Hud.DAWN - u + 1) % 1) * DAY_SECONDS
+    const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, Hud.DAWN)
     // Tant que la veillée dure, on le dit ; ensuite la tribu dort, à toutes les
     // époques — aucun savoir n'abolit le cœur de la nuit.
     const veille = !this.game.sleepTime
