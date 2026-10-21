@@ -10,6 +10,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.68.1',
+    title: 'La cueillette se fait entendre',
+    items: [
+      "Une fois l'agriculture découverte, le colon qui travaille la nourriture fait enfin le bruit de la cueillette. Jusqu'ici, on entendait la chasse toute la partie : le jeu attendait un savoir qui n'existe pas.",
+    ],
+  },
+  {
     version: '3.68.0',
     title: 'Le train fait le tour de l’île',
     items: [

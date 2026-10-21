@@ -183,7 +183,7 @@ function buildWorld(): void {
     if (fishing) return ambience.plop()
     const res = game.save.focus
     if (res === 'wood') return ambience.work('bois')
-    if (res === 'food') return ambience.work(game.knows('farming') ? 'cueillette' : 'chasse')
+    if (res === 'food') return ambience.work(game.knows('agriculture') ? 'cueillette' : 'chasse')
     return ambience.work('pierre')
   }
   fishing = false
