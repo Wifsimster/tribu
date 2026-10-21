@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // Captures de vitrine pour le README.
 //
-//   NODE_PATH=/tmp/node_modules node tools/screenshot-readme.mjs [url] [--out docs]
+//   node tools/screenshot-readme.mjs [url] [--out docs]
+//
+// Échoue sur tout avertissement ou erreur console hors de la liste blanche
+// (`CONSOLE_ALLOW`, tools/headless.mjs) : une vitrine ne se refait pas sur
+// une console sale.
 //
 // Un chargement neuf montre une île vide au Paléolithique : c'est honnête, mais
 // ça ne montre rien du jeu. On sème donc une sauvegarde de Renaissance AVANT le
@@ -13,9 +17,9 @@
 // progression — et `?h=` fige l'heure, sans quoi deux captures successives
 // tombent à des moments différents du cycle jour/nuit.
 
-import { chromium } from 'playwright'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { blockAudience, launch, watchConsole } from './headless.mjs'
 
 const [, , urlArg, ...rest] = process.argv
 const url = urlArg ?? 'https://tribu.battistella.ovh'
@@ -81,9 +85,8 @@ const PRESETS = {
 }
 
 await mkdir(outDir, { recursive: true })
-const browser = await chromium.launch({
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-})
+const browser = await launch()
+let unexpected = 0
 
 const report = { url, capturedAt: new Date().toISOString(), runs: [] }
 
@@ -107,9 +110,9 @@ for (const { label, preset, hour } of SHOTS) {
     }
   }, SAVE)
 
+  await blockAudience(context)
   const page = await context.newPage()
-  const errors = []
-  page.on('pageerror', (e) => errors.push(String(e)))
+  const consoleWatch = watchConsole(page)
 
   await page.goto(`${url}?nomenu=1&h=${hour}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
   await page.waitForFunction(() => window.__tribu?.ready === true, { timeout: 30000 })
@@ -124,8 +127,16 @@ for (const { label, preset, hour } of SHOTS) {
 
   const file = join(outDir, `${label}.png`)
   await page.screenshot({ path: file, timeout: 60000, caret: 'initial' })
-  report.runs.push({ label, preset, hour, file, info, errors })
-  console.log(`${label}: ${file}  âge=${info.age} savoirs=${info.techs} calls=${info.calls} tris=${info.triangles} erreurs=${errors.length}`)
+  const { seen, unexpected: odd } = consoleWatch.report()
+  const errors = seen.filter((m) => m.type !== 'warning').map((m) => m.text)
+  const warnings = seen.filter((m) => m.type === 'warning').map((m) => m.text)
+  unexpected += odd.length
+  report.runs.push({ label, preset, hour, file, info, errors, warnings })
+  console.log(
+    `${label}: ${file}  âge=${info.age} savoirs=${info.techs} calls=${info.calls} tris=${info.triangles} ` +
+      `erreurs=${errors.length} avertissements=${warnings.length} hors liste=${odd.length}`,
+  )
+  for (const m of odd) console.log(`  ✖ ${m.type} : ${m.text}`)
 
   await context.close()
 }
@@ -133,5 +144,9 @@ for (const { label, preset, hour } of SHOTS) {
 await browser.close()
 await writeFile(join(outDir, 'screenshots.json'), JSON.stringify(report, null, 2))
 console.log(`rapport → ${join(outDir, 'screenshots.json')}`)
+if (unexpected) {
+  console.error(`${unexpected} message(s) console hors liste blanche (tools/headless.mjs, CONSOLE_ALLOW).`)
+  process.exit(1)
+}
 // Les PNG sortent en 2880×1800 (DPR 2). Ramenés à 1600 de large pour le README :
 //   ffmpeg -y -i docs/screenshot.png -vf "scale=1600:-1:flags=lanczos" out.png

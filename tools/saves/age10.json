@@ -1,0 +1,617 @@
+{
+ "v": 1,
+ "t": 1800000000000,
+ "seed": 1337042,
+ "res": {
+  "food": 910,
+  "wood": 800,
+  "stone": 700,
+  "insight": 50,
+  "fiber": 300,
+  "clay": 200,
+  "copper": 90,
+  "iron": 70
+ },
+ "techs": [
+  "flint",
+  "fire",
+  "shelter",
+  "spear",
+  "lamp",
+  "cordage",
+  "agriculture",
+  "pottery",
+  "weaving",
+  "polished_axe",
+  "granary",
+  "copper",
+  "bronze",
+  "wheel",
+  "writing",
+  "sail",
+  "ironworking",
+  "plough",
+  "alphabet",
+  "coinage",
+  "lighthouse",
+  "aqueduct",
+  "concrete",
+  "watermill",
+  "glass",
+  "roads",
+  "codex",
+  "horsecollar",
+  "threefield",
+  "windmill",
+  "clock",
+  "press",
+  "caravel",
+  "perspective",
+  "observatory",
+  "bank",
+  "anatomy",
+  "steamengine",
+  "railway",
+  "gaslight",
+  "bessemer",
+  "telegraph",
+  "electricity",
+  "automobile",
+  "radio",
+  "flight",
+  "penicillin",
+  "computer",
+  "satellite",
+  "internet",
+  "solar",
+  "smartphone",
+  "ai",
+  "storage",
+  "desal",
+  "crispr",
+  "carbon"
+ ],
+ "age": 10,
+ "focus": "food",
+ "expedition": null,
+ "caravan": {
+  "nextIn": 150,
+  "visiting": false,
+  "visitLeft": 0,
+  "haggled": false,
+  "traded": false
+ },
+ "seenFacts": [
+  "flint",
+  "fire",
+  "shelter",
+  "spear",
+  "lamp",
+  "cordage",
+  "agriculture",
+  "pottery",
+  "weaving",
+  "polished_axe",
+  "granary",
+  "copper",
+  "bronze",
+  "wheel",
+  "writing",
+  "sail",
+  "ironworking",
+  "plough",
+  "alphabet",
+  "coinage",
+  "lighthouse",
+  "aqueduct",
+  "concrete",
+  "watermill",
+  "glass",
+  "roads",
+  "codex",
+  "horsecollar",
+  "threefield",
+  "windmill",
+  "clock",
+  "press",
+  "caravel",
+  "perspective",
+  "observatory",
+  "bank",
+  "anatomy",
+  "steamengine",
+  "railway",
+  "gaslight",
+  "bessemer",
+  "telegraph",
+  "electricity",
+  "automobile",
+  "radio",
+  "flight",
+  "penicillin",
+  "computer",
+  "satellite",
+  "internet",
+  "solar",
+  "smartphone",
+  "ai",
+  "storage",
+  "desal",
+  "crispr",
+  "carbon"
+ ],
+ "totalPlaySeconds": 0,
+ "relics": [
+  "venus",
+  "lionman",
+  "flute",
+  "ambre",
+  "tablette",
+  "disquenebra",
+  "amphore",
+  "monnaie",
+  "anticythere",
+  "astrolabe",
+  "boussole",
+  "sextant"
+ ],
+ "tools": [
+  "etain",
+  "sel",
+  "papyrus",
+  "gouvernail",
+  "real",
+  "caoutchouc",
+  "roulement",
+  "conteneur",
+  "terresrares"
+ ],
+ "eventIn": 420,
+ "chronicle": [
+  {
+   "w": 1,
+   "d": 1,
+   "k": "age",
+   "x": "Nouvel âge : Néolithique"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : carrière gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : forêt gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "age",
+   "x": "Nouvel âge : Âge du bronze"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : prairie gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : forêt gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "age",
+   "x": "Nouvel âge : Âge du fer"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : prairie gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : prairie gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "age",
+   "x": "Nouvel âge : Antiquité"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : crique gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : forêt gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : carrière gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : prairie gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : forêt gagnée sur l'eau"
+  },
+  {
+   "w": 1,
+   "d": 1,
+   "k": "land",
+   "x": "La mer recule : prairie gagnée sur l'eau"
+  }
+ ],
+ "feats": [],
+ "outpost": false,
+ "outpostIn": 240,
+ "wonder": null,
+ "wonders": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "layout": [
+  {
+   "id": "field",
+   "x": -7.787839701757889,
+   "z": -4.155391983045809,
+   "rot": 1.749355773312092
+  },
+  {
+   "id": "granary",
+   "x": -5.5682685766134234,
+   "z": 6.460263909158412,
+   "rot": -2.6506442266879082
+  },
+  {
+   "id": "market",
+   "x": -4.158595687865255,
+   "z": 9.09710337084894,
+   "rot": -2.6506442266879082
+  },
+  {
+   "id": "lighthouse",
+   "x": 16.11762141533005,
+   "z": -5.010660879989305,
+   "rot": -1.2693871766207798
+  },
+  {
+   "id": "aqueduct",
+   "x": 0.255891361307524,
+   "z": -10.484688198666987,
+   "rot": -1.3922368802777014
+  },
+  {
+   "id": "villa",
+   "x": -13.662599805697717,
+   "z": 1.5006367100767362,
+   "rot": 0.49094842690188506
+  },
+  {
+   "id": "watermill",
+   "x": -8.640377823504856,
+   "z": -8.879074736043533,
+   "rot": 1.749355773312092
+  },
+  {
+   "id": "glassworks",
+   "x": -5.12955836078538,
+   "z": -6.261013105716598,
+   "rot": 1.749355773312092
+  },
+  {
+   "id": "milestone",
+   "x": -9.801321893039688,
+   "z": 8.723283931229052,
+   "rot": -2.6506442266879082
+  },
+  {
+   "id": "collar",
+   "x": 9.926299856948324,
+   "z": 0.2993052962628173,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "threefield",
+   "x": 11.504552141870914,
+   "z": 4.384549441370502,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "windmill",
+   "x": 8.100000000000001,
+   "z": -7.794228634059948,
+   "rot": -0.8022025352454409
+  },
+  {
+   "id": "clock",
+   "x": 14.38508557902701,
+   "z": 5.778295156135459,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "press",
+   "x": -5.697917108616691,
+   "z": -9.410134941048414,
+   "rot": 1.749355773312092
+  },
+  {
+   "id": "observatory",
+   "x": -9.208736571336168,
+   "z": -12.028196571375348,
+   "rot": 1.749355773312092
+  },
+  {
+   "id": "bank",
+   "x": -15.074962461233724,
+   "z": 5.646156186481022,
+   "rot": 0.49094842690188506
+  },
+  {
+   "id": "railway",
+   "x": -6.550455230363658,
+   "z": -14.133817694046138,
+   "rot": 1.749355773312092
+  },
+  {
+   "id": "bessemer",
+   "x": 12.80683329410442,
+   "z": 1.6930510110277748,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "electric",
+   "x": 5.743485267558722,
+   "z": 1.5970580118405868,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "garage",
+   "x": -8.019873600523283,
+   "z": 1.8744561496966248,
+   "rot": 0.49094842690188506
+  },
+  {
+   "id": "plane",
+   "x": 13.495183680732394,
+   "z": 11.291059853763286,
+   "rot": 2.690948426901885
+  },
+  {
+   "id": "computer",
+   "x": 3.2144047104326425,
+   "z": -6.141095358281453,
+   "rot": -1.3922368802777014
+  },
+  {
+   "id": "dish",
+   "x": 8.624018704714818,
+   "z": 2.9908037266055443,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "server",
+   "x": -6.980631232149431,
+   "z": 10.605783385562699,
+   "rot": -2.6506442266879082
+  },
+  {
+   "id": "solar",
+   "x": 1.5093284669387081,
+   "z": -15.5884608642769,
+   "rot": -1.3922368802777014
+  },
+  {
+   "id": "phone",
+   "x": 7.045766419792228,
+   "z": -1.0944404185021401,
+   "rot": -0.4506442266879081
+  },
+  {
+   "id": "datacenter",
+   "x": -11.213684548575696,
+   "z": 12.868803407633337,
+   "rot": -2.6506442266879082
+  },
+  {
+   "id": "battery",
+   "x": -1.35,
+   "z": 11.691342951089922,
+   "rot": 3.122622015027859
+  },
+  {
+   "id": "desal",
+   "x": -12.15,
+   "z": -5.455960043841963,
+   "rot": 1.0299785231029708
+  },
+  {
+   "id": "genlab",
+   "x": 9.450000000000001,
+   "z": 7.014805770653953,
+   "rot": -2.0761570117156136
+  },
+  {
+   "id": "capture",
+   "x": -6.75,
+   "z": 13.25018867790191,
+   "rot": 2.7081431530035633
+  }
+ ],
+ "layoutV": 3,
+ "goods": {
+  "x": 7.937434203144351,
+  "z": 11.756914707091886
+ },
+ "village": "",
+ "legacy": 0,
+ "tribe": null,
+ "land": [
+  {
+   "kind": "carriere",
+   "q": -12,
+   "r": 1
+  },
+  {
+   "kind": "foret",
+   "q": 7,
+   "r": -14
+  },
+  {
+   "kind": "prairie",
+   "q": -14,
+   "r": 4
+  },
+  {
+   "kind": "foret",
+   "q": 11,
+   "r": -14
+  },
+  {
+   "kind": "prairie",
+   "q": 3,
+   "r": 10
+  },
+  {
+   "kind": "prairie",
+   "q": 6,
+   "r": 8
+  },
+  {
+   "kind": "crique",
+   "q": -11,
+   "r": -2
+  },
+  {
+   "kind": "foret",
+   "q": 5,
+   "r": -15
+  },
+  {
+   "kind": "carriere",
+   "q": -15,
+   "r": 7
+  },
+  {
+   "kind": "prairie",
+   "q": 14,
+   "r": -13
+  },
+  {
+   "kind": "foret",
+   "q": 0,
+   "r": 13
+  },
+  {
+   "kind": "prairie",
+   "q": 9,
+   "r": 7
+  }
+ ],
+ "landPending": [
+  {
+   "n": 12,
+   "kinds": [
+    "affleurement",
+    "crique",
+    "foret"
+   ]
+  },
+  {
+   "n": 13,
+   "kinds": [
+    "prairie",
+    "roseliere",
+    "affleurement"
+   ]
+  },
+  {
+   "n": 14,
+   "kinds": [
+    "carriere",
+    "affleurement",
+    "roseliere"
+   ]
+  },
+  {
+   "n": 15,
+   "kinds": [
+    "affleurement",
+    "roseliere",
+    "prairie"
+   ]
+  },
+  {
+   "n": 16,
+   "kinds": [
+    "roseliere",
+    "affleurement",
+    "prairie"
+   ]
+  },
+  {
+   "n": 17,
+   "kinds": [
+    "prairie",
+    "foret",
+    "carriere"
+   ]
+  },
+  {
+   "n": 18,
+   "kinds": [
+    "crique",
+    "affleurement",
+    "roseliere"
+   ]
+  },
+  {
+   "n": 19,
+   "kinds": [
+    "foret",
+    "roseliere",
+    "affleurement"
+   ]
+  },
+  {
+   "n": 20,
+   "kinds": [
+    "roseliere",
+    "foret",
+    "prairie"
+   ]
+  }
+ ],
+ "landN": 21
+}
