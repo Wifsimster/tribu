@@ -15,6 +15,8 @@ const { Island } = await import('../src/render/island.ts')
 const { Village } = await import('../src/render/village.ts')
 const { TRAIN_SCALE } = await import('../src/render/consist.ts')
 const { raiseWorld, planOf } = await import('../src/render/plan.ts')
+const { Fauna } = await import('../src/render/fauna.ts')
+const { Ground } = await import('../src/render/ground.ts')
 const { TECHS, TOOLS, WONDER_BY_AGE, livingBuildings } = await import('../src/game/content.ts')
 
 const atAge = (age) =>
@@ -156,8 +158,9 @@ test('l’auto et la rame ne se recouvrent jamais : l’auto attend à la barri�
     const mesh = v.car.children[0]
     mesh.geometry.computeBoundingBox()
     const box = mesh.geometry.boundingBox
-    const hl = (box.max.x - box.min.x) / 2
-    const hw = (box.max.z - box.min.z) / 2
+    // La caisse à sa taille de jeu : le mesh est mis à l'échelle (3.66).
+    const hl = ((box.max.x - box.min.x) / 2) * mesh.scale.x
+    const hw = ((box.max.z - box.min.z) / 2) * mesh.scale.z
     let hits = 0
     let waits = 0
     let prev = null
@@ -177,5 +180,86 @@ test('l’auto et la rame ne se recouvrent jamais : l’auto attend à la barri�
     }
     assert.equal(hits, 0, `graine ${seed}, ${nPlots} parcelles : ${hits} images où l’auto touche la rame`)
     assert.ok(waits > 0, `graine ${seed} : l’auto n’a jamais attendu à la barrière`)
+  }
+})
+
+/** Le hasard de la faune rejoué à l'identique (mulberry32). */
+function seeded(seed, fn) {
+  const random = Math.random
+  let a = seed >>> 0
+  Math.random = () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+  try {
+    return fn()
+  } finally {
+    Math.random = random
+  }
+}
+
+test('comme en jeu (faune, cadastre, auto calée) : enclos hors de la voie, auto jamais sous la rame, rame à quai au-delà de la traversée', () => {
+  // Avant ce correctif, sur la graine 42 à douze parcelles, l'enclos coupait
+  // la route au milieu du passage à niveau : la portion de l'auto finissait
+  // sur la voie, où elle marquait ses cinq secondes d'arrêt sous la rame.
+  for (const [seed, nPlots, age] of [[42, 12, 8], [42, 0, 10], [99, 12, 8], [5, 6, 10], [31337, 12, 8]]) {
+    const label = `graine ${seed}, ${nPlots} parcelles, âge ${age}`
+    const v = played(seed, age, nPlots)
+    const fauna = seeded(seed * 131 + nPlots * 17 + age, () => {
+      const f = new Fauna(v.island, v.faunaObstacles)
+      f.setKnown(true, true, true, true)
+      return f
+    })
+    v.goodsAvoid = fauna.pen ? [fauna.pen] : []
+    const ground = new Ground(v.island, [v, fauna])
+    v.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
+    for (let i = 0; i < 3 && ground.refresh(); i++) v.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
+    // La palissade et le poulailler hors du gabarit de la rame (0,72 u).
+    for (const f of fauna.groundFootprints()) {
+      const k = f.scale ?? 1
+      const P = f.geo ? f.geo.getAttribute('position').array : f.tris
+      for (let i = 0; i < P.length; i += 3) {
+        const d = v.beltDist((f.ox ?? 0) + P[i] * k, (f.oz ?? 0) + P[i + 2] * k)
+        assert.ok(d >= 0.72, `${label} : la faune pose une emprise à ${d.toFixed(2)} u de l'axe`)
+      }
+    }
+    const zone = v.crossZone()
+    assert.ok(zone, label)
+    if (v.carSpan) {
+      for (const end of [v.carSpan.from, v.carSpan.to])
+        assert.ok(end <= zone.lo + 1e-9 || end >= zone.hi - 1e-9, `${label} : la portion de l'auto finit sur la voie (${end.toFixed(2)})`)
+    }
+    const mesh = v.car.children[0]
+    mesh.geometry.computeBoundingBox()
+    const box = mesh.geometry.boundingBox
+    const hl = ((box.max.x - box.min.x) / 2) * mesh.scale.x
+    const hw = ((box.max.z - box.min.z) / 2) * mesh.scale.z
+    const L = v.beltLength
+    let hits = 0
+    let quai = 0
+    let onZone = 0
+    for (let f = 0; f < 3 * 60 * (L / 2.2 + 5); f++) {
+      v.tickTrain(1 / 60)
+      v.tickCar(1 / 60)
+      const p = v.car.position
+      const yaw = v.car.rotation.y
+      const co = Math.cos(yaw)
+      const si = Math.sin(yaw)
+      const car = [[hl, hw], [hl, -hw], [-hl, -hw], [-hl, hw]].map(([lx, lz]) => ({ x: p.x + co * lx + si * lz, z: p.z - si * lx + co * lz }))
+      if (v.car.visible && v.trainPoses.some((c) => overlap(car, corners(c, c.yaw, c.len / 2, HALF_W)))) hits++
+      if (v.trainWait > 0) {
+        quai++
+        const poses = v.trainPoses
+        const head = poses[0].sFront
+        const span = head - poses[poses.length - 1].sBack
+        if ((((head - zone.s0) % L) + L) % L <= span + (zone.s1 - zone.s0)) onZone++
+      }
+    }
+    assert.equal(hits, 0, `${label} : ${hits} images où l’auto touche la rame`)
+    assert.ok(quai > 0, `${label} : la rame ne s'est pas arrêtée en gare`)
+    assert.equal(onZone, 0, `${label} : à quai, la rame occupe le passage à niveau (${onZone} images)`)
   }
 })

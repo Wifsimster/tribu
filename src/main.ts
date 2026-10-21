@@ -171,7 +171,7 @@ function buildWorld(): void {
   // du rivage de CETTE île-là. Le quai n'y entre pas ici : qu'il vienne de la
   // sauvegarde ou d'un achat en cours de partie, il passe par `placeGoods`,
   // qui le donne à la faune (`setBlockers`) — un seul chemin pour les deux.
-  fauna = new Fauna(island, village.obstaclePoints)
+  fauna = new Fauna(island, village.faunaObstacles)
   fauna.onFishJump = () => ambience.plop()
   // Les bêtes modelées dans Blender : la faune d'ALORS (celle de l'île en
   // cours, pas forcément celle qui a lancé le chargement) passe à ses modèles.

@@ -223,10 +223,11 @@ test('chaque véhicule est, à 10 % près, à la taille appliquée par rapport a
   const { village } = town(42, 8)
   village.car.rotation.set(0, 0, 0)
   got.car = span(worldBox(village.car))
-  // Graine 555, âge 10 : l'aérodrome a la place, l'avion y est à sa taille
-  // pleine. (Graine 42 : ×2 à l'âge 8, ×1,5 aux âges 9 et 10 — voir le test
-  // de l'avion.)
-  const roomy = town(555, 10).village
+  // Graine 42, âge 10 : l'aérodrome a la place, l'avion y est à sa taille
+  // pleine. (Graine 555 l'était avant la boucle ferrée : sur l'île agrandie,
+  // l'avion ne s'y gare plus sur la voie, et il y est à ×2 — voir le test de
+  // l'avion.)
+  const roomy = town(42, 10).village
   assert.equal(roomy.planeK, VEHICLE_SCALE.plane)
   roomy.plane.rotation.set(0, 0, 0)
   got.plane = span(worldBox(roomy.plane))
@@ -355,6 +356,15 @@ test('la barque marchande mouille en eau libre, et sa route reste au large', () 
   }
 })
 
+/** Les bourgs de l'avion : les seize de la recette de la PR #26 (graines
+ *  jamais vues au réglage), âges 8 à 10. Sur la tête 9c50a28, l'avion se
+ *  disait « à l'aise » et touchait l'enclos (graines 2, 3) ou un bâtiment
+ *  (graines 5, 10, 1). Graine 1 : l'aérodrome le plus serré. */
+const PLANE_CASES = [
+  [1, 9], [2, 10], [3, 9], [5, 10], [10, 10], [11, 9], [123, 8], [777, 8],
+  [31337, 10], [4242, 9], [900, 8], [65, 9], [8, 9], [314, 10], [2718, 8], [555, 10],
+]
+
 test('l’auto ne roule que là où sa caisse passe : ni bâtiment, ni réverbère, ni arbre', () => {
   let rolling = 0
   for (const [seed, age] of CASES) {
@@ -384,18 +394,15 @@ test('l’auto ne roule que là où sa caisse passe : ni bâtiment, ni réverbè
     }
     assert.ok(worst >= 0.1, `graine ${seed} âge ${age} : l'auto à ${worst.toFixed(2)} u d'un bâtiment`)
   }
-  // Sur la plupart des bourgs, elle roule vraiment.
-  assert.ok(rolling >= 3, `l'auto ne roule que dans ${rolling} bourgs sur ${CASES.length}`)
+  // Elle roule vraiment dans plus de la moitié des bourgs. Compté sur les
+  // vingt et un bourgs (ceux-ci et ceux de l'avion) : la boucle ferrée coupe
+  // la route au passage à niveau, et cinq bourgs ne disent plus grand-chose
+  // (2 sur 5 ici). Mesuré : 8 sur 21 sur la 3.67.0, 12 sur 21 avec la boucle.
+  for (const [seed, age] of PLANE_CASES) if (town(seed, age).village.carSpan) rolling++
+  const n = CASES.length + PLANE_CASES.length
+  assert.ok(rolling >= 11, `l'auto ne roule que dans ${rolling} bourgs sur ${n}`)
 })
 
-/** Les bourgs de l'avion : les seize de la recette de la PR #26 (graines
- *  jamais vues au réglage), âges 8 à 10. Sur la tête 9c50a28, l'avion se
- *  disait « à l'aise » et touchait l'enclos (graines 2, 3) ou un bâtiment
- *  (graines 5, 10, 1). Graine 1 : l'aérodrome le plus serré. */
-const PLANE_CASES = [
-  [1, 9], [2, 10], [3, 9], [5, 10], [10, 10], [11, 9], [123, 8], [777, 8],
-  [31337, 10], [4242, 9], [900, 8], [65, 9], [8, 9], [314, 10], [2718, 8], [555, 10],
-]
 
 test('l’avion, au repos, au roulage, au décollage et au retour : « clear » veut dire 0,5 u de tout plein (bâtiments et faune) et de tout sapin', (t) => {
   const sizes = new Map()
@@ -418,18 +425,38 @@ test('l’avion, au repos, au roulage, au décollage et au retour : « clear » 
     }
     v.planeRest()
     probe()
+    let onTrain = 0
     for (const dir of [1, -1]) {
       if (dir === 1) v.planeDepart()
       else v.planeArrive()
       // 200 poses par vol : au retour, le demi-tour sur place (π en 0,1 du
-      // vol) avance de 9° par pose.
-      for (let i = 0; i < 200; i++) {
+      // vol) avance de 9° par pose. La rame roule pendant ce temps : l'avion
+      // l'attend avant de passer au ras de la voie.
+      for (let i = 0; i < 200 * 50 && v.flight >= 0; i++) {
+        v.tickTrain(5.5 / 200)
         v.tickPlane(5.5 / 200)
         if (!v.plane.visible) continue
         if (v.plane.position.y - GROUND_Y > Village.PLANE_LOW + 2) continue
         probe()
+        // Sous le toit de la loco, jamais dans la caisse d'un véhicule de la rame.
+        for (const p of samples(v.plane)) {
+          if (p.y > GROUND_Y + 0.215 + 1.45) continue
+          for (const c of v.trainPoses) {
+            const dx = p.x - c.x
+            const dz = p.z - c.z
+            const along = dx * Math.sin(c.yaw) + dz * Math.cos(c.yaw)
+            const across = dx * Math.cos(c.yaw) - dz * Math.sin(c.yaw)
+            if (Math.abs(along) < c.len / 2 + 0.1 && Math.abs(across) < 0.72) onTrain++
+          }
+        }
       }
+      assert.ok(v.flight < 0, `graine ${seed} âge ${age} : le vol ne finit pas`)
     }
+    assert.equal(onTrain, 0, `graine ${seed} âge ${age} : l'avion traverse la rame`)
+    // Garé, l'avion est hors du gabarit de la rame (0,72 u de l'axe).
+    v.planeRest()
+    for (const p of samples(v.plane))
+      if (p.y < GROUND_Y + 0.215 + 1.45) assert.ok(v.beltDist(p.x, p.z) >= 0.72, `graine ${seed} âge ${age} : l'avion garé sur la voie`)
     if (v.planeFit === 'clear') assert.ok(worst >= 0.5, `graine ${seed} âge ${age} : « clear », et l'avion à ${worst.toFixed(2)} u d'un plein`)
     else {
       // Rien ne laisse la marge : il reprend sa taille 3.62.0, le jeu le sait
@@ -438,7 +465,8 @@ test('l’avion, au repos, au roulage, au décollage et au retour : « clear » 
       assert.ok(worst > 0, `graine ${seed} âge ${age} : serré, l'avion dans un plein`)
     }
     // La place que le jeu a mesurée sur le vol n'est pas plus belle que la vraie.
-    assert.ok(!(v.planeClearance > worst + 0.05), `graine ${seed} : le jeu voit ${v.planeClearance?.toFixed(2)} u, il y en a ${worst.toFixed(2)}`)
+    // (La mesure du test s'arrête à 3 u : au-delà, rien ne gêne.)
+    assert.ok(!(Math.min(v.planeClearance, 3) > worst + 0.05), `graine ${seed} : le jeu voit ${v.planeClearance?.toFixed(2)} u, il y en a ${worst.toFixed(2)}`)
     assert.ok(worstTree >= 0.5, `graine ${seed} âge ${age} : l'avion à ${worstTree.toFixed(2)} u d'un sapin`)
     // Au repos, les roues sur l'aire, pas dessous, et le fuselage sur la
     // terre : avancé vers le large sans ce contrôle, il se garait sur l'eau.
