@@ -6,6 +6,7 @@
 //
 //   corepack pnpm build && corepack pnpm perf:budget
 //   PW_CHROME=/chemin/vers/chrome-headless-shell corepack pnpm perf:budget
+//   corepack pnpm perf:budget -- --act gather:scythe   (geste du colon forcé)
 //
 // Les appels et les triangles ne dépendent pas de la définition de l'écran,
 // seulement de ce que la caméra cadre : la vue bureau se mesure à 640×400
@@ -24,6 +25,11 @@ const VIEWS = {
   mobile: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true },
 }
 
+// `--act gather:<outil>` : le relevé avec le geste du colon forcé (?act=,
+// main.ts), pour comparer au même cadrage sans action.
+const actAt = process.argv.indexOf('--act')
+const act = actAt > 0 ? `&act=${process.argv[actAt + 1]}` : ''
+
 const server = await serveDist()
 const browser = await launch()
 const results = []
@@ -41,7 +47,7 @@ try {
     const console_ = watchConsole(page)
     // h=0.25 : le zénith, ombres pleines ; c'est le cadrage où le jeu
     // dessine le plus (la nuit éteint les ombres de plusieurs objets).
-    await page.goto(`${server.url}?nomenu=1&h=0.25`, { waitUntil: 'domcontentloaded', timeout: 120000 })
+    await page.goto(`${server.url}?nomenu=1&h=0.25${act}`, { waitUntil: 'domcontentloaded', timeout: 120000 })
     await page.waitForFunction(() => window.__tribu?.ready === true, null, { timeout: 120000 })
     // Les modèles (faune, véhicules, Merveilles) arrivent en différé.
     await page.waitForTimeout(8000)

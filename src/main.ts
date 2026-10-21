@@ -49,6 +49,8 @@ import { planOf, raiseWorld } from './render/plan'
 import { Ground } from './render/ground'
 import { Village } from './render/village'
 import { Settler } from './render/settler'
+import { loadSettlerModels } from './render/settler-clips'
+import { actionFor, clipFor, toolFor, visualTool, type WorkAction, type WorkTool } from './game/work-tool'
 import { Fauna, loadFaunaModels } from './render/fauna'
 import { Caravan } from './render/caravan'
 import { ExpeditionBoat } from './render/expedition-boat'
@@ -141,6 +143,10 @@ game.visitable = neighbors.map((n) => ({ id: n.id, name: n.name, age: n.age, rel
 // rivage, avec la baie qui vit autour de lui. Déclarée AVANT buildWorld qui
 // la remet à zéro à chaque reconstruction du monde.
 let fishing = false
+/** Le joueur a touché un buisson : c'est la cueillette, même quand la tribu
+ *  sait chasser, le temps d'un travail (jusqu'au dépôt au feu). Un état de
+ *  surface, comme la pêche : rien dans la sauvegarde. */
+let gatherTap = false
 let catchTimer = 12
 /** Vrai le temps du buildWorld qui suit un passage d'âge. */
 let ageChanged = false
@@ -176,6 +182,9 @@ function buildWorld(): void {
   // Les bêtes modelées dans Blender : la faune d'ALORS (celle de l'île en
   // cours, pas forcément celle qui a lancé le chargement) passe à ses modèles.
   void loadFaunaModels().then(() => fauna.useModels())
+  // Les gestes du colon animés dans Blender, et ses outils : même principe,
+  // le geste procédural sert jusqu'à leur arrivée.
+  void loadSettlerModels().then(() => settler.useModels())
   // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
   // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
   // tribu n'a pas l'agriculture.
@@ -186,7 +195,14 @@ function buildWorld(): void {
     if (res === 'food') return ambience.work(game.knows('agriculture') ? 'cueillette' : 'chasse')
     return ambience.work('pierre')
   }
+  // Le buisson touché vaut pour un travail : panier vidé au feu, le colon
+  // reprend l'action que disent ses savoirs (la chasse, s'il la connaît).
+  // Retomber plus tôt viderait le panier en chemin (QA PR #29).
+  settler.onDeposit = () => {
+    gatherTap = false
+  }
   fishing = false
+  gatherTap = false
   // Le quai n'y entre pas ici : `placeGoods` le donne aux villageois comme à
   // la faune, qu'il vienne de la sauvegarde ou d'un achat en cours de partie.
   villagers = new Villagers(island, village.obstaclePoints)
@@ -984,6 +1000,7 @@ attachControls(stage, canvas, (x, y) => {
         }
         if (bestD < Infinity) {
           fishing = true
+          gatherTap = false
           ambience.knock()
           game.setFocus('food')
           settler.sendTo(new Vector3(bx, GROUND_Y, bz))
@@ -1000,6 +1017,7 @@ attachControls(stage, canvas, (x, y) => {
   const resource: ResourceId = kind
   if (!game.unlocked.has(resource)) return
   fishing = false
+  gatherTap = resource === 'food'
   fauna.setFishing(null)
   ambience.knock()
   game.setFocus(resource)
@@ -1009,7 +1027,14 @@ attachControls(stage, canvas, (x, y) => {
 
 
 // ── Loop ───────────────────────────────────────────────────────────────────
-settler.sendTo(spotFor(game.save.focus))
+// ?act=gather:sickle force l'action et l'outil du colon, quels que soient le
+// focus et les savoirs (captures et mesures de tools/shoot-actions.mjs).
+// Ignoré sans lui, et sans effet sur la sauvegarde.
+const forcedAct = ((): { action: WorkAction; tool: WorkTool } | null => {
+  const m = /^(gather):(hand|sickle|scythe)$/.exec(new URLSearchParams(location.search).get('act') ?? '')
+  return m ? { action: m[1] as WorkAction, tool: m[2] as WorkTool } : null
+})()
+settler.sendTo(spotFor(forcedAct ? 'food' : game.save.focus))
 
 // ?h=0.75 fige l'heure (0 = lever, 0,25 = zénith, 0,5 = coucher, 0,75 = nuit) —
 // pour le debug et pour juger l'ambiance à heure fixe.
@@ -1788,22 +1813,20 @@ function frame(now: number): void {
   const boost = game.encourageLeft > 0 ? 1.7 : 1
   // L'outil suit la ressource travaillée et la matière suit les savoirs.
   const metal = game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
-  if (game.save.focus === 'food') {
-    settler.setTool(
-      fishing
-        ? game.knows('cordage')
-          ? 'rod'
-          : 'spear'
-        : game.knows('agriculture')
-          ? 'sickle'
-          : game.knows('spear')
-            ? 'spear'
-            : 'hand',
-      metal,
-    )
+  if (game.save.focus !== 'food') gatherTap = false
+  if (game.save.focus === 'food' || forcedAct) {
+    // La table du §2 de la spec (game/work-tool.ts) : pêche, chasse ou
+    // cueillette, et l'outil que les savoirs permettent.
+    const knows = (id: string) => game.knows(id)
+    const action = forcedAct?.action ?? actionFor(fishing, gatherTap, knows)
+    const tool = forcedAct?.tool ?? toolFor(action, knows)
+    settler.setTool(visualTool(tool), metal)
+    settler.setClip(clipFor(action, tool))
   } else if (game.save.focus === 'wood') {
+    settler.setClip(null)
     settler.setTool(game.knows('flint') ? 'axe' : 'hand', metal)
   } else {
+    settler.setClip(null)
     // Galet percuteur, puis pic de cuivre, puis pic de fer.
     settler.setTool('pick', game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('copper') ? 1 : 0)
   }
@@ -1818,7 +1841,7 @@ function frame(now: number): void {
     const was = nodeCount()
     surveyNodes()
     if (nodeCount() !== was && !fishing && !game.save.expedition && settler.goalGone(nodeSpots))
-      settler.sendTo(spotFor(game.save.focus))
+      settler.sendTo(spotFor(forcedAct ? 'food' : game.save.focus))
   }
   settler.update(dt, boost)
   caravan.update(dt, elapsed, game.knows('sail'))

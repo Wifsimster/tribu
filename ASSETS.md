@@ -63,6 +63,8 @@ ci-dessous, et les sons (section [Sons](#sons--publicaudio)).
 | `hen.glb` | Faune — la poule (corps, cou, tête, deux pattes, deux ailes repliées) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `horse.glb` | Faune — le cheval bai, version 2 : crinière, liste et balzanes, tête articulée à la nuque (tronc, encolure, tête, quatre jambes, queue) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `gull.glb` | Faune — la mouette (corps, deux bras et deux mains d'aile) | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `settler-clips.glb` | Colon — les gestes de la cueillette (main nue et panier, faucille, faux), keyframés dans Blender sur le squelette du jeu ; nœuds sans maillage, rejoués par `tools/blender/build_settler.py` | Création originale du projet, animée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
+| `settler-tools.glb` | Colon — faucille, faux, panier (et son contenu en trois crans), gerbe (trois crans) ; modelés par `tools/blender/settler_tools.py` | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `car.glb` | Automobile du garage | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 | `plane.glb` | Avion de l'aérodrome — monoplan à aile haute | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |
 

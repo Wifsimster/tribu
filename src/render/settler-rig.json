@@ -1,0 +1,22 @@
+{
+  "_doc": "Squelette du colon, source unique des pivots : lu par settler.ts et par les scripts Blender (tools/blender/). Espace du rig (avant l'échelle `scale`), y en haut, le colon regarde +z. `parent` est le parent dans le jeu : null = enfant direct du rig. `rest` = rotation (euler XYZ, radians) de la pose de repos, celle que remet wake(). `points` = repères mesurés par le test de parité, dans l'espace de leur nœud.",
+  "scale": 1.32,
+  "nodes": {
+    "body": { "parent": null, "pivot": [0, 0.44, 0] },
+    "head": { "parent": null, "pivot": [0, 1.15, 0] },
+    "armL": { "parent": null, "pivot": [-0.4, 0.86, 0], "rest": [0, 0, 0.12] },
+    "armR": { "parent": null, "pivot": [0.4, 0.86, 0], "rest": [0, 0, -0.07] },
+    "legL": { "parent": null, "pivot": [-0.13, 0.44, 0] },
+    "legR": { "parent": null, "pivot": [0.13, 0.44, 0] },
+    "toolR": { "parent": "armR", "pivot": [0, -0.42, 0] },
+    "toolL": { "parent": "armL", "pivot": [0, -0.42, 0] },
+    "prop": { "parent": "body", "pivot": [0, 0.2, -0.27] },
+    "cast": { "parent": null, "pivot": [0, 0, 0] }
+  },
+  "points": {
+    "hand": { "node": "armR", "at": [0, -0.42, 0] },
+    "fingers": { "node": "toolR", "at": [0, -0.09, 0] },
+    "footL": { "node": "legL", "at": [0, -0.44, 0.04] },
+    "footR": { "node": "legR", "at": [0, -0.44, 0.04] }
+  }
+}
