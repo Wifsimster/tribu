@@ -21,6 +21,12 @@
 //                         6,71 k de savoir) au lieu d'une partie neuve ; avec
 //                         --rule=proposal, la migration de la spec s'applique
 //   --no-encourage        joueur qui ne tape jamais « Encourager »
+//   --focus=food          joueur qui ne change jamais de récolte (le défaut
+//                         du jeu, celui de la capture de l'humain)
+//   --eco                 bilan par âge : produit, dépensé par les savoirs,
+//                         taux focalisé et au repos de chaque ressource
+//   --costs=proportional  coûts en matériaux recalculés par la règle de la
+//                         spec (section 9), au lieu de ceux de content.ts
 //   --json                sortie JSON au lieu du tableau
 //   --seed=<n>            graine du hasard (défaut 7)
 
@@ -112,6 +118,41 @@ if (args.night === '3.70') {
 const RULE = args.rule === 'proposal'
 const rule = RULE ? await import('./savoirs-rule.mjs') : null
 if (rule) rule.applyProposal(Game)
+if (args.costs === 'proportional') {
+  const { PROPORTIONAL } = await import('./savoirs-rule.mjs')
+  for (const t of TECHS) if (PROPORTIONAL[t.id]) t.materials = PROPORTIONAL[t.id]
+}
+
+// ── Le bilan par âge : ce qui est produit en jouant, ce que les savoirs
+// prennent. Seul le jeu actif compte (l'absence a son propre relevé).
+const eco = new Map()
+const bucket = (age) => {
+  if (!eco.has(age)) eco.set(age, { seconds: 0, made: {}, spent: {}, rates: null })
+  return eco.get(age)
+}
+let active = false
+{
+  const P = Game.prototype
+  const produce = P.produce
+  P.produce = function (sec) {
+    if (active) {
+      const b = bucket(this.save.age)
+      for (const [r, v] of Object.entries(this.rates)) if (v > 0) b.made[r] = (b.made[r] ?? 0) + v * sec
+    }
+    return produce.call(this, sec)
+  }
+  const research = P.research
+  P.research = function (id) {
+    const ok = research.call(this, id)
+    if (ok) {
+      const tech = TECH_BY_ID.get(id)
+      const b = bucket(tech.age)
+      b.spent.insight = (b.spent.insight ?? 0) + tech.cost
+      for (const [r, n] of Object.entries(tech.materials ?? {})) b.spent[r] = (b.spent[r] ?? 0) + n
+    }
+    return ok
+  }
+}
 
 // ── La partie ─────────────────────────────────────────────────────────────
 const log = []
@@ -155,6 +196,36 @@ if (args.cycle) {
   for (let k = play; k < MAX; k += play) awayQueue.push([k, away])
 }
 let lastAge = g.save.age
+
+// Pour la règle de coût proportionnel : à l'instant où chaque savoir
+// apparaît dans la liste, les taux MOYENS (nuit comprise, sans encourager)
+// de savoir et de chaque ressource focalisée.
+const meanK = args.night === '3.70' ? 0.6436 : 0.4777
+const avail = {}
+function noteAvail() {
+  for (const tech of g.available()) {
+    if (avail[tech.id]) continue
+    const lf = g.lightFactor
+    const enc = g.encourageLeft
+    const focus = g.save.focus
+    g.encourageLeft = 0
+    g.lightFactor = g.nightFloor + (1 - g.nightFloor) * meanK
+    const rates = {}
+    for (const r of RES) {
+      if (r === 'insight' || !g.unlocked.has(r)) continue
+      g.save.focus = r
+      g.refreshRates()
+      rates[r] = +g.rates[r].toFixed(4)
+    }
+    g.save.focus = focus
+    g.refreshRates()
+    const insight = +g.rates.insight.toFixed(4)
+    g.lightFactor = lf
+    g.encourageLeft = enc
+    g.refreshRates()
+    avail[tech.id] = { t, insight, rates }
+  }
+}
 
 /** Le prochain objectif : le savoir disponible le moins cher en savoir —
  *  c'est celui sur lequel la feuille de savoir s'ouvre. */
@@ -208,12 +279,28 @@ while (t < MAX) {
   // l'instant « abordable », celui qui compte pour le rythme.
   for (const tech of g.available()) if (!firstAffordable.has(tech.id) && g.canResearch(tech)) firstAffordable.set(tech.id, t)
   buyAll()
+  noteAvail()
   while (g.landOffer) {
     g.chooseLand(g.landOffer.kinds[0], 20 * ++landSlot, 0)
   }
-  chooseFocus()
+  if (args.focus !== 'food') chooseFocus()
   if (ENCOURAGE && g.canEncourage()) g.encourage()
+  {
+    const b = bucket(g.save.age)
+    b.seconds += DT
+    if (!b.rates) {
+      // Taux de référence de l'âge, au jour plein : focalisé et au repos.
+      b.rates = {}
+      for (const r of RES) {
+        if (r === 'insight' || !g.unlocked.has(r)) continue
+        const f = g.save.focus === r
+        b.rates[r] = { focus: f ? g.rates[r] : g.rates[r] / 0.3, idle: f ? g.rates[r] * 0.3 : g.rates[r] }
+      }
+    }
+  }
+  active = true
   g.tick(DT, NOW + t * 1000)
+  active = false
   t += DT
   if (g.save.age !== lastAge) {
     lastAge = g.save.age
@@ -224,7 +311,7 @@ while (t < MAX) {
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 if (args.json) {
-  process.stdout.write(JSON.stringify({ args, log }, null, 1) + '\n')
+  process.stdout.write(JSON.stringify({ args, log, avail }, null, 1) + '\n')
 } else {
   for (const e of log) {
     if (e.kind === 'tech')
@@ -236,4 +323,19 @@ if (args.json) {
     else console.log(`${mmss(e.t).padStart(7)} -- absence ${(e.seconds / 3600).toFixed(1)} h : ${JSON.stringify(e.before)} → ${JSON.stringify(e.after)}`)
   }
   if (t >= MAX) console.log(`(arrêt au plafond ${mmss(MAX)})`)
+  if (args.eco) {
+    console.log('\nBilan par âge (jeu actif) : produit / dépensé par les savoirs de l’âge = ratio')
+    for (const [age, b] of [...eco].sort((x, y) => x[0] - y[0])) {
+      console.log(`[${age}] ${AGES[age].name} — ${mmss(b.seconds)} de jeu`)
+      for (const r of RES) {
+        const made = b.made[r] ?? 0
+        const spent = b.spent[r] ?? 0
+        if (made < 0.5 && spent === 0) continue
+        const ratio = spent > 0 ? (made / spent).toFixed(1) : '∞'
+        const rt = b.rates?.[r]
+        const rates = rt ? `  focalisé ${rt.focus.toFixed(2)}/s, au repos ${rt.idle.toFixed(2)}/s` : ''
+        console.log(`   ${r.padEnd(8)} produit ${String(Math.round(made)).padStart(8)}  dépensé ${String(spent).padStart(6)}  ×${ratio}${rates}`)
+      }
+    }
+  }
 }
