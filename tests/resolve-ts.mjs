@@ -2,6 +2,7 @@
 // de Vite). Node, lui, exige l'extension : ce crochet la rajoute pour les
 // imports relatifs. Node 24 retire les types des .ts tout seul — pas besoin
 // de tsx ni d'aucune dépendance pour faire tourner la simulation.
+import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
 
 registerHooks({
@@ -21,6 +22,15 @@ registerHooks({
       return {
         format: 'module',
         source: `export default ${JSON.stringify(url.slice(0, -'?url'.length))}`,
+        shortCircuit: true,
+      }
+    }
+    // `import rig from './settler-rig.json'` : Vite en fait un module ; Node
+    // exige un attribut d'import que les sources n'écrivent pas.
+    if (url.startsWith('file:') && url.endsWith('.json')) {
+      return {
+        format: 'module',
+        source: `export default ${readFileSync(new URL(url), 'utf8')}`,
         shortCircuit: true,
       }
     }

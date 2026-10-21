@@ -34,19 +34,25 @@ const FLOAT = 5126
 const USHORT = 5123
 const SIZE: Record<string, number> = { SCALAR: 1, VEC3: 3 }
 
+/** Les deux blocs d'un glb : le JSON lu, et l'octet où commence le binaire.
+ *  Lève une erreur si le fichier n'en est pas un. */
+export function readGlb<T>(glb: ArrayBuffer): { json: T; bin: number } {
+  const view = new DataView(glb)
+  if (view.getUint32(0, true) !== 0x46546c67) throw new Error('pas un glb')
+  const jsonLen = view.getUint32(12, true)
+  if (view.getUint32(16, true) !== 0x4e4f534a) throw new Error('bloc JSON absent')
+  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, 20, jsonLen))) as T
+  const binAt = 20 + jsonLen
+  if (view.getUint32(binAt + 4, true) !== 0x004e4942) throw new Error('bloc binaire absent')
+  return { json, bin: binAt + 8 }
+}
+
 /** Une bête entière, soudée comme celles de fauna.ts : position, normale,
  *  couleur, et `aPivot` = (pivot, pièce) — (0, 0, 0, 0) pour le corps. Lève
  *  une erreur sur tout ce qui sort du format attendu plutôt que de dessiner
  *  une bête de travers. */
 export function faunaGeometry(glb: ArrayBuffer): BufferGeometry {
-  const view = new DataView(glb)
-  if (view.getUint32(0, true) !== 0x46546c67) throw new Error('pas un glb')
-  const jsonLen = view.getUint32(12, true)
-  if (view.getUint32(16, true) !== 0x4e4f534a) throw new Error('bloc JSON absent')
-  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, 20, jsonLen))) as Gltf
-  const binAt = 20 + jsonLen
-  if (view.getUint32(binAt + 4, true) !== 0x004e4942) throw new Error('bloc binaire absent')
-  const bin = binAt + 8
+  const { json, bin } = readGlb<Gltf>(glb)
 
   const read = (i: number, ct: number, type: string): Float32Array | Uint16Array => {
     const a = json.accessors[i]!

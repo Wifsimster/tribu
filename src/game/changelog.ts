@@ -10,6 +10,21 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.69.0',
+    title: 'La cueillette, geste par geste',
+    items: [
+      "Quand le colon cueille à la main, il se penche vers le buisson, cueille deux fois de la main droite et met les baies dans le panier qu'il tient de la main gauche. Le panier se remplit en trois fois : un tiers, deux tiers, puis plein, avec des baies rouges qui dépassent du bord.",
+      "Avec l'agriculture, il saisit les tiges de la main gauche et les coupe à la faucille, d'un geste à hauteur de taille. La gerbe grossit dans sa main toutes les deux coupes.",
+      "Avec l'assolement triennal, il fauche à deux mains : la faux balaie un grand arc devant lui, et la gerbe grossit sur son dos.",
+      "Ses coups font voler des feuilles vertes à la main et des brins dorés à la faucille et à la faux, au lieu des éclats de silex.",
+      "Il se tourne vers le buisson pour travailler. Il rapporte au feu son panier plein ou sa gerbe, et les vide en arrivant.",
+      "Toucher un buisson envoie le colon cueillir, même quand la tribu sait chasser. La chasse à l'épieu reste comme avant pour l'instant.",
+      "Tant que la tribu ne connaît pas l'épieu, le colon pêche les mains nues : il ne tient plus un épieu qu'il ne connaît pas.",
+      "Ces gestes ont été animés dans Blender. Le colon passe de la marche au travail, et du travail au sommeil ou au départ en expédition, sans à-coup.",
+      "Ta partie, ta production et ta sauvegarde ne changent pas : la cueillette ne rapporte ni plus ni moins qu'avant.",
+    ],
+  },
+  {
     version: '3.68.1',
     title: 'La cueillette se fait entendre',
     items: [
