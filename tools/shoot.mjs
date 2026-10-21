@@ -2,7 +2,12 @@
 // Screenshot + measurement harness for the gauntlet loop.
 //
 //   node tools/shoot.mjs <url> <label> [--presets mobile,desktop] [--settle 6000]
-//                        [--save partie.json]
+//                        [--save partie.json] [--console off]
+//
+// La console compte : erreurs ET avertissements sont relevés, et le script
+// échoue sur tout message hors de la liste blanche (`CONSOLE_ALLOW`,
+// tools/headless.mjs). `--console off` pour la barre (Townscaper), dont la
+// console n'est pas la nôtre.
 //
 // `--save` sème une sauvegarde (JSON d'une `tribu.save.v1`) avant le
 // chargement : c'est ainsi qu'on mesure une île avancée, parcelles comprises.
@@ -17,9 +22,9 @@
 // SwiftShader (software GL). The `fps` field is a RELATIVE signal between runs
 // on this machine, never a claim about a real phone's GPU.
 
-import { chromium } from 'playwright'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { blockAudience, launch, watchConsole } from './headless.mjs'
 
 const PRESETS = {
   mobile: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
@@ -56,13 +61,11 @@ const dprOverride = arg('dpr', null)
 const throttleNet = arg('net', '4g') !== 'off'
 const savePath = arg('save', null)
 const seeded = savePath ? JSON.parse(await readFile(savePath, 'utf8')) : null
+const judgeConsole = arg('console', 'on') !== 'off'
 
 await mkdir(outDir, { recursive: true })
-const browser = await chromium.launch({
-  // Navigateur déjà installé ailleurs (version de Playwright différente).
-  executablePath: process.env.PW_CHROME || undefined,
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-})
+const browser = await launch()
+let unexpected = 0
 
 const report = { url, label, capturedAt: new Date().toISOString(), runs: [] }
 
@@ -78,8 +81,7 @@ for (const name of presets) {
     hasTouch: viewport.hasTouch,
     locale: 'fr-FR',
   })
-  // Script vide plutôt qu'une requête avortée : pas d'erreur console parasite.
-  await context.route(/umami/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }))
+  await blockAudience(context)
   if (seeded)
     await context.addInitScript((save) => {
       // Date du jour : une date figée créditerait huit heures d'absence.
@@ -93,11 +95,7 @@ for (const name of presets) {
   if (throttleNet) await cdp.send('Network.emulateNetworkConditions', NET_4G)
   if (cpuRate > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuRate })
 
-  const errors = []
-  page.on('pageerror', (e) => errors.push(String(e)))
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text())
-  })
+  const consoleWatch = watchConsole(page)
 
   const t0 = Date.now()
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
@@ -147,6 +145,10 @@ for (const name of presets) {
   // A busy WebGL page can stall the default screenshot wait forever.
   await page.screenshot({ path: file, timeout: 60000, caret: 'initial' })
 
+  const { seen, unexpected: odd } = consoleWatch.report()
+  const errors = seen.filter((m) => m.type !== 'warning').map((m) => m.text)
+  const warnings = seen.filter((m) => m.type === 'warning').map((m) => m.text)
+  if (judgeConsole) unexpected += odd.length
   report.runs.push({
     preset: name,
     viewport,
@@ -157,11 +159,15 @@ for (const name of presets) {
     rendererInfo: info,
     transferredBytes: transferred,
     errors,
+    warnings,
+    consoleUnexpected: odd.map((m) => `${m.type}: ${m.text}`),
   })
   console.log(
     `${label}/${name}: ${file}  dom=${domReady}ms firstDraw=${firstDraw}ms fps~${fps} ` +
-      `calls=${info?.calls ?? '—'} tris=${info?.triangles ?? '—'} bytes=${transferred}`,
+      `calls=${info?.calls ?? '—'} tris=${info?.triangles ?? '—'} bytes=${transferred}` +
+      ` console=${seen.length} (hors liste ${odd.length})`,
   )
+  if (judgeConsole) for (const m of odd) console.log(`  ✖ ${m.type} : ${m.text}`)
 
   await context.close()
 }
@@ -169,3 +175,7 @@ for (const name of presets) {
 await browser.close()
 await writeFile(join(outDir, `${label}.json`), JSON.stringify(report, null, 2))
 console.log(`report → ${join(outDir, `${label}.json`)}`)
+if (unexpected) {
+  console.error(`${unexpected} message(s) console hors liste blanche (tools/headless.mjs, CONSOLE_ALLOW).`)
+  process.exit(1)
+}

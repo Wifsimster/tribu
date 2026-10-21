@@ -42,3 +42,15 @@ jobs:
 
       - name: Type check and build
         run: pnpm build
+
+      # Le build servi par `vite preview`, dans un Chromium logiciel
+      # (SwiftShader) : console sans avertissement hors liste blanche, et
+      # plafond d'appels de dessin à l'âge 10 (environ 25 s et 30 s en local).
+      - name: Install Chromium headless shell
+        run: pnpm exec playwright install --with-deps --only-shell chromium
+
+      - name: Console check
+        run: pnpm check:console
+
+      - name: Draw-call budget
+        run: pnpm perf:budget

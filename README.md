@@ -109,13 +109,11 @@ flowchart TD
 - **Instanciation systématique.** Arbres (tronc et houppier dans la même
   instance), rochers, buissons : trois `InstancedMesh` pour toute la carte,
   parcelles comprises. Le terrain est une seule géométrie fusionnée qui ne garde
-  que les faces visibles. Le budget est un plafond dur (≤ 60 draw calls,
-  ≤ 120 000 triangles), vérifié à chaque round par `tools/shoot.mjs`. Mesuré en
-  3.50.0 : partie neuve 53 calls / 50 k triangles ; Ère des limites avec
-  21 parcelles 78 calls / 95 k, inchangé en 3.51.0 (la surbrillance des
-  emplacements n'ajoute 2 calls que pendant le choix). Les calls ne tiennent le plafond qu'en début de
-  partie : le colon articulé (une pièce et son contour par membre) et les
-  mécanismes animés du village (train, moulin, voiture…) restent un mesh chacun.
+  que les faces visibles. Le plafond n'est plus de 60 draw calls : il ne
+  tenait qu'en début de partie. Le colon articulé (une pièce et son contour par
+  membre) et les mécanismes animés du village (train, moulin, voiture…)
+  restent un mesh chacun. Le plafond vérifié est celui de l'âge 10, voir
+  [Budget de rendu](#budget-de-rendu).
 - **DPR bridé sur mobile.** `Math.min(devicePixelRatio, 1.75)` sur pointeur
   grossier : c'est la différence entre 60 fps et 25 fps sur un Android milieu de gamme.
 - **Contrôles maison plutôt qu'`OrbitControls`.** Un doigt oriente, deux doigts
@@ -128,8 +126,48 @@ flowchart TD
 corepack pnpm install
 corepack pnpm dev        # http://localhost:5173
 corepack pnpm build      # typecheck strict + bundle
-corepack pnpm test       # tests de simulation (Node 24, sans DOM ni dépendance)
+corepack pnpm test       # tests de simulation (Node 24, sans DOM ni navigateur)
+corepack pnpm check:console   # console sans avertissement (build requis, Chromium)
+corepack pnpm perf:budget     # plafond d'appels de dessin à l'âge 10 (idem)
 ```
+
+Les deux derniers ouvrent le build (`dist/`) dans Chromium headless, servi par
+`vite preview` ; la CI les lance après le build. Une première fois :
+`corepack pnpm exec playwright install --only-shell chromium`, ou
+`PW_CHROME=/chemin/vers/chrome-headless-shell` pour un Chromium déjà installé.
+
+Trois tests gardent ce qu'aucun autre ne voyait :
+- `tests/save-reload.test.mjs` : 18 sauvegardes (graines 7, 1337042 et 3333 ;
+  âges 4, 7 et 10 ; sans parcelle et avec 9 à 12) produites par une partie
+  jouée âge par âge (`tests/save-play.mjs`), puis rechargées trois fois. Rien
+  ne bouge (plan et quai au millième, Merveille), rien ne disparaît
+  (bâtiments, ressources, savoirs, terres, reliques, outils).
+- `tests/rig-parity.test.mjs` : le shader du squelette de la faune
+  (`RIG_PARS`) et sa copie TS (`rigPose`) posent chaque sommet des cinq bêtes
+  au même millième, sur 24 poses. Le GLSL est traduit en JS par
+  `tests/glsl-subset.mjs`, qui refuse toute construction qu'il ne connaît pas.
+- `tools/console-check.mjs` : aucune erreur ni aucun avertissement console
+  hors de la liste blanche `CONSOLE_ALLOW` (`tools/headless.mjs`), partie
+  neuve et âge 10. `shoot.mjs` et `screenshot-readme.mjs` appliquent la même
+  liste et échouent de même.
+
+### Budget de rendu
+
+`pnpm perf:budget` charge l'île figée de l'âge 10 (`tools/saves/age10.json`,
+graine 1337042, 31 bâtiments, 12 parcelles, produite par
+`tests/save-play.mjs 1337042 10 12`). Le cadrage est celui par défaut, à midi
+(`?h=0.25`). Il relève le maximum sur 20 images, en bureau (640×400, même
+rapport que 1440×900) et en téléphone (390×844). Il échoue au-delà des
+plafonds de `tools/perf-budget.json`.
+
+| Vue | Mesure (v3.67.0, 2026-10-21) | Plafond |
+|---|---|---|
+| Bureau | 77 à 82 appels, 126 700 triangles | 90 appels, 140 000 triangles |
+| Téléphone | 80 à 81 appels, 126 500 triangles | 90 appels, 140 000 triangles |
+
+Le plafond vaut la mesure plus 10 % environ. Une PR qui dépasse la mesure de
+plus de 5 % donne le chiffre et la raison dans sa description. Relever un
+plafond se décide dans la PR, mesure à l'appui.
 
 ### Captures et mesures
 
@@ -138,7 +176,7 @@ que la référence et relève les métriques objectives.
 
 ```bash
 node tools/shoot.mjs https://tribu.battistella.ovh/ tribu-r2 --settle 8000
-node tools/shoot.mjs https://oskarstalberg.com/Townscaper/ bar --net off --cpu 1 --settle 90000
+node tools/shoot.mjs https://oskarstalberg.com/Townscaper/ bar --net off --cpu 1 --settle 90000 --console off
 node tools/shoot.mjs 'http://127.0.0.1:4173/?nomenu=1' age10 --save partie.json  # île semée
 ```
 
@@ -146,7 +184,9 @@ Par défaut, notre build est mesuré **bridé** (4G simulée, CPU ×4). Le champ
 `fpsSoftwareGL` est un signal relatif entre deux runs sur la même machine, jamais
 une affirmation sur le GPU d'un vrai téléphone : le headless rend via SwiftShader.
 Les chiffres qui font foi sont `firstDrawMs`, `calls`, `triangles` et
-`transferredBytes`.
+`transferredBytes`. La console compte aussi : `shoot.mjs` relève erreurs et
+avertissements, et échoue sur tout message hors liste blanche (`--console off`
+pour la barre, dont la console n'est pas la nôtre).
 
 Les images de ce README sont produites par `tools/screenshot-readme.mjs`. Un
 chargement neuf ne montrerait qu'une île vide au Paléolithique : le script sème
@@ -155,7 +195,7 @@ chargement — jamais après, le `pagehide` → `game.flush()` écraserait l'inj
 et laisse le jeu construire son monde à partir de cet état.
 
 ```bash
-NODE_PATH=/tmp/node_modules node tools/screenshot-readme.mjs
+node tools/screenshot-readme.mjs
 ffmpeg -y -i docs/screenshot.png -vf "scale=1600:-1:flags=lanczos" docs/screenshot.png
 ```
 
@@ -205,7 +245,7 @@ complaisante — pas l'a priori.
 |---|---|
 | Habitat (matière, chaleur, présence) | **Gagné**, nettement et de façon répétée |
 | Écran de téléphone (composition, encre) | **Gagné**, 12 fois sur 12 |
-| Performance (plafonds durs) | **Tenue** : < 3 s de premier dessin bridé, ≤ 60 draw calls, 0 erreur JS |
+| Performance (plafonds durs) | **Tenue** : < 3 s de premier dessin bridé, ≤ 60 draw calls en début de partie (plafond d'alors ; aujourd'hui : [Budget de rendu](#budget-de-rendu)), 0 erreur JS |
 | Contact avec l'eau | **Perdu** 12 fois, unanime |
 
 Sur l'eau, tout a été tenté : halo, contact sombre, ride fine, parité de
