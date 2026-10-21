@@ -31,7 +31,8 @@ import {
 import type { DataTexture } from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, rampTexture, smoothstep, tint } from './palette'
-import { GROUND_Y, type Island } from './island'
+import { GROUND_Y, GROWN_GROWTH, Island, RAIL_AGE } from './island'
+import { beltFor, beltPath, beltRadius, cleanBelt, growBelt, insideBelt, nearestOnLoop } from './belt'
 import { TOOLS, WONDER_BY_AGE } from '../game/content'
 import { halfSpanOf, heightOf } from './model-geo'
 import { loadModels, modelGeometry, modelGeometryReady } from './models'
@@ -40,15 +41,17 @@ import type { Footprint, GroundSource } from './ground'
 import {
   CAR_LENGTH,
   CAR_MODEL,
+  TRAIN_AGE,
+  TRAIN_SCALE,
   consistFor,
-  consistLength,
   layConsist,
-  nearestAbscissa,
+  pointAt,
   rankCargo,
-  smoothPath,
+  wrapS,
   type CarKind,
   type CarPose,
   type Cargo,
+  type Track,
 } from './consist'
 
 /** Le foyer est posé à côté du point de dépôt, pas dessus, et perpendiculairement
@@ -1469,6 +1472,19 @@ function flatQuad(ax: number, az: number, bx: number, bz: number, h: number): nu
   return [ax + nx, 0, az + nz, ax - nx, 0, az - nz, bx - nx, 0, bz - nz, ax + nx, 0, az + nz, bx - nx, 0, bz - nz, bx + nx, 0, bz + nz]
 }
 
+/** Ce que la sauvegarde garde du plan, en plus des bâtiments : la ceinture,
+ *  les rues, la Merveille et le musée. Tout est optionnel et relu
+ *  défensivement : une sauvegarde d'avant la ceinture n'en a rien. */
+export interface VillagePlan {
+  belt?: readonly number[] | null
+  streets?: readonly (readonly { x: number; z: number }[])[] | null
+  wonderAt?: { x: number; z: number } | null
+  museumAt?: { x: number; z: number } | null
+  /** Le village d'une île d'avant la ceinture, construit pour relire ses
+   *  rues (migration) : ni ceinture, ni voie. */
+  legacy?: boolean
+}
+
 export class Village implements GroundSource {
   readonly group = new Group()
   private readonly solid = new MeshToonMaterial({ vertexColors: true })
@@ -1509,11 +1525,35 @@ export class Village implements GroundSource {
   // Champs déclarés à la main plutôt qu'en propriétés de paramètre, comme
   // l'île : Node retire les types sans transpiler, et le test du plan du
   // village construit le bourg hors navigateur.
-  constructor(island: Island, age = 0, electric = false, yule = false) {
+  private readonly plan: VillagePlan
+
+  constructor(island: Island, age = 0, electric = false, yule = false, plan: VillagePlan = {}) {
     this.island = island
     this.age = age
     this.electric = electric
     this.yule = yule
+    this.plan = plan
+    if (!plan.legacy) {
+      // La ceinture de CETTE île, jamais en deçà de celle de la sauvegarde :
+      // elle ne fait que s'éloigner du centre, terre après terre.
+      const prior = cleanBelt(plan.belt)
+      this.beltRadii = growBelt(prior, beltFor((x, z) => island.isLand(x, z), age >= RAIL_AGE))
+      this.beltGrew = prior !== null && this.beltRadii.some((r, j) => r !== prior[j])
+      const t = beltPath(this.beltRadii)
+      this.beltTrack = { pts: t.pts, cum: t.cum, closed: true }
+      this.beltLength = t.cum[t.cum.length - 1]!
+      // Avant l'âge 7, le bâti réserve déjà la place de la VOIE : la ceinture
+      // de l'île agrandie (même graine, mêmes terres), tracée sur son seul
+      // relevé de cellules. Le sentier, lui, suit la côte d'aujourd'hui ; on ne
+      // bâtit pas dessus, mais on peut bâtir au-delà — la mer reculera.
+      if (age >= RAIL_AGE) this.railRadii = this.beltRadii
+      else {
+        const future = new Island(island.seedValue, RAIL_AGE, island.land, GROWN_GROWTH, true)
+        this.railRadii = growBelt(this.beltRadii, beltFor((x, z) => future.isLand(x, z), true))
+        const f = beltPath(this.railRadii)
+        this.railPts = f.pts
+      }
+    }
     this.buildCampfire()
     this.buildShore()
     // Les reflets miroir des loges ont vécu ici jusqu'au round 8 : une image
@@ -1861,7 +1901,20 @@ export class Village implements GroundSource {
       pts.unshift({ x: HEARTH.x, z: HEARTH.z })
       if (li === 0 && head) {
         const last = pts[pts.length - 1]!
-        if (Math.hypot(head.x - last.x, head.z - last.z) < 14) pts.push({ x: head.x, z: head.z })
+        // Jusqu'au ponton. Depuis l'âge 7, la mer a reculé : la rue tracée sur
+        // l'île d'avant (gardée dans la sauvegarde) s'arrête loin de la
+        // nouvelle plage, et la route la prolonge pas à pas.
+        const ext =
+          Math.hypot(head.x - last.x, head.z - last.z) < 14 ? [] : this.reachJetty(last, head)
+        pts.push(...ext, { x: head.x, z: head.z })
+        this.roadExt = []
+        const tail = [last, ...ext, head]
+        for (let k = 1; k < tail.length; k++) {
+          const a = tail[k - 1]!
+          const b = tail[k]!
+          const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.5))
+          for (let j = 1; j <= n; j++) this.roadExt.push({ x: a.x + ((b.x - a.x) * j) / n, z: a.z + ((b.z - a.z) * j) / n })
+        }
       }
       // La rue passe : la pinède cède. Sans cela la chaussée existait bel et
       // bien mais disparaissait sous la canopée sur les deux tiers de son
@@ -1879,7 +1932,11 @@ export class Village implements GroundSource {
       this.island.clearCorridor(pts, li === 0 ? 4.4 : 4.0)
       this.track(p, pts, this.roadKnown && li === 0)
     }
-    if (this.railKnown) this.railway(p)
+    if (this.beltRadii.length > 0) {
+      this.crossRoad()
+      this.reserveStation()
+      this.beltway(p)
+    } else if (this.plan.legacy && this.railKnown) this.legacyRailway()
     // Le PREMIER PLAN : la caméra par défaut regarde depuis l'azimut 0,785, et
     // la pinède de ce côté-là passait devant le bourg. On l'éclaircit de moitié
     // sur un secteur large — pas de coupe franche, la lisière reste.
@@ -1999,43 +2056,98 @@ export class Village implements GroundSource {
     }
   }
 
-  /** La VOIE FERRÉE : ballast, traverses et deux rails, posés sur la plus
-   *  longue des rues latérales et prolongés d'un bout à l'autre de l'île. Le
-   *  rail ne double pas la chaussée — il prend son propre chemin, comme dans
-   *  toute ville qui a connu les deux. */
+  // ── La ceinture : sentier, chemin, puis voie ferrée en boucle ─────────────
+  // Le tracé est celui de belt.ts : le rivage lissé, à une case de l'eau. Il
+  // existe dès le Paléolithique — un sentier côtier, puis un chemin de terre
+  // quand la tribu trace des routes, et la voie ferrée à l'âge 7. Aucun
+  // bâtiment ne se pose dessus (`fits`), si bien que l'arrivée du train ne
+  // déplace rien dans une partie commencée avec la ceinture.
+
+  /** La ceinture posée (sentier, chemin ou voie), fondue dans le mesh du
+   *  rivage : zéro appel de dessin de plus. */
+  private beltway(p: BufferGeometry[]): void {
+    if (this.beltTrack.pts.length < 8) return
+    if (this.railKnown) return this.railway(p)
+    // Avant le train : un sentier, puis un chemin. Le tracé est le même, il
+    // prend de l'importance d'âge en âge.
+    const coarse = beltPath(this.beltRadii, 0.8)
+    const path = this.roadKnown || this.age >= 4
+    const pts = coarse.pts
+    // Un bâtiment peut se trouver sur le sentier (sauvegarde d'avant la
+    // ceinture, ou gros ouvrage de l'île de base qui n'avait pas d'autre
+    // place) : le sentier le CONTOURNE, poussé au bord de son disque. S'il
+    // tomberait alors dans l'eau, il s'interrompt — il passe derrière.
+    const around = (q: { x: number; z: number }): { x: number; z: number } | null => {
+      let x = q.x
+      let z = q.z
+      for (let pass = 0; pass < 3; pass++)
+        for (const l of this.lots) {
+          const need = l.r + 0.45
+          const d = Math.hypot(x - l.x, z - l.z)
+          if (d >= need) continue
+          const k = need / Math.max(d, 1e-3)
+          x = l.x + (x - l.x) * k
+          z = l.z + (z - l.z) * k
+        }
+      if (this.lots.some((l) => Math.hypot(x - l.x, z - l.z) < l.r + 0.3)) return null
+      return this.island.isLand(x, z) ? { x, z } : null
+    }
+    const run: { x: number; z: number }[][] = [[]]
+    for (const q of pts) {
+      const at = around(q)
+      if (!at) {
+        if (run[run.length - 1]!.length > 0) run.push([])
+        continue
+      }
+      run[run.length - 1]!.push(at)
+    }
+    for (const r of run) {
+      if (r.length < 2) continue
+      if (path) this.track(p, r, false)
+      else this.footpath(p, r)
+    }
+    this.island.clearCorridor(pts, path ? 1.9 : 1.5)
+  }
+
+  /** Le sentier côtier des premiers âges : une trace claire et étroite, des
+   *  pierres affleurantes. Ce n'est pas encore une route. */
+  private footpath(p: BufferGeometry[], pts: { x: number; z: number }[]): void {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!
+      const b = pts[i + 1]!
+      const seg = Math.hypot(b.x - a.x, b.z - a.z)
+      if (seg < 0.05) continue
+      const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+      const mx = (a.x + b.x) / 2
+      const mz = (a.z + b.z) / 2
+      // Usé en son milieu : la trace s'élargit un peu là où l'on passe.
+      p.push(part(new BoxGeometry(0.55, 0.05, seg * 1.04).rotateY(yaw), tint(C.soil, i * 5, 0.06), mx, GROUND_Y + 0.025, mz))
+      if (i % 3 === 0) {
+        const k = i * 7 + 3
+        const v = Math.sin(k * 91.7) * 43758.5453
+        const j = v - Math.floor(v)
+        p.push(
+          part(
+            new DodecahedronGeometry(0.07 + j * 0.04, 0).scale(1, 0.45, 1),
+            tint(C.stone, k, 0.08),
+            mx + Math.cos(yaw) * (j - 0.5) * 0.7,
+            GROUND_Y + 0.05,
+            mz - Math.sin(yaw) * (j - 0.5) * 0.7,
+          ),
+        )
+      }
+    }
+  }
+
+  /** LA VOIE FERRÉE en boucle : ballast, traverses et deux rails sur toute la
+   *  ceinture, le passage à niveau sur la route du ponton, la gare. L'écartement
+   *  suit l'échelle de la rame (TRAIN_SCALE) : ses roues tombent sur les rails. */
   private railway(p: BufferGeometry[]): void {
-    // La voie ne suit AUCUNE rue : elle prend sa propre corde, perpendiculaire
-    // à l'axe de la caméra, donc traversant le cadre de gauche à droite. Posée
-    // sur une rue latérale, elle filait vers l'arrière de l'île et ne se
-    // voyait pas — un train qu'on ne voit pas passer ne sert à rien.
-    const cross = 0.785 + Math.PI / 2
-    const west = this.traceLane(cross, 34, true)
-    const east = this.traceLane(cross + Math.PI, 34, true)
-    const pts = [
-      ...east.slice().reverse(),
-      { x: HEARTH.x, z: HEARTH.z },
-      ...west,
-    ].map((v) => ({ x: v.x, z: v.z }))
-    if (pts.length < 6) return
-    this.island.clearCorridor(pts, 2.4)
-    this.railPath = pts
-    this.railCum = [0]
-    for (let i = 1; i < pts.length; i++)
-      this.railCum.push(
-        this.railCum[i - 1]! + Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.z - pts[i - 1]!.z),
-      )
-    // Les RAILS suivent un tracé adouci : le plan de la voie tourne de 30° d'un
-    // pas à l'autre, et un wagon rigide posé à cheval sur un tel angle a les
-    // roues à côté du rail (voir smoothPath). Gare, parcelles et couloir
-    // restent calés sur le plan (`railPath`) : rien ne bouge au sol.
-    const track = smoothPath(pts)
-    this.trackPath = track
-    this.trackCum = [0]
-    for (let i = 1; i < track.length; i++)
-      this.trackCum.push(
-        this.trackCum[i - 1]! + Math.hypot(track[i]!.x - track[i - 1]!.x, track[i]!.z - track[i - 1]!.z),
-      )
+    const track = this.beltTrack.pts
+    const k = TRAIN_SCALE
+    const gauge = 0.3 * k
     const ballast = tint(C.stoneDark, 5, 0.05)
+    const steel = new Color('#8b8f96')
     for (let i = 0; i < track.length - 1; i++) {
       const a = track[i]!
       const b = track[i + 1]!
@@ -2047,48 +2159,38 @@ export class Village implements GroundSource {
       const cy = Math.cos(yaw)
       const sy = Math.sin(yaw)
       const y = GROUND_Y + 0.05
-      p.push(part(new BoxGeometry(1.15, 0.09, seg).rotateY(yaw), ballast, mx, y, mz))
-      // Une traverse par pas de 0,4 u (il y en avait trois par pas de 1,6) :
-      // c'est ce qui fait lire « voie ».
-      p.push(
-        part(
-          new BoxGeometry(0.92, 0.07, 0.16).rotateY(yaw),
-          tint(C.woodDark, i * 7, 0.08),
-          mx,
-          y + 0.07,
-          mz,
-        ),
-      )
+      p.push(part(new BoxGeometry(Village.BALLAST, 0.09, seg * 1.02).rotateY(yaw), ballast, mx, y, mz))
+      // Une traverse par pas de 0,4 u : c'est ce qui fait lire « voie ».
+      p.push(part(new BoxGeometry(1.1, 0.07, 0.16).rotateY(yaw), tint(C.woodDark, i * 7, 0.08), mx, y + 0.07, mz))
       for (const side of [-1, 1])
         p.push(
           part(
-            new BoxGeometry(0.08, 0.07, seg).rotateY(yaw),
-            new Color('#8b8f96'),
-            mx + cy * side * 0.3,
+            new BoxGeometry(0.08, 0.07, seg * 1.02).rotateY(yaw),
+            steel,
+            mx + cy * side * gauge,
             y + 0.13,
-            mz - sy * side * 0.3,
+            mz - sy * side * gauge,
           ),
         )
     }
-    for (const end of [pts[0]!, pts[pts.length - 1]!]) {
-      const y = GROUND_Y + 0.12
-      p.push(part(new BoxGeometry(1.2, 0.36, 0.34), tint(C.woodDark, 3, 0.06), end.x, y + 0.18, end.z))
-      p.push(part(new BoxGeometry(1.26, 0.12, 0.4), new Color('#a8302a'), end.x, y + 0.42, end.z))
-    }
+    this.island.clearCorridor([...track], 2.2)
+    this.levelCrossing(p)
     this.station(p)
     this.buildTrain()
   }
 
-  /** LA GARE. Une voie sans gare n'est qu'un décor : le train doit s'arrêter
-   *  quelque part, et ce quelque part doit être le village. On la pose au
-   *  point de la voie le plus proche du foyer, du côté du bourg. */
-  private station(p: BufferGeometry[]): void {
-    const pts = this.railPath
-    if (pts.length < 4) return
-    // Une gare déjà réservée (refonte du rivage) garde sa place ; sinon on
-    // prend le point de voie le plus proche du foyer dont le quai ne touche
-    // aucun bâtiment — la voie est tracée après le bourg, elle ne peut pas
-    // toujours s'arrêter pile au centre.
+  /** La voie de la 3.61, pour le seul village de passage de la migration
+   *  (`plan.ts`) : une corde à travers l'île par le foyer, et la gare au
+   *  point libre le plus proche du feu. Rien n'est dessiné : ce tracé ne sert
+   *  qu'à retrouver où la 3.61 posait la Merveille et le musée, qu'elle ne
+   *  gardait pas dans la sauvegarde. */
+  private legacyRailway(): void {
+    const cross = 0.785 + Math.PI / 2
+    const west = this.traceLane(cross, 34, true)
+    const east = this.traceLane(cross + Math.PI, 34, true)
+    const pts = [...east.slice().reverse(), { x: HEARTH.x, z: HEARTH.z }, ...west].map((v) => ({ x: v.x, z: v.z }))
+    if (pts.length < 6) return
+    this.legacyRail = pts
     const prior = this.stationAt
     if (prior) {
       const k = this.lots.findIndex((l) => l.x === prior.x && l.z === prior.z)
@@ -2098,58 +2200,226 @@ export class Village implements GroundSource {
     let bestD = Infinity
     for (let i = 1; i < pts.length - 1; i++) {
       const d = Math.hypot(pts[i]!.x - HEARTH.x, pts[i]!.z - HEARTH.z)
-      const free = this.clearOfLots(pts[i]!.x, pts[i]!.z, Village.STATION_R)
-      const score = free ? d : d + 1000
+      const score = this.clearOfLots(pts[i]!.x, pts[i]!.z, Village.STATION_R) ? d : d + 1000
       if (score < bestD) {
         bestD = score
         best = i
       }
     }
-    // L'arrêt se compte sur le tracé adouci, celui où roule la rame.
-    this.railStop = nearestAbscissa({ pts: this.trackPath, cum: this.trackCum }, pts[best]!)
     this.stationAt = { x: pts[best]!.x, z: pts[best]!.z }
-    // La gare n'est pas un bâtiment du plan : sans réservation, un atelier
-    // pouvait se poser sur son quai. Même traitement que le phare.
     this.lots.push({ x: pts[best]!.x, z: pts[best]!.z, r: Village.STATION_R })
-    const a = pts[best - 1]!
-    const b = pts[best + 1]!
-    const yaw = Math.atan2(b.x - a.x, b.z - a.z)
+  }
+  private legacyRail: { x: number; z: number }[] = []
+
+  /** Où la route du ponton franchit la ceinture : l'UNIQUE traversée. Les rues
+   *  latérales s'arrêtent avant la voie (`clipLane`), la route du ponton la
+   *  coupe pour descendre à la plage. */
+  private crossRoad(): void {
+    this.crossing = null
+    this.crossings = 0
+    this.zoneKey = ''
+    const road = this.roadPath
+    if (road.length < 2 || this.beltRadii.length === 0) return
+    const inside = (q: { x: number; z: number }): boolean => insideBelt(this.beltRadii, q.x, q.z)
+    for (const lane of [road, ...this.sideLanes()]) {
+      for (let i = 1; i < lane.length; i++) {
+        const a = lane[i - 1]!
+        const b = lane[i]!
+        if (inside(a) === inside(b)) continue
+        this.crossings++
+        if (lane !== road || this.crossing) continue
+        // Dichotomie sur le segment : le point exact où la route coupe l'axe.
+        let lo = 0
+        let hi = 1
+        for (let it = 0; it < 30; it++) {
+          const m = (lo + hi) / 2
+          const q = { x: a.x + (b.x - a.x) * m, z: a.z + (b.z - a.z) * m }
+          if (inside(q) === inside(a)) lo = m
+          else hi = m
+        }
+        const u = (lo + hi) / 2
+        const x = a.x + (b.x - a.x) * u
+        const z = a.z + (b.z - a.z) * u
+        const seg = Math.hypot(b.x - a.x, b.z - a.z)
+        this.crossing = {
+          x,
+          z,
+          sTrack: nearestOnLoop(this.beltTrack, { x, z }).s,
+          sRoad: this.roadCum[i - 1]! + seg * u,
+          yaw: Math.atan2(b.x - a.x, b.z - a.z),
+        }
+      }
+    }
+  }
+
+  /** Les rues latérales telles que dessinées (rattachées au foyer). */
+  private sideLanes(): { x: number; z: number }[][] {
+    return (this.lanes ?? []).slice(1).map((l) => [{ x: HEARTH.x, z: HEARTH.z }, ...l.pts.map((v) => ({ x: v.x, z: v.z }))])
+  }
+
+  /** Le passage à niveau : un platelage entre les rails, une barrière et une
+   *  croix de Saint-André de chaque côté. Pas de pont : l'île n'a qu'un
+   *  niveau, et des rampes de 10 u ne tiennent pas dans la bande côtière. */
+  private levelCrossing(p: BufferGeometry[]): void {
+    const c = this.crossing
+    if (!c) return
+    const t = this.trackDir(c.sTrack)
+    const ty = Math.atan2(t.x, t.z)
+    // Le platelage, à fleur du rail, sur la largeur de la chaussée.
+    p.push(part(new BoxGeometry(Village.BALLAST + 0.1, 0.08, 2.1).rotateY(ty + Math.PI / 2), tint(C.wood, 4, 0.06), c.x, RAIL_TOP - 0.04, c.z))
+    const ry = c.yaw
+    const rx = Math.sin(ry)
+    const rz = Math.cos(ry)
+    const red = new Color('#a8302a')
+    for (const s of [-1, 1]) {
+      // De chaque côté de la voie, sur l'accotement droit de la route : à
+      // 1,65 u de l'axe, la Ford T à sa taille (1,09 u de demi-largeur) passe
+      // entre les deux. À 1,15 u, les poteaux et la croix fermaient la route.
+      const bx = c.x - rx * s * 1.6 + rz * s * 1.65
+      const bz = c.z - rz * s * 1.6 - rx * s * 1.65
+      p.push(part(new CylinderGeometry(0.06, 0.07, 0.7, 6), C.stoneDark, bx, GROUND_Y + 0.35, bz))
+      // La lisse levée (la rame ne s'arrête jamais : c'est l'auto qui attend).
+      p.push(part(new BoxGeometry(0.07, 1.3, 0.07), C.plaster, bx, GROUND_Y + 1.25, bz))
+      for (const h of [0.85, 1.25, 1.65]) p.push(part(new BoxGeometry(0.08, 0.14, 0.08), red, bx, GROUND_Y + h, bz))
+      // La croix de Saint-André, un pas plus loin, face à la route.
+      const ax = bx - rx * s * 0.5
+      const az = bz - rz * s * 0.5
+      p.push(part(new CylinderGeometry(0.035, 0.035, 1.1, 5), C.stoneDark, ax, GROUND_Y + 0.55, az))
+      for (const tilt of [0.75, -0.75])
+        p.push(
+          part(new BoxGeometry(0.55, 0.07, 0.02).rotateZ(tilt).rotateY(ry), C.plaster, ax, GROUND_Y + 1.05, az),
+        )
+    }
+  }
+
+  /** La tangente unitaire de la voie à l'abscisse `s`, dans le sens de marche. */
+  private trackDir(s: number): { x: number; z: number } {
+    const t = this.beltTrack
+    const a = pointAt(t, s - 0.2)
+    const b = pointAt(t, s + 0.2)
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1
+    return { x: (b.x - a.x) / l, z: (b.z - a.z) / l }
+  }
+
+  /** LA GARE. Sur la boucle, près du passage à niveau, quai côté intérieur :
+   *  c'est la porte du bourg, face au village. Elle se pose au premier
+   *  emplacement libre en s'écartant du passage à niveau (6 u, puis de plus en
+   *  plus loin, d'un côté puis de l'autre) : ce qui est déjà bâti ne bouge
+   *  pas pour elle. Le choix ne dépend que de la ceinture, de la route et du
+   *  plan adopté : une partie rechargée la retrouve au même endroit. */
+  private station(p: BufferGeometry[]): void {
+    const at = this.stationSpot()
+    if (!at) return
+    const c = pointAt(this.beltTrack, at.s)
+    const t = this.trackDir(at.s)
+    const yaw = Math.atan2(t.x, t.z)
     const cy = Math.cos(yaw)
     const sy = Math.sin(yaw)
-    const c = pts[best]!
     const y = GROUND_Y
-    // Le quai est du côté du foyer : on descend du train face au village.
-    const side = (HEARTH.x - c.x) * cy - (HEARTH.z - c.z) * sy > 0 ? 1 : -1
+    const side = at.side
     const from = p.length
-    const at = (u: number, h: number, v: number): [number, number, number] => [
-      c.x + cy * u * side + sy * v,
-      y + h,
-      c.z - sy * u * side + cy * v,
-    ]
     const put = (geo: BufferGeometry, col: Color, u: number, h: number, v: number): void => {
-      const [x, yy, z] = at(u, h, v)
-      p.push(part(geo.rotateY(yaw), col, x, yy, z))
+      p.push(part(geo.rotateY(yaw), col, c.x + cy * u * side + sy * v, y + h, c.z - sy * u * side + cy * v))
     }
-    // Quai surélevé et sa bordure claire.
-    put(new BoxGeometry(1.5, 0.26, 4.2), tint(C.stoneDark, 3, 0.05), 1.5, 0.13, 0)
-    put(new BoxGeometry(0.16, 0.3, 4.2), C.stoneLight, 0.82, 0.15, 0)
+    // Quai surélevé et sa bordure claire : le bord du quai à 0,15 u au moins
+    // du flanc de la rame (0,59 u de demi-largeur à l'échelle 1,4).
+    const u0 = Village.QUAY_EDGE
+    put(new BoxGeometry(1.5, 0.26, 5.2), tint(C.stoneDark, 3, 0.05), u0 + 0.75, 0.13, 0)
+    put(new BoxGeometry(0.16, 0.3, 5.2), C.stoneLight, u0 + 0.08, 0.15, 0)
     // L'abri : quatre poteaux, un toit à deux pentes, un banc.
-    for (const u of [1.05, 1.95])
-      for (const v of [-0.8, 0.8])
-        put(new CylinderGeometry(0.06, 0.06, 0.9, 6), C.woodDark, u, 0.7, v)
-    put(new BoxGeometry(1.5, 0.1, 2.2), tint(C.tileDark, 5, 0.05), 1.5, 1.2, 0)
-    put(new BoxGeometry(1.62, 0.08, 2.32), C.ridge, 1.5, 1.14, 0)
-    put(new BoxGeometry(0.9, 0.08, 1.3), C.wood, 1.85, 0.42, 0)
-    put(new BoxGeometry(0.12, 0.34, 1.3), C.woodDark, 2.05, 0.6, 0)
+    for (const u of [u0 + 0.3, u0 + 1.2])
+      for (const v of [-0.8, 0.8]) put(new CylinderGeometry(0.06, 0.06, 0.9, 6), C.woodDark, u, 0.7, v)
+    put(new BoxGeometry(1.5, 0.1, 2.2), tint(C.tileDark, 5, 0.05), u0 + 0.75, 1.2, 0)
+    put(new BoxGeometry(1.62, 0.08, 2.32), C.ridge, u0 + 0.75, 1.14, 0)
+    put(new BoxGeometry(0.9, 0.08, 1.3), C.wood, u0 + 1.1, 0.42, 0)
+    put(new BoxGeometry(0.12, 0.34, 1.3), C.woodDark, u0 + 1.3, 0.6, 0)
     // Le panneau du quai, face aux voyageurs.
-    put(new CylinderGeometry(0.04, 0.04, 0.8, 5), C.stoneDark, 1.0, 0.66, 1.7)
-    put(new BoxGeometry(0.06, 0.3, 0.8), C.plaster, 1.0, 1.0, 1.7)
+    put(new CylinderGeometry(0.04, 0.04, 0.8, 5), C.stoneDark, u0 + 0.25, 0.66, 2.1)
+    put(new BoxGeometry(0.06, 0.3, 0.8), C.plaster, u0 + 0.25, 1.0, 2.1)
     // Le cadastre au sol garde la gare telle qu'elle est dessinée.
     this.stationTris = trianglesOf(p.slice(from))
   }
 
+  /** L'emplacement de la gare, réservé dès l'âge 7 (même avant le savoir du
+   *  chemin de fer : un atelier ne prend pas la place du quai). */
+  private stationSpot(): { s: number; side: 1 | -1 } | null {
+    if (this.stationS !== null) return { s: this.stationS, side: this.stationSide }
+    return null
+  }
+
+  private reserveStation(): void {
+    const prior = this.stationAt
+    if (prior) {
+      const k = this.lots.findIndex((l) => l.x === prior.x && l.z === prior.z)
+      if (k >= 0) this.lots.splice(k, 1)
+    }
+    this.stationAt = null
+    this.stationS = null
+    const c = this.crossing
+    if (!c || this.age < RAIL_AGE) return
+    const L = this.beltLength
+    const spot = (off: number): { x: number; z: number; s: number; side: 1 | -1 } | null => {
+      const s = (((c.sTrack + off) % L) + L) % L
+      const q = pointAt(this.beltTrack, s)
+      const t = this.trackDir(s)
+      // Le côté du bourg : vers le centre de l'île.
+      const side: 1 | -1 = -q.x * t.z + q.z * t.x > 0 ? 1 : -1
+      const u = Village.QUAY_EDGE + 0.75
+      const x = q.x + t.z * u * side
+      const z = q.z - t.x * u * side
+      return { x, z, s, side }
+    }
+    const free = (q: { x: number; z: number }): boolean => {
+      if (!this.island.isLand(q.x, q.z) || !this.clearOfLots(q.x, q.z, Village.STATION_R)) return false
+      for (const r of this.roadPath) if (Math.hypot(r.x - q.x, r.z - q.z) < Village.STATION_R + 0.95) return false
+      return true
+    }
+    // À quai, la rame entière doit avoir passé la traversée : sa queue à
+    // STATION_GAP au moins au-delà de la zone de l'auto, pour toutes les
+    // compositions de l'âge 7 à l'âge 10 (la longueur ne dépend que de l'âge :
+    // tous les wagons font 1,34). La rame roule vers les abscisses croissantes,
+    // la gare est donc APRÈS la traversée. Avant (3.68 en cours), la gare à
+    // 4 à 6 u et une rame de 11 à 15 u : la queue restait sur le passage à
+    // niveau, et l'auto attendait pendant tout l'arrêt.
+    const zone = this.crossZone()
+    const clear = (q: { s: number }): boolean => {
+      if (!zone) return true
+      for (let a = TRAIN_AGE; a <= 10; a++) {
+        const cars = consistFor(a, [], L / 3)
+        const poses = layConsist(this.beltTrack, this.stopFor(q.s, cars), 1, cars, TRAIN_SCALE)
+        const past = ((((poses[poses.length - 1]!.sBack - zone.s1) % L) + L) % L)
+        if (past < Village.STATION_GAP || past > L / 2) return false
+      }
+      return true
+    }
+    let best: { x: number; z: number; s: number; side: 1 | -1 } | null = null
+    for (let d = 6; d <= L / 2 && !best; d += 1) {
+      const q = spot(d)
+      if (q && free(q) && clear(q)) best = q
+    }
+    // Pas de place libre après la traversée : la plus proche des deux côtés.
+    for (let d = 6; d <= L / 2 && !best; d += 1)
+      for (const sg of [1, -1]) {
+        const q = spot(sg * d)
+        if (q && free(q)) {
+          best = q
+          break
+        }
+      }
+    // Tout le pourtour est bâti : la gare se pose quand même à 6 u du passage
+    // à niveau. Elle ne déloge personne (le cadastre au sol la contourne).
+    best ??= spot(6)
+    if (!best) return
+    this.stationS = best.s
+    this.stationSide = best.side
+    this.stationAt = { x: best.x, z: best.z }
+    this.railStop = best.s
+    this.lots.push({ x: best.x, z: best.z, r: Village.STATION_R })
+  }
+
   /** LA RAME : la locomotive, la voiture de voyageurs dès l'Ère moderne, et
-   *  un wagon par ressource que la tribu produit le plus (consist.ts).
+   *  un wagon par ressource que la tribu produit le plus (consist.ts), à
+   *  l'échelle TRAIN_SCALE.
    *
    *  UN SEUL mesh pour toute la rame, comme l'ancien train : les véhicules
    *  sont fondus bout à bout et c'est le processeur qui repose leurs sommets
@@ -2162,16 +2432,17 @@ export class Village implements GroundSource {
       this.train.geometry.dispose()
       this.train = null
     }
-    const total = this.trackCum[this.trackCum.length - 1] ?? 0
-    // Une île minuscule n'aurait pas la voie pour la rame entière : on dételle
-    // par la queue plutôt que de la faire dépasser des heurtoirs.
-    this.trainCars = consistFor(this.age, this.cargoRank, total - 2 * Village.TRAIN_MARGIN - 1)
+    if (this.stationS === null) return
+    this.trainCars = consistFor(this.age, this.cargoRank, this.beltLength / 3)
     this.trainBounds()
     this.trainGeometry()
     if (!this.train) return
     this.trainHead = -1
-    this.trainLeg = -1
-    this.poseTrain(this.trainMin)
+    // La rame part de la gare, à quai.
+    this.trainS = this.trainStop
+    this.trainV = 0
+    this.trainWait = 2
+    this.poseTrain(this.trainS)
     // Les dix fichiers d'un coup, et seulement maintenant que la voie existe :
     // une composition qui change en gare trouve son wagon déjà là, il n'y a
     // pas de wagon qui change de tête en pleine voie. Fichier absent : le
@@ -2187,7 +2458,8 @@ export class Village implements GroundSource {
   }
 
   /** Fond les véhicules de la composition courante en une géométrie, et garde
-   *  leurs sommets d'origine (repère du modèle) pour les reposer ensuite. */
+   *  leurs sommets d'origine (repère du modèle, à l'échelle de la rame) pour
+   *  les reposer ensuite. */
   private trainGeometry(): void {
     const parts: BufferGeometry[] = []
     const ranges: { start: number; count: number }[] = []
@@ -2199,6 +2471,9 @@ export class Village implements GroundSource {
         // il garde la bonne longueur, les attelages se touchent toujours.
         (kind !== 'loco' && kind !== 'coach' ? modelGeometry(CAR_MODEL.empty) : null) ??
         primitiveCar(kind)
+      // L'échelle de la rame, depuis le dessous des roues : elles restent sur
+      // le rail.
+      geo.scale(TRAIN_SCALE, TRAIN_SCALE, TRAIN_SCALE)
       // Le même grain que le reste du village : pas d'aplats trop lisses.
       grain(geo, 0.06)
       const count = geo.attributes.position!.count
@@ -2222,33 +2497,27 @@ export class Village implements GroundSource {
     }
   }
 
-  /** Les bornes du trajet de la TÊTE (chasse-pierres de la loco) : la queue ne
-   *  dépasse pas le heurtoir de départ, la tête s'arrête avant celui
-   *  d'arrivée. Et l'arrêt en gare : la voiture de voyageurs (ou, sans elle,
-   *  le milieu de la rame) devant l'abri du quai. */
+  /** L'arrêt en gare : la voiture de voyageurs (ou, sans elle, le milieu de
+   *  la rame) devant l'abri du quai. */
   private trainBounds(): void {
-    const track = { pts: this.trackPath, cum: this.trackCum }
-    const total = this.trackCum[this.trackCum.length - 1] ?? 0
-    const m = Village.TRAIN_MARGIN
-    const cars = this.trainCars
-    // La corde d'un wagon est plus courte que l'arc qu'il couvre : la queue
-    // est un peu plus loin que « tête − longueur ». Quelques passes suffisent.
-    let h = consistLength(cars) + m
-    for (let k = 0; k < 6; k++) {
-      const tail = layConsist(track, h, 1, cars).at(-1)!.sBack
-      h += m - tail
-    }
-    this.trainMin = Math.min(h, total - m)
-    this.trainMax = Math.max(this.trainMin, total - m)
+    this.trainStop = this.stopFor(this.railStop, this.trainCars)
+  }
+
+  /** L'abscisse de la loco à l'arrêt pour que la voiture de voyageurs (ou,
+   *  sans elle, le milieu de la rame `cars`) soit devant le quai `at`. */
+  private stopFor(at: number, cars: readonly CarKind[]): number {
+    const track = this.beltTrack
     const target = cars.indexOf('coach')
     const mid = (p: CarPose[]): number =>
       target >= 0
         ? (p[target]!.sFront + p[target]!.sBack) / 2
         : (p[0]!.sFront + p[p.length - 1]!.sBack) / 2
-    let s = this.railStop + (this.railStop - mid(layConsist(track, this.railStop, 1, cars)))
-    for (let k = 0; k < 4; k++) s += this.railStop - mid(layConsist(track, s, 1, cars))
-    this.trainStop = Math.min(this.trainMax, Math.max(this.trainMin, s))
+    let s = at + (at - mid(layConsist(track, at, 1, cars, TRAIN_SCALE)))
+    for (let k = 0; k < 4; k++) s += at - mid(layConsist(track, s, 1, cars, TRAIN_SCALE))
+    return wrapS(track, s)
   }
+  /** Ce que la queue de la rame à quai laisse au-delà de la zone de l'auto. */
+  private static readonly STATION_GAP = 0.5
 
   /** Pose chaque véhicule sur la voie : ses deux attelages sur l'axe, l'un à
    *  sa longueur de l'autre, le suivant accroché au même point. Les roues
@@ -2257,7 +2526,7 @@ export class Village implements GroundSource {
     const mesh = this.train
     if (!mesh || (!force && head === this.trainHead)) return
     this.trainHead = head
-    const poses = layConsist({ pts: this.trackPath, cum: this.trackCum }, head, 1, this.trainCars)
+    const poses = layConsist(this.beltTrack, head, 1, this.trainCars, TRAIN_SCALE)
     this.trainPoses = poses
     const pos = mesh.geometry.attributes.position!
     const nor = mesh.geometry.attributes.normal!
@@ -2293,9 +2562,9 @@ export class Village implements GroundSource {
     // La sphère englobante suit la rame : sans elle, le tri hors champ de
     // three garderait celle de la première pose et ferait disparaître le train.
     let r = 0
-    for (const c of poses) r = Math.max(r, Math.hypot(c.x - cx, c.z - cz) + CAR_LENGTH[c.kind] / 2 + 0.6)
+    for (const c of poses) r = Math.max(r, Math.hypot(c.x - cx, c.z - cz) + c.len / 2 + 0.8)
     const sphere = (mesh.geometry.boundingSphere ??= new Sphere())
-    sphere.center.set(cx, RAIL_TOP + 0.5, cz)
+    sphere.center.set(cx, RAIL_TOP + 0.7, cz)
     sphere.radius = r
   }
 
@@ -2309,60 +2578,63 @@ export class Village implements GroundSource {
     this.cargoRank = rank
   }
 
-  /** Le va-et-vient : la rame parcourt la voie, s'arrête en gare dans chaque
-   *  sens, marque un temps d'arrêt à chaque terminus et repart en sens
-   *  inverse — en RÉVERSIBLE : la loco reste au même bout et pousse la rame au
-   *  retour. L'ancien demi-tour pivotait le train d'un coup sur lui-même ;
-   *  avec dix mètres de wagons, ce pivot les aurait fait passer à travers la
-   *  loco, ou par-delà le heurtoir. */
+  /** Le tour de l'île : la rame roule toujours dans le même sens, loco en
+   *  tête, freine à l'approche de la gare, y marque cinq secondes d'arrêt
+   *  (le seul arrêt du tour : au passage à niveau, c'est l'auto qui attend),
+   *  recharge, et repart. Plus de terminus ni de demi-tour. */
   private tickTrain(dt: number): void {
-    if (!this.train || this.trackCum.length < 2) return
-    const lo = this.trainMin
-    const hi = this.trainMax
-    if (hi - lo < 0.5) return
-    this.railT += dt * 2.2
-    const STOP = 5
-    const s1 = this.trainStop
-    const legs: [number, number][] = [
-      [lo, s1],
-      [s1, s1],
-      [s1, hi],
-      [hi, hi],
-      [hi, s1],
-      [s1, s1],
-      [s1, lo],
-      [lo, lo],
-    ]
-    const dur = legs.map(([f, t2], k) => (k % 2 === 1 ? STOP : Math.abs(t2 - f)))
-    const period = dur.reduce((m, v) => m + v, 0)
-    let u = this.railT % period
-    let leg = 0
-    while (leg < legs.length - 1 && u > dur[leg]!) {
-      u -= dur[leg]!
-      leg++
+    if (!this.train || this.beltLength < 1) return
+    const L = this.beltLength
+    if (this.trainWait > 0) {
+      this.trainWait -= dt
+      if (this.trainWait > 0) return
+      this.trainWait = 0
+      // Départ : la gare passe derrière, la prochaine est à un tour.
+      this.trainS = (this.trainStop + 1e-4) % L
     }
-    // En gare, et une seule fois par arrêt : la rame charge ce que la tribu
-    // produit le plus en ce moment. C'est le seul endroit où sa composition
-    // change — jamais un wagon qui saute en pleine voie.
-    if (leg !== this.trainLeg) {
-      this.trainLeg = leg
-      if (leg === 1 || leg === 5) this.reloadTrain()
+    // Ce qu'il reste de voie jusqu'à la gare, devant la loco.
+    const ahead = (((this.trainStop - this.trainS) % L) + L) % L
+    // Freinage régulier à l'approche : v² = 2·a·d, jamais tout à fait nul
+    // pour que la rame arrive au quai.
+    const vMax = Math.min(Village.TRAIN_SPEED, Math.max(0.08, Math.sqrt(2 * Village.TRAIN_ACCEL * ahead)))
+    this.trainV = Math.min(this.trainV + Village.TRAIN_ACCEL * dt, vMax)
+    const step = this.trainV * dt
+    if (step >= ahead) {
+      // À quai : la rame s'arrête pile devant l'abri, et charge.
+      this.trainS = this.trainStop
+      this.trainV = 0
+      this.trainWait = Village.TRAIN_STOP
+      this.reloadTrain()
+      this.poseTrain(this.trainS, true)
+      return
     }
-    const [from, to] = legs[leg]!
-    const k = dur[leg]! > 0 ? Math.min(1, u / dur[leg]!) : 1
-    this.poseTrain(from + (to - from) * k)
+    this.trainS = (this.trainS + step) % L
+    this.poseTrain(this.trainS)
   }
 
   /** Recompose la rame en gare si la production a changé d'ordre. Même âge,
    *  même nombre de wagons : seules les cargaisons changent, la rame garde sa
    *  longueur et sa place le long du quai. */
   private reloadTrain(): void {
-    const total = this.trackCum[this.trackCum.length - 1] ?? 0
-    const next = consistFor(this.age, this.cargoRank, total - 2 * Village.TRAIN_MARGIN - 1)
+    const next = consistFor(this.age, this.cargoRank, this.beltLength / 3)
     if (next.join() === this.trainCars.join()) return
     this.trainCars = next
     this.trainGeometry()
     this.poseTrain(this.trainHead, true)
+  }
+
+  /** La rame occupe-t-elle l'arc [s0, s1], ou en approche-t-elle à moins de
+   *  `warn` (devant la loco seulement : une rame qui a passé l'arc s'en
+   *  éloigne) ? Abscisses circulaires. */
+  private trainNear(s0: number, s1: number, warn: number): boolean {
+    const poses = this.trainPoses
+    if (!this.train || poses.length === 0) return false
+    const L = this.beltLength
+    const head = poses[0]!.sFront
+    const tail = poses[poses.length - 1]!.sBack
+    const span = head - tail
+    const d = ((((head + warn - s0) % L) + L) % L)
+    return d <= span + warn + (s1 - s0)
   }
 
   /** Passe un véhicule au modèle Blender : tout de suite s'il est déjà là,
@@ -2390,7 +2662,7 @@ export class Village implements GroundSource {
 
   /** Le phare ne se pose pas au village : il lui faut une pointe face au large,
    *  à l'écart du ponton — deux ouvrages collés ne font qu'une tache. */
-  private shoreSlot(): Vector3 {
+  private shoreSlot(strict = false, coastOnly = false): Vector3 | null {
     // Pas l'axe de la caméra : une tour de dix unités plantée pile en face
     // masque le village entier. On vise la côte à main droite — vue de face,
     // mais sur le côté, comme un vrai amer d'entrée de passe.
@@ -2428,13 +2700,103 @@ export class Village implements GroundSource {
         // même exigence de terre ferme que pour les bâtiments du village.
         if (!this.onLand(slot, 2.6)) continue
         if (!this.clearOfLots(ix, iz, this.reach('lighthouse'))) continue
+        // Ni sur la route du ponton, ni contre le passage à niveau : la
+        // barrière et la croix sont à 1,65 u de la chaussée (graine 1337042,
+        // douze parcelles : socle à 2,1 u du centre de la traversée).
+        const cross = this.crossing
+        if (this.laneDist(ix, iz) < this.reach('lighthouse') + 1.2) continue
+        if (cross && Math.hypot(ix - cross.x, iz - cross.z) < this.reach('lighthouse') + 2.2) continue
+        // Dans la bande côtière, entre la voie et la mer, sans toucher la voie.
+        if (
+          this.beltRadii.length > 0 &&
+          (insideBelt(this.beltRadii, ix, iz) || this.beltDist(ix, iz) < this.reach('lighthouse') + Village.BELT_CLEAR)
+        )
+          continue
         bestK = k
         best = slot
       }
     }
-    if (best) this.lots.push({ x: best.x, z: best.z, r: this.reach('lighthouse') })
-    return best ?? this.nextSlot(this.reach('lighthouse'), 2.6, 3)
+    if (best) {
+      this.lots.push({ x: best.x, z: best.z, r: this.reach('lighthouse') })
+      return best
+    }
+    // Repli : la bande est trop étroite pour le socle sur tous les caps.
+    const cape = this.capeSlot()
+    if (cape || coastOnly) return cape
+    return this.slotOrNull(this.reach('lighthouse'), 2.6, 3, false, undefined, strict)
   }
+
+  /** Le repli du phare, quand la bande entre la voie et la mer est trop
+   *  étroite pour son socle (3,9 u exigés de l'axe, 2,6 à 3,4 u sur les caps
+   *  mesurés) : il passe côté terre, contre la voie, sur le cap. Les caps de
+   *  `shoreSlot`, dans son ordre ; sur chacun, on rentre pas à pas depuis le
+   *  rivage jusqu'à la première place qui tient (`fits` : terre, ruelle,
+   *  camp, voie, route, passage à niveau, ponton) à 3,9 u au moins de l'axe.
+   *  Au-delà de CAPE_REACH, ce n'est plus contre la voie : cap suivant. Avant,
+   *  le repli cherchait une parcelle du bourg : 69 phares sur 104 finissaient
+   *  dans les terres après le grand tracé. */
+  private capeSlot(): Vector3 | null {
+    if (this.beltRadii.length === 0) return null
+    const r = this.reach('lighthouse')
+    const camX = Math.sin(0.785 + 0.95)
+    const camZ = Math.cos(0.785 + 0.95)
+    const head = this.jettyHead
+    const caps: { x: number; z: number; dx: number; dz: number; k: number }[] = []
+    for (const c of this.island.cells) {
+      if (!c.rim || c.trod || c.plot) continue
+      const rr = Math.hypot(c.x, c.z) + 1e-6
+      const dx = c.x / rr
+      const dz = c.z / rr
+      if (this.island.isLand(c.x + dx * 2.2, c.z + dz * 2.2) || this.island.isLand(c.x + dx * 5, c.z + dz * 5)) continue
+      if (head && Math.hypot(c.x - head.x, c.z - head.z) < 6.5) continue
+      if (Math.hypot(c.x - HEARTH.x, c.z - HEARTH.z) < this.island.radius * 0.62) continue
+      caps.push({ x: c.x, z: c.z, dx, dz, k: (c.x * camX + c.z * camZ) / rr + rr * 0.06 })
+    }
+    caps.sort((a, b) => b.k - a.k)
+    const need = r + Village.BELT_CLEAR
+    for (const c of caps)
+      for (let t = 0; t <= 14; t += 0.25) {
+        const x = c.x - c.dx * t
+        const z = c.z - c.dz * t
+        if (!insideBelt(this.beltRadii, x, z)) continue
+        const d = this.beltDist(x, z)
+        if (d > Village.CAPE_REACH) break
+        if (d < need) continue
+        const slot = new Vector3(x, GROUND_Y, z)
+        if (!this.fits(slot, r, 2.6, 0, false)) continue
+        // Ni sur une rue : contre la voie, le cap est souvent là où la route
+        // du ponton descend (sauvegarde réelle 44444 : socle sur la chaussée).
+        if (this.laneDist(x, z) < r + 1.2) continue
+        this.lots.push({ x, z, r })
+        return slot
+      }
+    return null
+  }
+
+  /** Distance en plan à l'axe de la rue la plus proche (rues du bourg, route
+   *  du ponton jusqu'à la plage). */
+  private laneDist(x: number, z: number): number {
+    this.buildLanes()
+    let best = Infinity
+    const polys = [...this.lanes!.map((l) => l.pts), this.roadExt]
+    for (const pts of polys)
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i]!
+        const b = pts[Math.min(i + 1, pts.length - 1)]!
+        const dx = b.x - a.x
+        const dz = b.z - a.z
+        const L = dx * dx + dz * dz
+        const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L))
+        best = Math.min(best, Math.hypot(x - a.x - u * dx, z - a.z - u * dz))
+      }
+    return best
+  }
+  /** « Contre la voie » : le centre du phare à 4,5 u au plus de l'axe. Au
+   *  plus près, 3,9 u (halo 2,7 + 1,2 de dégagement, la règle de tout le
+   *  bourg) ; les 0,6 u de plus sont une ruelle (ALLEY) : entre le phare et
+   *  la voie, il ne reste la place de rien. Le bord du socle (2,6) est alors
+   *  à 1,9 u au plus de l'axe, à 1,2 u du ballast. */
+  static readonly CAPE_REACH = 4.5
 
   /** Bout du ponton : c'est là que la barque vient s'amarrer au repos. */
   jettyEnd: { x: number; z: number; yaw: number } | null = null
@@ -2446,30 +2808,44 @@ export class Village implements GroundSource {
     const camZ = Math.cos(0.785)
     let best: { x: number; z: number } | null = null
     let bestK = -Infinity
-    for (const c of this.island.cells) {
-      // Le sable d'une crique n'attire pas le ponton : il resterait à sa
-      // place d'origine, sur l'île de base.
-      if (!c.beach || !c.rim || c.plot) continue
-      const r = Math.hypot(c.x, c.z) + 1e-6
-      const dx = c.x / r
-      const dz = c.z / r
-      // La MER, pas une flaque. `rim` signifie seulement « un voisin manque » :
-      // il est vrai aussi sur la berge d'un plan d'eau INTÉRIEUR. Mesuré à
-      // l'âge 9 : la cellule élue se trouvait à 15,8 du centre pour une île de
-      // rayon 26,3 — le ponton partait d'une lagune vers le large.
-      // On exige donc que la direction du large soit dégagée sur cinq unités.
-      if (
-        this.island.isLand(c.x + dx * 1.6, c.z + dz * 1.6) ||
-        this.island.isLand(c.x + dx * 3.2, c.z + dz * 3.2) ||
-        this.island.isLand(c.x + dx * 5, c.z + dz * 5)
-      )
-        continue
-      // On veut à la fois « face à la caméra » et « bien au bord ».
-      const k = (c.x * camX + c.z * camZ) / r + r * 0.03
-      if (k > bestK) {
-        bestK = k
-        best = { x: c.x, z: c.z }
+    // La tête du ponton est au-delà de la ceinture : la route y descend en
+    // franchissant la voie. Dans une anse où la ceinture frôle la plage, un
+    // ponton posé en deçà laissait la route finir sans jamais la croiser.
+    // (Si aucune plage ne s'y prête, on revient à la règle d'avant.)
+    for (const strict of this.beltRadii.length > 0 ? [true, false] : [false]) {
+      for (const c of this.island.cells) {
+        // Le sable d'une crique n'attire pas le ponton : il resterait à sa
+        // place d'origine, sur l'île de base.
+        if (!c.beach || !c.rim || c.plot) continue
+        const r = Math.hypot(c.x, c.z) + 1e-6
+        const dx = c.x / r
+        const dz = c.z / r
+        // La MER, pas une flaque. `rim` signifie seulement « un voisin manque » :
+        // il est vrai aussi sur la berge d'un plan d'eau INTÉRIEUR. Mesuré à
+        // l'âge 9 : la cellule élue se trouvait à 15,8 du centre pour une île de
+        // rayon 26,3 — le ponton partait d'une lagune vers le large.
+        // On exige donc que la direction du large soit dégagée sur cinq unités.
+        if (
+          this.island.isLand(c.x + dx * 1.6, c.z + dz * 1.6) ||
+          this.island.isLand(c.x + dx * 3.2, c.z + dz * 3.2) ||
+          this.island.isLand(c.x + dx * 5, c.z + dz * 5)
+        )
+          continue
+        if (strict) {
+          const hx = c.x - dx * 0.75
+          const hz = c.z - dz * 0.75
+          // 2,4 u : l'auto qui attend au bout de la route (demi-longueur
+          // 1,15) reste hors du passage de la rame (0,72 u de l'axe).
+          if (insideBelt(this.beltRadii, hx, hz) || this.beltDist(hx, hz) < 2.4) continue
+        }
+        // On veut à la fois « face à la caméra » et « bien au bord ».
+        const k = (c.x * camX + c.z * camZ) / r + r * 0.03
+        if (k > bestK) {
+          bestK = k
+          best = { x: c.x, z: c.z }
+        }
       }
+      if (best) break
     }
     if (!best) return
     const dir = Math.atan2(best.x, best.z)
@@ -2699,18 +3075,129 @@ export class Village implements GroundSource {
 
   private buildLanes(): void {
     if (this.lanes) return
-    // La rue principale descend au ponton : c'est elle que pavent les voies
-    // romaines, et c'est l'axe que la caméra regarde par défaut.
-    const head = this.jettyHead
-    const az0 = head ? Math.atan2(head.x - HEARTH.x, head.z - HEARTH.z) : 0.785
-    // La rue du ponton court jusqu'au rivage — elle y mène. Les deux autres ne
-    // sont que des rues de bourg : elles desservent les parcelles et
-    // s'arrêtent. Rien n'a besoin de traverser l'île de bord en bord.
-    this.lanes = [
-      { pts: this.traceLane(az0, 20, false, 1.6) },
-      { pts: this.traceLane(az0 + 2.2, 8) },
-      { pts: this.traceLane(az0 - 2.2, 8) },
-    ]
+    let raw = this.plan.streets?.map((l) => l.map((q) => ({ x: q.x, z: q.z })))
+    if (!raw || raw.length === 0) {
+      // La rue principale descend au ponton : c'est elle que pavent les voies
+      // romaines, et c'est l'axe que la caméra regarde par défaut.
+      const head = this.jettyHead
+      const az0 = head ? Math.atan2(head.x - HEARTH.x, head.z - HEARTH.z) : 0.785
+      // La rue du ponton court jusqu'au rivage — elle y mène. Les deux autres
+      // ne sont que des rues de bourg : elles desservent les parcelles et
+      // s'arrêtent. Rien n'a besoin de traverser l'île de bord en bord.
+      // Arrondies au centième : la rue relue de la sauvegarde est alors
+      // EXACTEMENT celle du premier tracé.
+      const r2 = (v: number): number => Math.round(v * 100) / 100
+      raw = [this.traceLane(az0, 20, false, 1.6), this.traceLane(az0 + 2.2, 8), this.traceLane(az0 - 2.2, 8)].map(
+        (l) => l.map((v) => ({ x: r2(v.x), z: r2(v.z) })),
+      )
+    }
+    this.streetsRaw = raw
+    this.lanes = raw.map((l, li) => ({
+      pts: this.clipLane(l, li).map((q) => new Vector3(q.x, GROUND_Y, q.z)),
+    }))
+  }
+
+  /** Les rues telles que tracées la première fois, pour la sauvegarde : elles
+   *  ne bougent plus ensuite, ni quand une terre se pose, ni quand la mer
+   *  recule à l'âge 7 (la forêt et le ponton, qui guidaient leur tracé,
+   *  changent alors). */
+  get streets(): { x: number; z: number }[][] {
+    this.buildLanes()
+    return this.streetsRaw.map((l) => l.map((q) => ({ x: q.x, z: q.z })))
+  }
+  private streetsRaw: { x: number; z: number }[][] = []
+
+  /** Une rue de bourg s'arrête avant la ceinture : seule la route du ponton
+   *  la traverse, au passage à niveau. Elle reste à 2,5 u de l'axe au moins
+   *  (demi-chaussée 0,93, ruelle 0,6, demi-ballast 0,73, arrondi). */
+  private clipLane(pts: { x: number; z: number }[], li: number): { x: number; z: number }[] {
+    if (li === 0 || this.beltRadii.length === 0) return pts
+    const out: { x: number; z: number }[] = []
+    for (const q of pts) {
+      // Ni la voie (celle d'aujourd'hui ou de l'île agrandie), ni le sentier :
+      // une rue s'arrête à 2,5 u de la voie, à 1,3 u du sentier (sa
+      // demi-chaussée et la demi-largeur du chemin).
+      if (!this.beltClear(q.x, q.z, Village.LANE_BELT)) break
+      const pathGap = this.railRadii === this.beltRadii ? Village.LANE_BELT : 1.3
+      if (!insideBelt(this.beltRadii, q.x, q.z) || this.beltDist(q.x, q.z) < pathGap) break
+      out.push(q)
+    }
+    return out
+  }
+
+  /** Distance à l'axe de la ceinture. */
+  beltDist(x: number, z: number): number {
+    let best = Infinity
+    for (const q of this.beltTrack.pts) {
+      const d = (q.x - x) ** 2 + (q.z - z) ** 2
+      if (d < best) best = d
+    }
+    return Math.sqrt(best)
+  }
+
+  /** Le point (x, z) est-il dans la ceinture, à `need` au moins de son axe ?
+   *  C'est la VOIE qui compte : avant l'âge 7, celle de l'île agrandie. */
+  private beltClear(x: number, z: number, need: number): boolean {
+    if (this.railRadii.length === 0) return true
+    const rho = Math.hypot(x, z)
+    const R = beltRadius(this.railRadii, Math.atan2(z, x))
+    if (rho >= R) return false
+    // Loin à l'intérieur : la distance radiale suffit (la ceinture ne
+    // s'incline jamais de plus de 25° sur le cercle).
+    if ((R - rho) * 0.9 >= need) return true
+    let best = Infinity
+    for (const q of this.railPts ?? this.beltTrack.pts) best = Math.min(best, (q.x - x) ** 2 + (q.z - z) ** 2)
+    return Math.sqrt(best) >= need
+  }
+
+  /** Au-delà de la voie, à `need` au moins de son axe : la bande côtière. */
+  private beyondBelt(x: number, z: number, need: number): boolean {
+    if (this.railRadii.length === 0) return false
+    const rho = Math.hypot(x, z)
+    if (rho <= beltRadius(this.railRadii, Math.atan2(z, x))) return false
+    let best = Infinity
+    for (const q of this.railPts ?? this.beltTrack.pts) best = Math.min(best, (q.x - x) ** 2 + (q.z - z) ** 2)
+    return Math.sqrt(best) >= need
+  }
+
+  /** Avant l'âge 7 : le bord à 0,9 u au moins de l'axe du sentier (ou du
+   *  chemin), d'un côté comme de l'autre. */
+  private pathClear(x: number, z: number, r: number): boolean {
+    if (this.railRadii === this.beltRadii || this.beltRadii.length === 0) return true
+    const rho = Math.hypot(x, z)
+    const R = beltRadius(this.beltRadii, Math.atan2(z, x))
+    if (Math.abs(R - rho) * 0.9 >= r + Village.PATH_CLEAR) return true
+    return this.beltDist(x, z) >= r + Village.PATH_CLEAR
+  }
+
+  /** La route prolongée jusqu'au ponton, pas à pas, en évitant les sapins
+   *  comme une rue : elle ne dépend que de l'île, jamais du plan bâti (sinon
+   *  elle changerait d'un chargement à l'autre). */
+  private reachJetty(from: { x: number; z: number }, to: { x: number; z: number }): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = []
+    let x = from.x
+    let z = from.z
+    for (let i = 0; i < 40; i++) {
+      if (Math.hypot(to.x - x, to.z - z) <= LANE_STEP * 1.2) break
+      const az0 = Math.atan2(to.x - x, to.z - z)
+      let best = az0
+      let bestSc = -Infinity
+      for (const off of [-0.5, -0.25, 0, 0.25, 0.5]) {
+        const a = az0 + off
+        const nx = x + Math.sin(a) * LANE_STEP
+        const nz = z + Math.cos(a) * LANE_STEP
+        if (!this.island.isLand(nx, nz)) continue
+        const sc = Math.min(this.treeDist(nx, nz), 3) * 0.2 - Math.abs(off) * 0.8
+        if (sc > bestSc) {
+          bestSc = sc
+          best = a
+        }
+      }
+      x += Math.sin(best) * LANE_STEP
+      z += Math.cos(best) * LANE_STEP
+      out.push({ x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100 })
+    }
+    return out
   }
 
   /** Trace une voie depuis le bord de la place : à chaque pas elle choisit,
@@ -2777,6 +3264,12 @@ export class Village implements GroundSource {
   /** Passes où l'entraxe des façades a dû être relâché (jamais la règle de
    *  contact). */
   cramped = 0
+  /** Bâtiments posés dans la bande côtière, faute de place dans la ceinture. */
+  coastal = 0
+  /** Avant l'âge 7 : bâtiments posés sur le sentier, sur la future voie. */
+  onPath = 0
+  straddled = 0
+  private relaxBelt = 0
 
   /** Ruelle minimale entre deux disques d'occupation. C'est LA règle que
    *  demandait le joueur : deux bâtiments ne se touchent jamais. Elle n'est
@@ -2801,6 +3294,7 @@ export class Village implements GroundSource {
     spacing: number,
     trees: boolean,
     accept?: (x: number, z: number) => boolean,
+    coast = false,
   ): boolean {
     const { x, z } = slot
     if (!this.island.isLand(x, z)) return false
@@ -2808,9 +3302,17 @@ export class Village implements GroundSource {
     if (!this.clearOfLots(x, z, r, spacing)) return false
     if (CAMP_BLOCKERS.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.6 + r * 0.5)) return false
     if (trees && this.treeDist(x, z) < 1.1 + footprint * 0.35) return false
-    // On ne bâtit pas SUR la voie ferrée : elle est posée avant les savoirs
-    // suivants, et rien ne l'écartait d'eux.
-    if (this.railPath.some((q) => Math.hypot(x - q.x, z - q.z) < 1.0 + r)) return false
+    // Dans la ceinture, et jamais dessus : le bord à 1,2 u au moins de l'axe
+    // (demi-ballast 0,625 + ruelle 0,6). Elle est réservée dès le sentier du
+    // Paléolithique : le train de l'âge 7 ne délogera personne.
+    if (this.relaxBelt < 2 && (coast ? !this.beyondBelt(x, z, r + Village.BELT_CLEAR) : !this.beltClear(x, z, r + Village.BELT_CLEAR)))
+      return false
+    if (this.relaxBelt < 1 && !this.pathClear(x, z, r)) return false
+    if (this.legacyRail.some((q) => Math.hypot(x - q.x, z - q.z) < 1.0 + r)) return false
+    // Ni sur la route du ponton hors des rues, ni sur le passage à niveau.
+    const cross = this.crossing
+    if (cross && Math.hypot(x - cross.x, z - cross.z) < r + 2.2) return false
+    if (this.roadExt.some((q) => Math.hypot(x - q.x, z - q.z) < r + 1.2)) return false
     // Le pied du ponton reste libre : la chaussée et la barque y arrivent.
     const head = this.jettyHead
     if (head && Math.hypot(x - head.x, z - head.z) < r + 1.0 + Village.ALLEY) return false
@@ -2832,6 +3334,20 @@ export class Village implements GroundSource {
     central = false,
     accept?: (x: number, z: number) => boolean,
   ): Vector3 {
+    return this.slotOrNull(r, footprint, spacing, central, accept, false)!
+  }
+
+  /** `nextSlot`, avec `strict` : faute de place, rien (au lieu du foyer). Un
+   *  bâtiment délogé par la ceinture qui ne retrouve pas de place n'est pas
+   *  perdu : il reste où il était. */
+  private slotOrNull(
+    r: number,
+    footprint: number,
+    spacing: number,
+    central = false,
+    accept?: (x: number, z: number) => boolean,
+    strict = false,
+  ): Vector3 | null {
     const s = this.laneSlot(r, footprint, central ? spacing * 0.8 : spacing, accept)
     if (s) return s
     // L'entraxe d'abord : c'est du confort, pas la règle de contact.
@@ -2845,13 +3361,58 @@ export class Village implements GroundSource {
     const cells = [...this.island.cells].sort(
       (a, b) => Math.hypot(a.x - HEARTH.x, a.z - HEARTH.z) - Math.hypot(b.x - HEARTH.x, b.z - HEARTH.z),
     )
+    // Une place sans rocher ni buisson d'abord : le repli tombe souvent au
+    // bord de l'île, là où pousse le décor, et un bourg qui l'efface paraît
+    // défriché (test « l'île ne paraît pas déboisée »).
+    for (const bare of this.plan.legacy ? [false] : [true, false])
+      for (const c of cells) {
+        const slot = new Vector3(c.x, GROUND_Y, c.z)
+        if (!this.fits(slot, r, footprint, 0, false, accept)) continue
+        if (bare && !this.bare(c.x, c.z, r)) continue
+        this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
+        this.lots.push({ x: c.x, z: c.z, r })
+        return slot
+      }
+    // Avant l'âge 7, l'île de base est petite : un gros ouvrage (aqueduc,
+    // moulin) peut ne trouver sa place que sur le sentier — qui passe alors
+    // derrière lui —, et en dernier recours sur le tracé de la future voie :
+    // le grand tracé de l'âge 7 le relogera. Plutôt que sur le foyer.
+    // Sur le sentier, on prend d'abord une place sans rocher ni buisson : ces
+    // places-là sont au bord de l'île, là où pousse le décor, et un bourg qui
+    // l'efface paraît défriché.
+    if (this.railRadii !== this.beltRadii)
+      for (const [level, bare] of [[1, true], [1, false], [2, false]] as const) {
+        this.relaxBelt = level
+        let found: Vector3 | null = null
+        for (const c of cells) {
+          const slot = new Vector3(c.x, GROUND_Y, c.z)
+          if (!this.fits(slot, r, footprint, 0, false, accept)) continue
+          if (bare && !this.bare(c.x, c.z, r)) continue
+          found = slot
+          break
+        }
+        this.relaxBelt = 0
+        if (found) {
+          if (level === 1) this.onPath++
+          else this.straddled++
+          this.slotRot = Math.atan2(HEARTH.x - found.x, HEARTH.z - found.z)
+          this.lots.push({ x: found.x, z: found.z, r })
+          return found
+        }
+      }
+    // Le bourg est plein jusqu'à la voie : en tout dernier recours, la bande
+    // côtière, sur un cap assez large pour que le bâtiment ne touche ni la
+    // voie ni l'eau. Mesuré (dix graines, âge 10) : un à trois bâtiments sur
+    // quelques graines, qui sinon se seraient posés sur le foyer.
     for (const c of cells) {
       const slot = new Vector3(c.x, GROUND_Y, c.z)
-      if (!this.fits(slot, r, footprint, 0, false, accept)) continue
+      if (!this.fits(slot, r, footprint, 0, false, accept, true)) continue
+      this.coastal++
       this.slotRot = Math.atan2(HEARTH.x - c.x, HEARTH.z - c.z)
       this.lots.push({ x: c.x, z: c.z, r })
       return slot
     }
+    if (strict) return null
     // L'île entière est pleine : on pose au feu plutôt que de ne rien montrer.
     // Le test d'espacement échoue alors, et c'est voulu : l'île est trop petite.
     this.slotRot = 0
@@ -2975,7 +3536,7 @@ export class Village implements GroundSource {
    *  GROUND_Y, rien à relire. C'est la réponse à « les bâtiments changent de
    *  place à chaque rafraîchissement » : le plan était recalculé de zéro, et
    *  il dépend de la taille de l'île. */
-  adoptLayout(saved: { id: string; x: number; z: number; rot: number }[]): void {
+  adoptLayout(saved: { id: string; x: number; z: number; rot: number }[], resolve = false): void {
     for (const s of saved) {
       if (this.placed.has(s.id)) continue
       const y = GROUND_Y
@@ -2990,8 +3551,83 @@ export class Village implements GroundSource {
       if (s.id === 'railway') this.railKnown = true
       this.adopted = true
     }
+    if (resolve) this.evictConflicts()
     this.buildShore()
   }
+
+  /** LE GRAND TRACÉ : les bâtiments du plan adopté qui empiètent sur la
+   *  ceinture (bord à moins de 1,2 u de l'axe, ou posés au-delà), ou sur la
+   *  route prolongée jusqu'au ponton. Ils sont retirés ici et reposés par
+   *  `sync`, du plus gros au plus petit ; un bâtiment qui ne trouve aucune
+   *  place reste où il était. Les autres ne bougent pas d'un centimètre. Le
+   *  phare, lui, vit entre la voie et la mer : il n'est délogé que s'il
+   *  touche la voie. */
+  private evictConflicts(): void {
+    if (this.beltRadii.length === 0) return
+    for (let i = this.propPlacements.length - 1; i >= 0; i--) {
+      const pl = this.propPlacements[i]!
+      const r = this.reach(pl.id)
+      const onRoad = this.roadExt.some((q) => Math.hypot(pl.x - q.x, pl.z - q.z) < r + 1.2)
+      const bad =
+        onRoad ||
+        (pl.id === 'lighthouse'
+          ? this.beltDist(pl.x, pl.z) < r + Village.BELT_CLEAR
+          : !this.beltClear(pl.x, pl.z, r + Village.BELT_CLEAR))
+      // Le phare que la mer a laissé dans les terres (la voie à plus de
+      // CAPE_REACH, côté terre) rejoint la côte ou la voie, sur un cap. S'il
+      // n'y trouve pas de place, il reste où il était : il ne gêne personne.
+      const inland =
+        !bad &&
+        pl.id === 'lighthouse' &&
+        this.railRadii === this.beltRadii &&
+        insideBelt(this.beltRadii, pl.x, pl.z) &&
+        this.beltDist(pl.x, pl.z) > Village.CAPE_REACH
+      if (!bad && !inland) continue
+      this.propPlacements.splice(i, 1)
+      this.placed.delete(pl.id)
+      // Le phare des terres garde sa parcelle tant qu'il n'a pas trouvé
+      // mieux : les délogés plus gros passent avant lui, et s'il reste, nul
+      // ne doit s'être posé dessus entre-temps (graine 31337, six parcelles :
+      // le moulin reposé sur sa place).
+      const k = inland ? -1 : this.lots.findIndex((t) => t.x === pl.x && t.z === pl.z)
+      if (k >= 0) this.lots.splice(k, 1)
+      this.evicted.push({ id: pl.id, x: pl.x, z: pl.z, rot: pl.rot, r, inland })
+    }
+  }
+
+  /** Pendant dix secondes, les bâtiments reposés par le grand tracé portent
+   *  un échafaudage et un liseré doré au sol : on voit ce qui a déménagé. Un
+   *  seul mesh, retiré ensuite (`update`). */
+  markMoved(): void {
+    if (this.moved.length === 0) return
+    const p: BufferGeometry[] = []
+    const gold = new Color('#e8c25a')
+    for (const m of this.moved) {
+      const r = this.reach(m.id)
+      const k = Math.max(0.7, r * 0.72)
+      const h = 1.6 + r * 0.5
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+        p.push(part(new CylinderGeometry(0.05, 0.06, h, 5), C.wood, m.to.x + sx * k, GROUND_Y + h / 2, m.to.z + sz * k))
+        p.push(part(new BoxGeometry(0.06, 0.06, k * 2), C.woodDark, m.to.x + sx * k, GROUND_Y + h - 0.1, m.to.z))
+        p.push(part(new BoxGeometry(k * 2, 0.06, 0.06), C.woodDark, m.to.x, GROUND_Y + h * 0.55, m.to.z + sz * k))
+      }
+      p.push(part(new RingGeometry(r + 0.05, r + 0.3, 28).rotateX(-Math.PI / 2), gold, m.to.x, GROUND_Y + 0.03, m.to.z))
+    }
+    const geo = mergeGeometries(p)
+    if (!geo) return
+    this.scaffold = new Mesh(geo, this.solid)
+    this.scaffoldLeft = 10
+    this.group.add(this.scaffold)
+  }
+  private scaffold: Mesh | null = null
+  private scaffoldLeft = 0
+
+  /** Délogés en attente d'une nouvelle place (voir `evictConflicts`). */
+  private evicted: { id: string; x: number; z: number; rot: number; r: number; inland: boolean }[] = []
+  /** Ce que le grand tracé a déplacé à ce chargement, et ce qu'il n'a pas pu
+   *  reloger (resté en place). Lu par main.ts pour la carte et la Chronique. */
+  readonly moved: { id: string; from: { x: number; z: number }; to: { x: number; z: number } }[] = []
+  readonly stuck: string[] = []
 
   /** Le plan à écrire dans la sauvegarde. */
   get layout(): { id: string; x: number; z: number; rot: number }[] {
@@ -3015,23 +3651,35 @@ export class Village implements GroundSource {
       if (k >= 0) this.lots.splice(k, 1)
       dirty = true
     }
+    // Les délogés du grand tracé d'abord, du plus gros au plus petit : ce
+    // sont eux qui ont le plus de mal à trouver une place.
+    if (this.evicted.length > 0) {
+      const order = [...this.evicted].sort((a, b) => b.r - a.r || (a.id < b.id ? -1 : 1))
+      this.evicted = []
+      for (const e of order) {
+        if (!buildings.has(e.id) || this.placed.has(e.id)) continue
+        if (e.inland) {
+          const k = this.lots.findIndex((t) => t.x === e.x && t.z === e.z)
+          if (k >= 0) this.lots.splice(k, 1)
+        }
+        const s = e.inland ? this.shoreSlot(true, true) : this.slotFor(e.id, true)
+        if (s) {
+          const rot = e.id === 'lighthouse' ? Math.atan2(-s.x, -s.z) : this.slotRot
+          this.propPlacements.push({ id: e.id, x: s.x, y: s.y, z: s.z, rot })
+          this.moved.push({ id: e.id, from: { x: e.x, z: e.z }, to: { x: s.x, z: s.z } })
+        } else {
+          // Aucune place : il reste où il était, plutôt que d'être perdu.
+          this.propPlacements.push({ id: e.id, x: e.x, y: GROUND_Y, z: e.z, rot: e.rot })
+          this.lots.push({ x: e.x, z: e.z, r: e.r })
+          if (!e.inland) this.stuck.push(e.id)
+        }
+        this.placed.add(e.id)
+        dirty = true
+      }
+    }
     for (const b of buildings) {
       if (this.placed.has(b)) continue
-      // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
-      // villa de 4 u posée à 2 u d'une hutte lui rentrait dans le toit — et à
-      // ×2.2 d'emprise elle venait encore s'accoler aux arches de l'aqueduc.
-      // Aucun bâtiment n'a une emprise nulle : sans plancher, `onLand`
-      // renvoyait vrai sans rien vérifier et le bord de l'île redevenait
-      // constructible.
-      const fp = Math.max(0.6, Village.FOOTPRINT[b] ?? 0.5)
-      const central = Village.MONUMENTS.has(b)
-      // Le phare réserve lui-même son disque dans `shoreSlot`.
-      const s =
-        b === 'lighthouse'
-          ? this.shoreSlot()
-          : Village.LEGACY.has(b)
-            ? this.nextSlot(this.reach(b), fp, 3.4, central)
-            : this.nextSlot(this.reach(b), fp, Math.max(2.0, fp * 2.6), central)
+      const s = this.slotFor(b, false)!
       // La façade regarde la rue (slotRot) ; le phare, posé hors du plan,
       // continue de regarder le large.
       const rot = b === 'lighthouse' ? Math.atan2(-s.x, -s.z) : this.slotRot
@@ -3062,6 +3710,23 @@ export class Village implements GroundSource {
   // Tous les ateliers vivent dans UN SEUL mesh fusionné (`restack`, avec la
   // Merveille et le musée) : dix-sept objets pour un draw call.
 
+  /** La parcelle d'un nouveau bâtiment. `strict` : rien plutôt que le foyer
+   *  si l'île est pleine. */
+  private slotFor(b: string, strict: boolean): Vector3 | null {
+    // L'écart minimal suit l'emprise : depuis les remises à l'échelle, une
+    // villa de 4 u posée à 2 u d'une hutte lui rentrait dans le toit — et à
+    // ×2.2 d'emprise elle venait encore s'accoler aux arches de l'aqueduc.
+    // Aucun bâtiment n'a une emprise nulle : sans plancher, `onLand`
+    // renvoyait vrai sans rien vérifier et le bord de l'île redevenait
+    // constructible.
+    const fp = Math.max(0.6, Village.FOOTPRINT[b] ?? 0.5)
+    const central = Village.MONUMENTS.has(b)
+    // Le phare réserve lui-même son disque dans `shoreSlot`.
+    if (b === 'lighthouse') return this.shoreSlot(strict)
+    if (Village.LEGACY.has(b)) return this.slotOrNull(this.reach(b), fp, 3.4, central, undefined, strict)
+    return this.slotOrNull(this.reach(b), fp, Math.max(2.0, fp * 2.6), central, undefined, strict)
+  }
+
   private readonly propPlacements: { id: string; x: number; y: number; z: number; rot: number }[] = []
   private propsGeo: BufferGeometry | null = null
   /** Le mesh (ou, en repli, les meshes) qui porte ateliers, Merveille, musée. */
@@ -3081,14 +3746,28 @@ export class Village implements GroundSource {
   private railKnown = false
   private roadPath: { x: number; z: number }[] = []
   private roadCum: number[] = []
-  private railPath: { x: number; z: number }[] = []
-  private railCum: number[] = []
-  /** Le tracé adouci que suivent rails et rame (voir railway). */
-  private trackPath: { x: number; z: number }[] = []
-  private trackCum: number[] = []
+  /** La route au-delà des rues (jusqu'au ponton), en points tous les 0,5 u. */
+  private roadExt: { x: number; z: number }[] = []
+  /** La ceinture : ses 72 rayons (belt.ts), sa polyligne fermée, sa longueur. */
+  private beltRadii: number[] = []
+  private beltTrack: Track = { pts: [], cum: [0], closed: true }
+  private beltLength = 0
+  /** La ceinture a grandi à ce chargement (terre gagnée, mer qui recule). */
+  beltGrew = false
+  /** La ceinture de la VOIE : celle d'aujourd'hui dès l'âge 7, celle de l'île
+   *  agrandie avant (et sa polyligne, dans ce cas seulement). */
+  private railRadii: number[] = []
+  private railPts: { x: number; z: number }[] | null = null
+  /** Le passage à niveau : le point, son abscisse sur la voie et sur la route,
+   *  le cap de la route. */
+  private crossing: { x: number; z: number; sTrack: number; sRoad: number; yaw: number } | null = null
+  /** Nombre de traversées route/voie (attendu : une). Lu par les tests. */
+  crossings = 0
+  /** La gare : abscisse de son point de voie et côté du quai. */
+  private stationS: number | null = null
+  private stationSide: 1 | -1 = 1
   /** La rame entière, un seul mesh (voir buildTrain). */
   private train: Mesh | null = null
-  private railT = 0
   /** Abscisse de la gare sur la voie : le train y marque l'arrêt. */
   private railStop = 0
   /** La composition roulante, de la loco à la queue. */
@@ -3099,16 +3778,44 @@ export class Village implements GroundSource {
   private trainRanges: { start: number; count: number }[] = []
   private trainBase = new Float32Array(0)
   private trainBaseN = new Float32Array(0)
-  /** Abscisses de la tête : départ, arrivée, arrêt en gare, position. */
-  private trainMin = 0
-  private trainMax = 0
+  /** Abscisses de la tête : arrêt en gare, dernière pose ; marche (position,
+   *  vitesse, attente à quai). */
   private trainStop = 0
   private trainHead = -1
-  private trainLeg = -1
+  private trainS = 0
+  private trainV = 0
+  private trainWait = 0
   /** La dernière pose de chaque véhicule — lue par le harnais de mesure. */
   trainPoses: CarPose[] = []
-  /** Garde entre la rame et les heurtoirs, aux deux bouts de la voie. */
-  private static readonly TRAIN_MARGIN = 0.35
+  /** Marche de la rame : 2,2 u/s en ligne, 0,6 u/s² au freinage et au départ,
+   *  5 s à quai. */
+  private static readonly TRAIN_SPEED = 2.2
+  private static readonly TRAIN_ACCEL = 0.6
+  private static readonly TRAIN_STOP = 5
+  /** Largeur du ballast : 1,25 u, les traverses (1,1 u) et les rails (à
+   *  ±0,42 u, l'écartement de la rame à l'échelle 1,4) dessus. */
+  private static readonly BALLAST = 1.25
+  /** Bord du quai de la gare, depuis l'axe : demi-gabarit 0,60 + débord en
+   *  courbe + 0,15 de jour. */
+  private static readonly QUAY_EDGE = 0.85
+  /** Bord de bâtiment ↔ axe de la voie : demi-ballast 0,625 + ruelle 0,6,
+   *  la règle de la conception (1,2 u). Le flanc de la rame passe à 0,72 u
+   *  de l'axe au plus (0,59 de demi-gabarit, 0,13 de débord en courbe). */
+  static readonly BELT_CLEAR = 1.2
+  /** Bord de bâtiment ↔ axe du sentier ou du chemin, avant l'âge 7 :
+   *  demi-chemin 0,3 (il s'élargit à 0,64) + ruelle 0,6. */
+  private static readonly PATH_CLEAR = 0.9
+  /** Bout d'une rue de bourg ↔ axe de la voie. */
+  private static readonly LANE_BELT = 2.5
+
+  /** La voie (boucle fermée), pour les tests et le harnais. */
+  get railTrack(): Track {
+    return this.beltTrack
+  }
+  /** Les rayons de la ceinture, pour la sauvegarde. */
+  get belt(): number[] {
+    return [...this.beltRadii]
+  }
   /** La lueur du phare, hors fusion : elle est additive et doit respirer. */
   private beaconHalo: Sprite | null = null
 
@@ -4317,7 +5024,7 @@ export class Village implements GroundSource {
     const pool = new Color('#e8a94e')
     const posts: { x: number; y: number; z: number }[] = []
     const field = this.propPlacements.find((q) => q.id === 'plane')
-    for (const lane of this.lanes!) {
+    for (const [li, lane] of this.lanes!.entries()) {
       // Un réverbère tous les cinq pas, alternativement d'un côté et de
       // l'autre : une rue éclairée n'a pas ses lampes en vis-à-vis.
       for (let i = 3; i < lane.pts.length; i += 5) {
@@ -4327,11 +5034,21 @@ export class Village implements GroundSource {
         const dz = b.z - a.z
         const len = Math.hypot(dx, dz) || 1
         const side = (i / 5) % 2 === 0 ? 1 : -1
-        const x = a.x + (dz / len) * side * 1.75
-        const z = a.z - (dx / len) * side * 1.75
+        // La potence déborde de 0,58 u en +x : sur la route de l'auto, quand
+        // elle penche vers la chaussée, le mât recule d'autant, pour laisser
+        // 1,5 u à la Ford T (1,09 de demi-largeur). Sur l'île agrandie, la
+        // potence à 1,2 u de l'axe coupait la route : l'auto se garait.
+        const lean = li === 0 ? Math.max(0, -((dz / len) * side) * 0.58 - 0.25) : 0
+        const x = a.x + (dz / len) * side * (1.75 + lean)
+        const z = a.z - (dx / len) * side * (1.75 + lean)
         if (!this.island.isLand(x, z)) continue
         // Pas de réverbère sur l'aire de l'aérodrome : l'avion y roule.
         if (field && Math.hypot(x - field.x, z - field.z) < Village.FIELD_CLEAR) continue
+        // Ni au passage à niveau : le mât et sa potence (0,6 u) restent hors
+        // du gabarit de la rame (0,72 u de l'axe, 0,3 de jour). La route du
+        // ponton coupe la voie, et un réverbère tous les cinq pas finissait
+        // parfois sur le ballast.
+        if (this.age >= RAIL_AGE && this.beltTrack.pts.length > 1 && this.beltDist(x, z) < 0.72 + 0.3 + 0.6) continue
         posts.push({ x, y: GROUND_Y, z })
       }
     }
@@ -4435,7 +5152,6 @@ export class Village implements GroundSource {
 
   private car: Group | null = null
   private carHome: { x: number; y: number; z: number } | null = null
-  private carT = 0
   /** Le dessous des roues, dans le repère du mesh de l'auto (primitive ×2 et
    *  modèle recalé, voir vehicles.ts). */
   private static readonly CAR_BASE = 0.04
@@ -4485,14 +5201,16 @@ export class Village implements GroundSource {
     const park = (): void => {
       const home = this.carHome
       if (!home) return
-      // Au plus près du garage d'abord, huit caps à chaque point.
-      for (let r = 0; r <= 10; r += 0.5)
+      // Au plus près du garage d'abord, huit caps à chaque point. Jusqu'à
+      // 14 u : un garage posé contre la voie (graine 7, âge 10) ne trouvait
+      // pas de place à 10 u hors du gabarit de la rame, et l'auto disparaissait.
+      for (let r = 0; r <= 14; r += 0.5)
         for (let a = 0; a < 32; a++) {
           const x = home.x + Math.sin((a / 32) * Math.PI * 2) * r
           const z = home.z + Math.cos((a / 32) * Math.PI * 2) * r
           for (let h = 0; h < 8; h++) {
             const yaw = (h / 8) * Math.PI
-            if (fitsAt(x, z, Math.sin(yaw), Math.cos(yaw)) >= need) {
+            if (fitsAt(x, z, Math.sin(yaw), Math.cos(yaw)) >= need && !this.carOnTrack(x, z, Math.sin(yaw), Math.cos(yaw))) {
               this.carPark = { x, z, yaw }
               return
             }
@@ -4517,8 +5235,32 @@ export class Village implements GroundSource {
         if (!best || d - run > best.to - best.from) best = { from: run, to: d }
       } else run = null
     }
+    if (best) best = this.offCrossing(best)
     if (best && best.to - best.from >= Village.CAR_MIN_RUN) this.carSpan = best
     else park()
+  }
+
+  /** Une portion de route qui finit DANS la zone de la traversée laissait
+   *  l'auto y marquer ses cinq secondes d'arrêt sous la rame (graine 42,
+   *  douze parcelles : 2 571 images de recouvrement sur 36 000, la portion
+   *  coupée par l'enclos au milieu du passage à niveau). Le bout est ramené
+   *  au bord de la zone ; tout entière dedans, il n'y a pas de portion. */
+  private offCrossing(span: { from: number; to: number }): { from: number; to: number } | null {
+    const z = this.age >= RAIL_AGE && this.crossing ? this.crossZone() : null
+    if (!z) return span
+    let { from, to } = span
+    if (from > z.lo && from < z.hi) from = z.hi
+    if (to > z.lo && to < z.hi) to = z.lo
+    return to > from ? { from, to } : null
+  }
+
+  /** L'auto garée en (x, z), capot vers (dx, dz), mord-elle sur le gabarit de
+   *  la rame (0,72 u de l'axe, 0,3 de jour) ? */
+  private carOnTrack(x: number, z: number, dx: number, dz: number): boolean {
+    if (this.age < RAIL_AGE || this.beltTrack.pts.length < 2) return false
+    const { l, w } = Village.CAR_HALF
+    for (let u = -l; u <= l + 1e-6; u += 0.25) if (this.beltDist(x + dx * u, z + dz * u) < 0.72 + 0.3 + w) return true
+    return false
   }
 
   /** Distance en plan à l'axe de la route. */
@@ -4551,7 +5293,10 @@ export class Village implements GroundSource {
   }
 
   /** Le va-et-vient de l'auto sur la route du village, entre les deux bouts
-   *  de `carSpan`. Sans portion où elle passe, elle reste garée (`carPark`). */
+   *  de `carSpan`, cinq secondes d'arrêt à chaque bout. Sans portion où elle
+   *  passe, elle reste garée (`carPark`). Au passage à niveau, elle attend
+   *  avant la barrière tant que la rame occupe la traversée (la rame, elle,
+   *  ne s'arrête qu'en gare). */
   private tickCar(dt: number): void {
     const pivot = this.car
     if (!pivot) return
@@ -4571,30 +5316,115 @@ export class Village implements GroundSource {
     }
     // Avant la première mesure du cadastre : toute la route, comme avant.
     const span = this.carSpan ?? { from: 0, to: total }
-    const len = span.to - span.from
-    let d: number
-    let fwd = true
-    {
-      this.carT += dt * 3.4
-      const period = len * 2 + 10
-      const u = this.carT % period
-      if (u < len) d = span.from + u
-      else if (u < len + 5) d = span.to
-      else if (u < len * 2 + 5) {
-        d = span.to - (u - len - 5)
-        fwd = false
-      } else {
-        d = span.from
-        fwd = false
+    if (this.carD < span.from || this.carD > span.to) this.carD = Math.min(span.to, Math.max(span.from, this.carD))
+    if (this.carWait > 0) {
+      this.carWait -= dt
+    } else {
+      let next = this.carD + this.carDir * Village.CAR_SPEED * dt
+      const c = this.crossing
+      const zone = c && this.train ? this.crossZone() : null
+      if (zone) {
+        const { lo, hi } = zone
+        const inside = this.carD > lo && this.carD < hi
+        // La rame est annoncée : sa loco à 8 u de l'arc de voie que borde la
+        // zone ferme la barrière (le temps pour l'auto déjà engagée de
+        // dégager). Sa queue passée, la barrière s'ouvre : à quai, la rame
+        // attend au-delà de la traversée.
+        if (!inside && this.trainNear(zone.s0, zone.s1, Village.CROSSING_WARN)) {
+          if (this.carDir > 0 && this.carD <= lo && next > lo) next = lo
+          if (this.carDir < 0 && this.carD >= hi && next < hi) next = hi
+        }
       }
+      if (next >= span.to) {
+        next = span.to
+        this.carDir = -1
+        this.carWait = 5
+      } else if (next <= span.from) {
+        next = span.from
+        this.carDir = 1
+        this.carWait = 5
+      }
+      this.carD = next
     }
-    const { x, z, dx, dz } = this.roadAt(d)
+    const { x, z, dx, dz } = this.roadAt(this.carD)
     pivot.position.set(x, GROUND_Y + 0.1, z)
     // Le capot (+X local) dans le sens de la marche : au retour, le trajet
-    // s'inverse, le cap aussi — voir headingYaw.
-    const s = fwd ? 1 : -1
+    // s'inverse, le cap aussi — voir headingYaw. À l'arrêt au bout, il garde
+    // le cap de l'arrivée jusqu'au départ.
+    const s = this.carWait > 0 ? -this.carDir : this.carDir
     pivot.rotation.y = headingYaw(dx * s, dz * s)
   }
+
+  /** La zone de la traversée, mesurée sur la géométrie et non le long de la
+   *  route : les abscisses de route [lo, hi] où l'emprise de l'auto entre dans
+   *  le gabarit de la rame (0,72 u de part et d'autre de l'axe, plus 0,3 de
+   *  jour), et l'arc de voie [s0, s1] qui la borde. Une route qui longe la
+   *  voie après la traversée (graine 31337, douze parcelles : l'auto attendait
+   *  à 2,3 u de la traversée sur la route, mais à 0,5 u de l'axe) allonge la
+   *  zone d'autant. Refaite quand l'auto change de taille. */
+  private crossZone(): { lo: number; hi: number; s0: number; s1: number } | null {
+    const c = this.crossing
+    const pts = this.roadPath
+    if (!c || pts.length < 2) return null
+    const { half, width } = this.carSize()
+    const key = `${half.toFixed(3)},${width.toFixed(3)}`
+    if (this.zoneKey === key) return this.zone
+    const track = this.beltTrack
+    const L = this.beltLength
+    const total = this.roadCum[this.roadCum.length - 1]!
+    const clear = 0.72 + 0.3
+    let lo = c.sRoad
+    let hi = c.sRoad
+    let s0 = 0
+    let s1 = 0
+    let i = 1
+    for (let d = 0; d <= total + 1e-9; d += 0.1) {
+      while (i < this.roadCum.length - 1 && this.roadCum[i]! < d) i++
+      const a = pts[i - 1]!
+      const b = pts[i]!
+      const seg = Math.max(1e-3, this.roadCum[i]! - this.roadCum[i - 1]!)
+      const u = Math.min(1, Math.max(0, (d - this.roadCum[i - 1]!) / seg))
+      const x = a.x + (b.x - a.x) * u
+      const z = a.z + (b.z - a.z) * u
+      const fx = (b.x - a.x) / seg
+      const fz = (b.z - a.z) / seg
+      // L'emprise de l'auto : son axe et ses deux flancs, tous les 0,2 u.
+      let hit = false
+      for (let l = -half; l <= half + 1e-9; l += Math.max(0.2, half / 4))
+        for (const w of [-width, 0, width]) {
+          const q = nearestOnLoop(track, { x: x + fx * l + fz * w, z: z + fz * l - fx * w })
+          if (q.d >= clear) continue
+          hit = true
+          const ds = ((((q.s - c.sTrack) % L) + L * 1.5) % L) - L / 2
+          s0 = Math.min(s0, ds)
+          s1 = Math.max(s1, ds)
+        }
+      // Le pas d'échantillonnage en marge : l'auto s'arrête AVANT le premier
+      // point touché.
+      if (hit) {
+        lo = Math.min(lo, d - 0.1)
+        hi = Math.max(hi, d + 0.1)
+      }
+    }
+    this.zoneKey = key
+    this.zone = { lo, hi, s0: c.sTrack + s0, s1: c.sTrack + s1 }
+    return this.zone
+  }
+  private zoneKey = ''
+  private zone: { lo: number; hi: number; s0: number; s1: number } | null = null
+
+  /** Demi-longueur et demi-largeur de l'auto à taille réelle (le mesh est
+   *  mis à l'échelle, sa géométrie non : voir CAR_HALF). */
+  private carSize(): { half: number; width: number } {
+    return { half: Village.CAR_HALF.l, width: Village.CAR_HALF.w }
+  }
+
+  private carD = 0
+  private carDir: 1 | -1 = 1
+  private carWait = 0
+  private static readonly CAR_SPEED = 3.4
+  /** La rame ferme la barrière à 8 u de la traversée. */
+  private static readonly CROSSING_WARN = 8
 
   /** L'APPAREIL. Hors de la fusion, parce qu'il doit décoller et se poser :
    *  il roule sur l'aire, prend l'air vers le large, et refait le chemin en
@@ -4671,6 +5501,8 @@ export class Village implements GroundSource {
   }
 
   /** Le colon embarque : roulage, puis montée vers le large. */
+  /** Le temps passé à attendre la rame avant un vol (mesure). */
+  planeHeld = 0
   planeDepart(): void {
     if (!this.plane) return
     this.flightDir = 1
@@ -5219,9 +6051,9 @@ export class Village implements GroundSource {
           // larges au premier tri (le vol entier n'est rejoué que pour eux).
           const floor = last && tight.length === 8 ? Math.min(M, tight[7]!.room) : last ? -Infinity : M
           const room = pathRoom(radial + dr, off, floor, sparse)
-          if (room >= M && pathRoom(radial + dr, off, M, full) >= M && this.planeSweep(radial + dr, off, M) >= M)
+          if (room >= M && pathRoom(radial + dr, off, M, full) >= M && this.planeSweep(radial + dr, off, M) >= M && !this.restOnRail(radial + dr, off))
             found = { rot: radial + dr, off }
-          else if (last && room > floor && room > -Infinity) {
+          else if (last && room > floor && room > -Infinity && !this.restOnRail(radial + dr, off)) {
             tight.push({ rot: radial + dr, off, room })
             tight.sort((p, q) => q.room - p.room)
             if (tight.length > 8) tight.pop()
@@ -5252,6 +6084,68 @@ export class Village implements GroundSource {
     this.revision++
   }
 
+  /** L'avion garé, ou pendant son demi-tour sur place, mord-il sur le
+   *  gabarit de la rame (0,72 u de l'axe, 0,3 de jour) ? La boucle entoure
+   *  l'aérodrome : sans ce garde-fou, l'avion se garait sur la voie (graine 7,
+   *  âge 10) et la rame passait au travers à chaque tour. */
+  private restOnRail(rot: number, off: number): boolean {
+    const a = this.planeAt
+    const b = this.planeBase
+    if (!a || !b || this.age < RAIL_AGE || this.beltTrack.pts.length < 3) return false
+    const k = this.planeK
+    const x = b.x + Math.sin(rot) * off
+    const z = b.z + Math.cos(rot) * off
+    const reach = this.planeProxyExtent.reach * k
+    const gauge = 0.72 + 0.3
+    if (this.beltDist(x, z) > reach + gauge + 0.5) return false
+    for (let s = 0; s <= 12; s++) {
+      const r = rot + (Math.PI * s) / 12
+      const dx = Math.sin(r)
+      const dz = Math.cos(r)
+      for (const q of this.planeProxyCells) {
+        const px = x + (dx * q.u + dz * q.v) * k
+        const pz = z + (dz * q.u - dx * q.v) * k
+        if (this.beltDist(px, pz) < gauge + q.r * k) return true
+      }
+    }
+    return false
+  }
+
+  /** L'arc de voie que l'avion survole trop bas pour passer au-dessus de la
+   *  rame (le toit de la loco, 1,45 u au-dessus du rail, et 0,3 de jour) :
+   *  au départ comme au retour, il attend que la rame l'ait passé. */
+  private planeRailArc(): { s0: number; s1: number } | null {
+    const a = this.planeAt
+    if (!a || !this.train || this.beltTrack.pts.length < 3) return null
+    const key = `${a.x},${a.z},${a.rot},${this.planeK},${this.beltLength}`
+    if (key === this.railArcKey) return this.railArc
+    this.railArcKey = key
+    this.railArc = null
+    const k = this.planeK
+    const top = RAIL_TOP + 1.45 + 0.3
+    const reach = Village.PLANE_HALF_SPAN * k + 0.72 + 0.3
+    const L = this.beltLength
+    let ref: number | null = null
+    let lo = Infinity
+    let hi = -Infinity
+    for (let t = 0; t <= 1; t += 0.005) {
+      const q = this.planePose(t)!
+      if (q.y - 0.4 * k > top) break
+      const n = nearestOnLoop(this.beltTrack, { x: q.x, z: q.z })
+      if (n.d > reach) continue
+      ref ??= n.s
+      // L'arc touché autour du point : la demi-corde du disque sur la voie.
+      const half = Math.sqrt(Math.max(0, reach * reach - n.d * n.d))
+      const ds = ((((n.s - ref) % L) + L * 1.5) % L) - L / 2
+      lo = Math.min(lo, ds - half)
+      hi = Math.max(hi, ds + half)
+    }
+    if (ref !== null) this.railArc = { s0: ref + lo, s1: ref + hi }
+    return this.railArc
+  }
+  private railArcKey = ''
+  private railArc: { s0: number; s1: number } | null = null
+
   private plane: Group | null = null
   private planeAt: { x: number; y: number; z: number; rot: number } | null = null
   private flight = -1
@@ -5260,6 +6154,16 @@ export class Village implements GroundSource {
   private tickPlane(dt: number): void {
     const a = this.planeAt
     if (!this.plane || !a || this.flight < 0) return
+    // Au moment de partir (ou d'apparaître au retour), l'avion attend que la
+    // rame ne puisse plus croiser son passage au ras de la voie : en 5,5 s de
+    // vol, elle fait 12 u au plus.
+    if (this.flight === 0) {
+      const arc = this.planeRailArc()
+      if (arc && this.trainNear(arc.s0, arc.s1, Village.TRAIN_SPEED * 5.5 + 1)) {
+        this.planeHeld += dt
+        return
+      }
+    }
     this.flight += dt / 5.5
     if (this.flight >= 1) {
       this.flight = -1
@@ -5500,6 +6404,23 @@ export class Village implements GroundSource {
     }))
   }
 
+  /** Ce que la faune évite : le bâti, et dès l'âge 7 la voie. Sans elle, la
+   *  palissade de l'enclos et le poulailler se posaient sur la boucle et la
+   *  rame passait au travers (axe à 0,06 à 0,54 u de la palissade, graines
+   *  42 et 99). Des disques de 1,1 u tous les mètres le long de l'axe : le
+   *  gabarit de la rame (0,72) et 0,38 de marge. */
+  get faunaObstacles(): { x: number; z: number; r: number }[] {
+    const out = this.obstaclePoints
+    const t = this.beltTrack
+    if (this.age < RAIL_AGE || t.pts.length < 2) return out
+    const L = this.beltLength
+    for (let s = 0; s < L; s += 1) {
+      const q = pointAt(t, s)
+      out.push({ x: q.x, z: q.z, r: 1.1 })
+    }
+    return out
+  }
+
   /** Quel savoir vit ici ? Le plus proche du point touché, feu compris. */
   identifyAt(x: number, z: number): string | null {
     let best: string | null = null
@@ -5545,8 +6466,16 @@ export class Village implements GroundSource {
       return this.restack()
     }
     if (!this.wonderPos) {
-      const slot = this.nextSlot(Village.WONDER_R, 2.4, 4.2, true)
-      this.wonderPos = { x: slot.x, y: slot.y, z: slot.z }
+      // La place gardée dans la sauvegarde, si elle tient toujours ; sinon la
+      // première parcelle libre, qui sera gardée à son tour.
+      const saved = this.plan.wonderAt
+      if (saved && this.spotFree(saved, Village.WONDER_R)) {
+        this.wonderPos = { x: saved.x, y: GROUND_Y, z: saved.z }
+        this.lots.push({ x: saved.x, z: saved.z, r: Village.WONDER_R })
+      } else {
+        const slot = this.nextSlot(Village.WONDER_R, 2.4, 4.2, true)
+        this.wonderPos = { x: slot.x, y: slot.y, z: slot.z }
+      }
     }
     // Seule la Merveille affichée se télécharge : celle du chantier en cours,
     // ou la dernière achevée. Les dix autres ne coûtent rien.
@@ -5564,6 +6493,23 @@ export class Village implements GroundSource {
       this.fetchModels([id], () => {
         if (this.wonderShown) this.setWonder(this.wonderShown.age, this.wonderShown.stage)
       })
+  }
+
+  /** Une place gardée (Merveille, musée) tient-elle toujours ? */
+  private spotFree(p: { x: number; z: number }, r: number): boolean {
+    return (
+      this.island.isLand(p.x, p.z) &&
+      this.clearOfLots(p.x, p.z, r) &&
+      this.beltClear(p.x, p.z, r + Village.BELT_CLEAR)
+    )
+  }
+
+  /** Les places réservées de la Merveille et du musée, pour la sauvegarde. */
+  get wonderSpot(): { x: number; z: number } | null {
+    return this.wonderPos ? { x: this.wonderPos.x, z: this.wonderPos.z } : null
+  }
+  get museumSpot(): { x: number; z: number } | null {
+    return this.museumPos ? { x: this.museumPos.x, z: this.museumPos.z } : null
   }
 
   get wonderAt(): { x: number; z: number } | null {
@@ -5601,8 +6547,14 @@ export class Village implements GroundSource {
     this.museumGeo = null
     if (ids.length <= 0) return this.restack()
     if (!this.museumPos) {
-      const slot = this.nextSlot(Village.MUSEUM_R, 1.4, 2.4)
-      this.museumPos = { x: slot.x, y: slot.y, z: slot.z }
+      const saved = this.plan.museumAt
+      if (saved && this.spotFree(saved, Village.MUSEUM_R)) {
+        this.museumPos = { x: saved.x, y: GROUND_Y, z: saved.z }
+        this.lots.push({ x: saved.x, z: saved.z, r: Village.MUSEUM_R })
+      } else {
+        const slot = this.nextSlot(Village.MUSEUM_R, 1.4, 2.4)
+        this.museumPos = { x: slot.x, y: slot.y, z: slot.z }
+      }
     }
     const n = Math.min(ids.length, 14)
     const p: BufferGeometry[] = []
@@ -5696,6 +6648,10 @@ export class Village implements GroundSource {
    *  d'etain.glb, et se lisent ensemble comme une même cargaison. */
   private static readonly CARGO_K = 0.85 * SCALE
   private goodsPos: { x: number; z: number; rot: number } | null = null
+  /** Le quai relu était sur la ceinture : il est reposé au prochain lot —
+   *  ou, faute de place, laissé où il était (`goodsPrior`). */
+  goodsMoved = false
+  private goodsPrior: { x: number; z: number } | null = null
   /** Emprise de chaque lot posé, en monde : un rectangle orienté. Lu par les
    *  tests (chemin du colon, chevauchements). */
   goodsLots: { id: string; x: number; z: number; yaw: number; hx: number; hz: number }[] = []
@@ -5719,6 +6675,12 @@ export class Village implements GroundSource {
     if (!saved || this.goodsPos) return
     const r = Village.GOODS_R
     if (!this.island.isLand(saved.x, saved.z) || !this.clearOfLots(saved.x, saved.z, r)) return
+    // Sur la ceinture : il sera reposé ailleurs (grand tracé).
+    if (!this.beltClear(saved.x, saved.z, r + Village.BELT_CLEAR)) {
+      this.goodsMoved = true
+      this.goodsPrior = { x: saved.x, z: saved.z }
+      return
+    }
     this.goodsPos = { x: saved.x, z: saved.z, rot: Math.atan2(HEARTH.x - saved.x, HEARTH.z - saved.z) }
     this.lots.push({ x: saved.x, z: saved.z, r })
   }
@@ -5750,11 +6712,28 @@ export class Village implements GroundSource {
     this.buildLanes()
     for (const lane of this.lanes!)
       for (const q of lane.pts) if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
-    for (const q of [...this.roadPath, ...this.railPath])
+    for (const q of this.roadPath)
       if (Math.hypot(q.x - x, q.z - z) < Village.GOODS_R + gap) return false
     return true
   }
   private nodeXZ: number[] | null = null
+
+  /** Aucun rocher ni buisson sous le disque (les sapins s'abattent). */
+  private bare(x: number, z: number, r: number): boolean {
+    if (!this.nodeXZ) {
+      this.nodeXZ = []
+      for (const m of this.island.pickables) {
+        if (this.island.kindFor(m) === 'wood') continue
+        for (let i = 0; i < m.count; i++) {
+          const p = this.island.instancePosition(m, i)
+          this.nodeXZ.push(p.x, p.z)
+        }
+      }
+    }
+    for (let i = 0; i < this.nodeXZ.length; i += 2)
+      if (Math.hypot(this.nodeXZ[i]! - x, this.nodeXZ[i + 1]! - z) < r + 0.5) return false
+    return true
+  }
   /** Zones que le quai ne doit pas couvrir, hors du village : l'enclos à
    *  moutons de la faune, tiré au hasard à chaque chargement. */
   goodsAvoid: readonly { x: number; z: number; r: number }[] = []
@@ -5782,20 +6761,31 @@ export class Village implements GroundSource {
     // peut border une rue à 0,5 près au lieu de 1 — la chaussée reste libre,
     // le colon passe à côté sans le traverser — et son emprise ne réserve
     // plus de marge de parcelle (empreinte 1,6 au lieu de 2,4).
-    for (const [strict, gap, foot] of [
-      [true, 1.0, fp],
-      [false, 1.0, fp],
-      [false, 0.5, 1.6],
+    // Passes suivantes, depuis la ceinture. Avant l'âge 7, sur l'île de base,
+    // le quai peut border le sentier (relax 1), puis le tracé de la future
+    // voie (relax 2) — comme un bâtiment, voir `slotOrNull`. Après, le bourg
+    // plein jusqu'à la voie : la bande côtière, sur un cap assez large.
+    const early = this.railRadii !== this.beltRadii
+    for (const [strict, gap, foot, coast, relax] of [
+      [true, 1.0, fp, false, 0],
+      [false, 1.0, fp, false, 0],
+      [false, 0.5, 1.6, false, 0],
+      [false, 0.5, 1.6, false, early ? 1 : -1],
+      [false, 0.5, 1.6, false, early ? 2 : -1],
+      [false, 0.5, 1.6, true, 0],
     ] as const) {
+      if (relax < 0) continue
       const accept = (x: number, z: number): boolean => this.goodsClear(x, z, strict, gap)
-      s = this.laneSlot(r, foot, 0, accept)
+      if (!coast && relax === 0) s = this.laneSlot(r, foot, 0, accept)
       if (s) break
+      this.relaxBelt = relax
       for (const c of cells) {
-        if (!this.fits(new Vector3(c.x, GROUND_Y, c.z), r, foot, 0, false, accept)) continue
+        if (!this.fits(new Vector3(c.x, GROUND_Y, c.z), r, foot, 0, false, accept, coast)) continue
         this.lots.push({ x: c.x, z: c.z, r })
         s = { x: c.x, z: c.z }
         break
       }
+      this.relaxBelt = 0
       if (s) break
     }
     // Les lots regardent le feu : le village voit ce que le marchand a laissé.
@@ -5835,6 +6825,14 @@ export class Village implements GroundSource {
     const cargo = Village.CARGO.filter((id) => ids.includes(id))
     if (cargo.length > 0) {
       if (!this.goodsPos) this.goodsPos = this.goodsSlot()
+      const prior = this.goodsPrior
+      if (!this.goodsPos && prior) {
+        // Délogé par la ceinture, sans place ailleurs : il ne disparaît pas.
+        this.goodsPos = { x: prior.x, z: prior.z, rot: Math.atan2(HEARTH.x - prior.x, HEARTH.z - prior.z) }
+        this.lots.push({ x: prior.x, z: prior.z, r: Village.GOODS_R })
+        this.goodsMoved = false
+      }
+      this.goodsPrior = null
       if (this.goodsPos) {
         parts.push(this.quay(cargo, this.goodsPos))
         // Un sapin qui a poussé depuis (l'île grandit d'âge en âge) ne
@@ -5935,6 +6933,17 @@ export class Village implements GroundSource {
 
   update(dt: number, t: number, daylight = 1): void {
     this.tickTrain(dt)
+    if (this.scaffold) {
+      this.scaffoldLeft -= dt
+      // La dernière seconde, l'échafaudage s'enfonce : il ne disparaît pas
+      // d'un coup.
+      this.scaffold.scale.y = Math.min(1, Math.max(0.001, this.scaffoldLeft))
+      if (this.scaffoldLeft <= 0) {
+        this.group.remove(this.scaffold)
+        this.scaffold.geometry.dispose()
+        this.scaffold = null
+      }
+    }
     this.tickPlane(dt)
     this.tickCar(dt)
     // L'éclairage public s'allume au crépuscule et s'éteint à l'aube — c'est

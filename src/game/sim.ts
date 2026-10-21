@@ -951,6 +951,11 @@ export class Game {
     this.emit({ type: 'expeditionEnd', loot, find, journal, relic, setback })
   }
 
+  /** Une ligne de Chronique écrite par le monde (le grand tracé). */
+  note(kind: string, text: string): void {
+    this.record(kind, text)
+  }
+
   /** Une ligne de plus à la Chronique — datée du jour de jeu, dans le monde
    *  courant. Bornée : la saga tient dans le localStorage, pas l'inverse. */
   private record(kind: string, text: string): void {

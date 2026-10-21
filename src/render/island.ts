@@ -257,6 +257,21 @@ export function spreadForAge(age: number): number {
  *  final aussi bien qu'avant — à peu près la taille qu'avait l'île au Moyen Âge. */
 export const BASE_GROWTH = 1.45
 
+/** L'âge du chemin de fer : la mer recule une fois, d'un palier, pour que la
+ *  voie fasse le tour de l'île (« Le grand tracé », décision du 2026-10-13).
+ *  Mesuré sur dix graines (prototype de conception) : à 1,45 la ceinture
+ *  ferrée passerait en plein bourg (49 % des bâtiments en conflit), à 1,75
+ *  elle tient un rayon de courbure de 11,9 u au moins et ne touche qu'un
+ *  bâtiment sur six. */
+export const RAIL_AGE = 7
+export const GROWN_GROWTH = 1.75
+
+/** La taille de l'île à un âge donné : 1,45 jusqu'à l'Ère industrielle, puis
+ *  1,75 — un seul palier, le reste vient des parcelles gagnées sur la mer. */
+export function islandGrowth(age: number): number {
+  return age >= RAIL_AGE ? GROWN_GROWTH : BASE_GROWTH
+}
+
 /** Une parcelle : un centre et son anneau, sept hexagones. */
 export interface LandPlot {
   kind: string
@@ -432,7 +447,7 @@ export class Island {
 
   /** Parcelles posées sur CETTE île. */
   readonly land: readonly LandPlot[]
-  private readonly growth = BASE_GROWTH
+  private readonly growth: number
 
   private readonly seed: number
   /** L'époque : la friche recule à mesure que le village s'étend. */
@@ -441,10 +456,20 @@ export class Island {
   // Champs déclarés à la main plutôt qu'en propriétés de paramètre : Node
   // retire les types sans transpiler, et le test des parcelles construit
   // l'île hors navigateur.
-  constructor(seed = DEFAULT_SEED, age = 0, land: readonly LandPlot[] = []) {
+  /** `cellsOnly` : le relevé des cellules seulement (terre, parcelles), sans
+   *  aucun maillage — de quoi savoir où passera la ceinture de l'île agrandie
+   *  avant même qu'elle n'existe. */
+  constructor(
+    seed = DEFAULT_SEED,
+    age = 0,
+    land: readonly LandPlot[] = [],
+    growth = islandGrowth(age),
+    cellsOnly = false,
+  ) {
     this.seed = seed
     this.age = age
     this.land = land
+    this.growth = growth
     const rnd = mulberry32(seed)
     const half = GRID / 2
 
@@ -502,6 +527,10 @@ export class Island {
     // base, jamais un masque élargi — l'île d'origine ne bouge pas d'un pouce.
     for (const p of land) this.addPlot(p)
     this.fillPockets()
+    if (cellsOnly) {
+      this.radius = this.measureRadius()
+      return
+    }
 
     this.bakeRim()
     this.bakeFootprint()
@@ -513,12 +542,21 @@ export class Island {
     this.buildHorizons()
     this.scatter(rnd)
 
-    // Rayon mesuré sur les tuiles réellement posées, coin le plus lointain.
+    this.radius = this.measureRadius()
+  }
+
+  /** Rayon mesuré sur les tuiles réellement posées, coin le plus lointain. */
+  private measureRadius(): number {
     let far = 0
     for (const c of this.cells) {
       far = Math.max(far, Math.hypot(Math.abs(c.x) + TILE / 2, Math.abs(c.z) + TILE / 2))
     }
-    this.radius = far
+    return far
+  }
+
+  /** La graine de CETTE île. */
+  get seedValue(): number {
+    return this.seed
   }
 
   /** Empreinte réellement rendue : l'enveloppe polaire des coins des tuiles du

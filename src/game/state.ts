@@ -59,8 +59,23 @@ export interface SaveV1 {
   layout: { id: string; x: number; z: number; rot: number }[]
   /** Version du PLAN. Quand les règles d'urbanisme changent (v2 : les rues),
    *  un plan tracé selon les anciennes ne peut pas être conservé — le village
-   *  serait un semis au milieu d'un réseau de rues. Il est retracé une fois. */
+   *  serait un semis au milieu d'un réseau de rues. Il est retracé une fois.
+   *  v4 : la ceinture ferrée. Un plan v3 est GARDÉ ; à l'âge 7, seuls les
+   *  bâtiments sur le tracé de la voie sont reposés ailleurs (« Le grand
+   *  tracé »), une fois. */
   layoutV: number
+  /** La CEINTURE (sentier côtier, chemin, puis voie ferrée en boucle) : 72
+   *  rayons depuis le centre de l'île, tous les 5°. Persistée parce qu'elle
+   *  dépend de l'ordre des terres gagnées : elle ne fait que s'éloigner du
+   *  centre, et n'est jamais retracée au chargement. */
+  belt: number[] | null
+  /** Les RUES du village, telles que tracées la première fois : la forêt et
+   *  le ponton qui guidaient leur tracé changent quand la mer recule à
+   *  l'âge 7 ; les rues, elles, restent sous les maisons qui les bordent. */
+  streets: { x: number; z: number }[][] | null
+  /** Places de la Merveille et du musée, réservées une fois pour toutes. */
+  wonderAt: { x: number; z: number } | null
+  museumAt: { x: number; z: number } | null
   /** Le quai du marchand, où attendent les outils achetés (l'étain excepté,
    *  posé au camp). Choisi une fois, à la première marchandise, et gardé :
    *  comme le plan, il dépend de l'île et ne doit plus bouger. */
@@ -125,8 +140,12 @@ export function emptySave(now: number): SaveV1 {
     wonder: null,
     wonders: [],
     layout: [],
-    layoutV: 3,
+    layoutV: 4,
     goods: null,
+    belt: null,
+    streets: null,
+    wonderAt: null,
+    museumAt: null,
     village: '',
     legacy: 0,
     tribe: null,
@@ -146,6 +165,34 @@ function cleanTribe(t: SaveV1['tribe']): SaveV1['tribe'] {
 }
 
 const coord = (v: unknown): v is number => Number.isInteger(v) && Math.abs(v as number) <= 60
+
+const finite = (v: unknown, max = 200): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= max
+
+/** Un point du plan relu : deux nombres finis, ou rien. */
+function cleanPoint(v: unknown): { x: number; z: number } | null {
+  const p = v as { x?: unknown; z?: unknown } | null | undefined
+  return p && finite(p.x) && finite(p.z) ? { x: p.x, z: p.z } : null
+}
+
+/** La ceinture relue : exactement 72 rayons finis et positifs, ou rien (elle
+ *  sera alors tracée à neuf). */
+function cleanBelt(v: unknown): number[] | null {
+  if (!Array.isArray(v) || v.length !== 72) return null
+  return v.every((r) => finite(r, 80) && r > 1) ? (v as number[]).slice() : null
+}
+
+/** Les rues relues : au plus trois polylignes d'au plus 64 points. */
+function cleanStreets(v: unknown): { x: number; z: number }[][] | null {
+  if (!Array.isArray(v) || v.length === 0 || v.length > 3) return null
+  const out: { x: number; z: number }[][] = []
+  for (const lane of v) {
+    if (!Array.isArray(lane) || lane.length > 64) return null
+    const pts = lane.map(cleanPoint)
+    if (pts.some((p) => !p)) return null
+    out.push(pts as { x: number; z: number }[])
+  }
+  return out
+}
 
 function cleanLand(v: unknown): SaveV1['land'] {
   if (!Array.isArray(v)) return []
@@ -214,6 +261,10 @@ export function loadSave(now: number): { save: SaveV1; offlineSeconds: number } 
         ? { x: g.x, z: g.z }
         : null
     save.landN = Number.isInteger(save.landN) && save.landN >= 0 && save.landN <= 999 ? save.landN : 0
+    save.belt = cleanBelt(save.belt)
+    save.streets = cleanStreets(save.streets)
+    save.wonderAt = cleanPoint(save.wonderAt)
+    save.museumAt = cleanPoint(save.museumAt)
     return { save, offlineSeconds: elapsed }
   } catch {
     return { save: emptySave(now), offlineSeconds: 0 }
