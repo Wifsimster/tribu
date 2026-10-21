@@ -179,70 +179,94 @@ test('impact : à chaque coup, le bout de l’outil est dans le buisson, à mi-h
   }
 })
 
-test('continuité : entrée, sortie, fête, nuit et départ en expédition sans saut ; wake() remet au repos', () => {
+/** La plus grande rotation d'un membre entre deux instants du clip (temps de
+ *  jeu, boucles dépliées) : ce que le geste parcourt de lui-même. */
+function clipOwn(clip, e0, e1) {
+  const a = CLIPS.sampleClip(clip, CLIPS.clipTime(clip, e0), CLIPS.newPose())
+  const b = CLIPS.sampleClip(clip, CLIPS.clipTime(clip, e1), CLIPS.newPose())
+  return Math.max(...CLIPS.NODES.map((n) => a[n].q.angleTo(b[n].q)))
+}
+
+/** La plus grande rotation d'un membre en une image de marche, sans geste. */
+function walkOwn() {
+  const s = new Settler(island)
+  s.group.position.set(-6, s.group.position.y, -6)
+  s.sendTo(new Vector3(6, 0, 6))
+  for (let i = 0; i < 30; i++) s.update(DT, 1)
+  let prev = quats(s)
+  let most = 0
+  for (let i = 0; i < 120 && s.phase === 'walkOut'; i++) {
+    s.update(DT, 1)
+    const now = quats(s)
+    most = Math.max(most, jump(prev, now))
+    prev = now
+  }
+  return most
+}
+
+// Le fondu ajoute au plus ça par image à ce que le geste ou la marche font
+// d'eux-mêmes : 1,6 rad/s lissé (≤ 0,04 rad à 60 i/s), plus une marge.
+const FADE_SLACK = 0.05
+
+/** Suit `s` image par image et vérifie, sur TOUT fondu (entrée et sortie) et
+ *  les 30 images qui suivent, que le saut d'un membre reste dans ce que le
+ *  geste (ou la marche) parcourt de lui-même + FADE_SLACK. Rend le nombre
+ *  d'images de fondu vues, pour s'assurer que le contrôle n'est pas vide. */
+function watchFades(s, label, frames, until, WALK, shown = quats(s)) {
+  // `shown` : la dernière pose rendue (avant une interruption, celle du geste).
+  let prev = shown
+  let after = 0
+  let fading = 0
+  for (let i = 0; i < frames; i++) {
+    const e0 = s.play?.e ?? null
+    const phase0 = s.phase
+    s.update(DT, 1)
+    const now = quats(s)
+    const fadeIn = s.play && s.play.e <= s.play.fade + DT
+    const fadeOut = !!s.out
+    if (fadeIn || fadeOut) {
+      fading++
+      after = 30
+    } else if (after > 0) after--
+    // L'arrivée au feu (dépôt) et le coucher sont des poses procédurales
+    // d'avant cette PR, sans fondu : hors du contrôle.
+    const watched = (fadeIn || fadeOut || after > 0) && s.phase !== 'deposit' && phase0 !== 'deposit' && !s.isSleeping
+    if (watched) {
+      const own = s.play && e0 !== null ? clipOwn(s.play.clip, e0, s.play.e) : WALK
+      const j = jump(prev, now)
+      assert.ok(j <= own + FADE_SLACK, `${label} image ${i} (${fadeIn ? 'entrée' : fadeOut ? 'sortie' : 'après'}) : saut de ${j.toFixed(3)} rad, geste ${own.toFixed(3)}`)
+    }
+    prev = now
+    if (until?.()) break
+  }
+  return fading
+}
+
+test('continuité : entrée, sortie, fête, nuit et départ en expédition sans saut sur tout le fondu ; wake() remet au repos', () => {
+  const WALK = walkOwn()
+  assert.ok(WALK > 0.02 && WALK < 0.2, `marche : ${WALK.toFixed(3)} rad par image`)
   for (const name of CLIPS.CLIP_NAMES) {
     // Un cycle complet : marche, geste, retour, dépôt.
     const s = settlerAt(name)
-    let prev = quats(s)
-    let phase = s.phase
-    let since = Infinity
     const crossed = []
-    run(
-      s,
-      () => s.phase === 'deposit',
-      6000,
-      () => {
-        const now = quats(s)
-        if (phase !== s.phase) {
-          crossed.push(`${phase}→${s.phase}`)
-          since = 0
-        }
-        // Les trois images qui suivent l'entrée dans le geste et la sortie :
-        // sans fondu, l'écart y dépasse 1 rad.
-        if (since < 3) {
-          const j = jump(prev, now)
-          assert.ok(j <= 0.05, `${name} ${crossed.at(-1)} : saut de ${j.toFixed(3)} rad`)
-        }
-        since++
-        phase = s.phase
-        prev = now
-      },
-    )
+    let phase = s.phase
+    const fading = watchFades(s, `${name} cycle`, 6000, () => {
+      if (s.phase !== phase) crossed.push(`${phase}→${s.phase}`)
+      phase = s.phase
+      return s.phase === 'deposit'
+    }, WALK)
     assert.deepEqual(crossed, ['walkOut→work', 'work→walkHome', 'walkHome→deposit'])
+    assert.ok(fading >= 2 * 9, `${name} : ${fading} images de fondu vues (entrée + sortie ≥ 0,15 s chacune)`)
     // Les interruptions en plein geste.
     for (const cut of ['celebrate', 'night', 'expedition']) {
       const t = settlerAt(name)
       run(t, () => t.phase === 'work' && t.play && t.play.e > 1.2)
-      let before = quats(t)
-      if (cut === 'celebrate') {
-        // La fête écourte le geste (0,2 s) : la sortie se juge à la fin du travail.
-        t.celebrate()
-        // Le geste peut être en plein balayage quand il s'arrête : on tolère ce
-        // qu'il aurait parcouru lui-même pendant cette image, pas plus 0,05.
-        let last = before
-        let own = 0
-        run(t, () => t.phase !== 'work', 60, () => {
-          before = last
-          last = quats(t)
-          if (t.play) {
-            const c = t.play.clip
-            const a = CLIPS.sampleClip(c, CLIPS.clipTime(c, t.play.e), CLIPS.newPose())
-            const b = CLIPS.sampleClip(c, CLIPS.clipTime(c, t.play.e + DT), CLIPS.newPose())
-            own = Math.max(...CLIPS.NODES.map((n) => a[n].q.angleTo(b[n].q)))
-          }
-        })
-        const j = jump(before, last)
-        assert.ok(j <= own + 0.05, `${name} fête : saut de ${j.toFixed(3)} rad à la fin du travail (geste ${own.toFixed(3)})`)
-        before = last
-      } else if (cut === 'night') t.setNight(true)
+      const shown = quats(t)
+      if (cut === 'celebrate') t.celebrate()
+      else if (cut === 'night') t.setNight(true)
       else t.departExpedition(true)
-      for (let i = 0; i < 3; i++) {
-        t.update(DT, 1)
-        const now = quats(t)
-        const j = jump(before, now)
-        assert.ok(j <= 0.05, `${name} ${cut} : saut de ${j.toFixed(3)} rad à l'image ${i}`)
-        before = now
-      }
+      const seen = watchFades(t, `${name} ${cut}`, 240, null, WALK, shown)
+      assert.ok(seen >= 9, `${name} ${cut} : ${seen} images de fondu vues`)
     }
     // wake() en plein geste : debout, pose de repos exacte.
     const w = settlerAt(name)
@@ -257,6 +281,39 @@ test('continuité : entrée, sortie, fête, nuit et départ en expédition sans 
     }
     assert.equal(w.play, null)
   }
+})
+
+test('sommeil : couché, le colon n’a plus ni panier ni gerbe ; relevé, il les retrouve', () => {
+  for (const name of CLIPS.CLIP_NAMES) {
+    const s = settlerAt(name)
+    run(s, () => s.phase === 'work' && s.carry.level >= 1)
+    assert.equal(s.carry.visible, true)
+    s.setNight(true)
+    run(s, () => s.isSleeping, 6000)
+    for (let i = 0; i < 120; i++) {
+      s.update(DT, 1)
+      assert.equal(s.carry.visible, false, `${name} : accessoire visible au lit`)
+    }
+    s.setNight(false)
+    run(s, () => !s.isSleeping && s.lieDown === 0, 2000)
+    s.update(DT, 1)
+    assert.equal(s.carry.visible, true, `${name} : accessoire retrouvé au réveil`)
+  }
+})
+
+test('dépôt : onDeposit tombe une fois par travail, au feu, panier vidé', () => {
+  const s = settlerAt('gather_hand')
+  let calls = 0
+  let level = -1
+  s.onDeposit = () => {
+    calls++
+    level = s.carry.level
+  }
+  run(s, () => s.phase === 'walkHome')
+  assert.equal(calls, 0, 'pas avant le retour au feu')
+  run(s, () => s.phase === 'deposit', 6000)
+  assert.equal(calls, 1)
+  assert.equal(level, 0, 'panier déjà vidé quand main.ts rend la main à la chasse')
 })
 
 test('réussite : le panier passe ses quatre crans pendant le travail, reste plein au retour, se vide au feu', () => {

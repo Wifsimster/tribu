@@ -144,8 +144,8 @@ game.visitable = neighbors.map((n) => ({ id: n.id, name: n.name, age: n.age, rel
 // la remet à zéro à chaque reconstruction du monde.
 let fishing = false
 /** Le joueur a touché un buisson : c'est la cueillette, même quand la tribu
- *  sait chasser. Un état de surface, comme la pêche : rien dans la
- *  sauvegarde, l'action se déduit des savoirs et du focus au rechargement. */
+ *  sait chasser, le temps d'un travail (jusqu'au dépôt au feu). Un état de
+ *  surface, comme la pêche : rien dans la sauvegarde. */
 let gatherTap = false
 let catchTimer = 12
 /** Vrai le temps du buildWorld qui suit un passage d'âge. */
@@ -194,6 +194,12 @@ function buildWorld(): void {
     if (res === 'wood') return ambience.work('bois')
     if (res === 'food') return ambience.work(game.knows('agriculture') ? 'cueillette' : 'chasse')
     return ambience.work('pierre')
+  }
+  // Le buisson touché vaut pour un travail : panier vidé au feu, le colon
+  // reprend l'action que disent ses savoirs (la chasse, s'il la connaît).
+  // Retomber plus tôt viderait le panier en chemin (QA PR #29).
+  settler.onDeposit = () => {
+    gatherTap = false
   }
   fishing = false
   gatherTap = false

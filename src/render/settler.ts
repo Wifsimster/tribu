@@ -111,6 +111,7 @@ const FADE_RATE = 1.6
 const CLIP_REACH = 0.6
 
 const smooth = (x: number) => x * x * (3 - 2 * x)
+const MIX_Q = new Quaternion()
 
 /** Une pièce teintée puis posée. Tout un membre finit fondu en une seule
  *  géométrie: le détail devient gratuit, seul le nombre de mesh coûte. */
@@ -227,6 +228,7 @@ export class Settler {
   private out: { from: Pose; t: number; dur: number } | null = null
   /** Cran du panier ou de la gerbe : 0 vide, 3 plein. */
   private carryLevel = 0
+  private carryMesh: Mesh | null = null
   private readonly scratch = newPose()
 
   constructor(island: Island) {
@@ -367,7 +369,10 @@ export class Settler {
   private static mix(from: Pose, to: Pose, w: number): void {
     for (const n of NODES) {
       to[n].p.lerpVectors(from[n].p, to[n].p, w)
-      to[n].q.slerpQuaternions(from[n].q, to[n].q, w)
+      // Pas `to.q.slerpQuaternions(from.q, to.q, w)` : three copie `from` dans
+      // `to` avant de lire `to`, et le fondu restait figé sur `from` (QA PR #29).
+      MIX_Q.slerpQuaternions(from[n].q, to[n].q, w)
+      to[n].q.copy(MIX_Q)
     }
   }
 
@@ -479,13 +484,21 @@ export class Settler {
    *  rien sans modèles, rien en voyage. */
   private refreshCarry(): void {
     this.leftMesh.visible = this.propMesh.visible = false
+    this.carryMesh = null
     const clip = this.clipName ? settlerClip(this.clipName) : null
     if (!clip || this.trip !== 'none') return
     const geo = carryGeometry(clip.carry.kind, this.carryLevel)
     if (!geo) return
     const mesh = clip.carry.node === 'toolL' ? this.leftMesh : this.propMesh
     mesh.geometry = geo
-    mesh.visible = true
+    this.carryMesh = mesh
+    this.showCarry()
+  }
+
+  /** Couché, le colon n'a ni panier à la main ni gerbe sur le dos (QA PR #29) :
+   *  l'accessoire reparaît quand il se relève. */
+  private showCarry(): void {
+    if (this.carryMesh) this.carryMesh.visible = !this.sleeping && this.lieDown === 0
   }
 
   /** La nuit sans lampe, la tribu dort : le colon rentre se coucher près du feu.
@@ -815,6 +828,7 @@ export class Settler {
     if (this.out) this.restPose()
     this.advance(dt, boost)
     this.blendOut(dt)
+    this.showCarry()
   }
 
   private advance(dt: number, boost: number): void {
@@ -854,9 +868,10 @@ export class Settler {
           // celle du travail (l'économie n'en dépend pas, c'est un débit).
           if (this.phase === 'work') this.startClip()
           else {
-            // Il vide son panier au feu.
+            // Il vide son panier au feu : le travail demandé est rendu.
             this.carryLevel = 0
             this.refreshCarry()
+            this.onDeposit?.()
           }
           break
         }
@@ -1085,6 +1100,8 @@ export class Settler {
   /** Branché par main.ts : chaque coup porté doit s'entendre. Le son est
    *  ainsi lié au GESTE, pas à une boucle de fond qui tournerait sans fin. */
   onStrike: (() => void) | null = null
+  /** Branché par main.ts : il arrive au feu et dépose ce qu'il rapporte. */
+  onDeposit: (() => void) | null = null
 
   private strike(color: Color = CHIP.flint, at: Vector3 | null = null): void {
     this.onStrike?.()
