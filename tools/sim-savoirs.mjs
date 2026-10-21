@@ -29,6 +29,22 @@
 //   --json                sortie JSON au lieu du tableau
 //   --seed=<n>            graine du hasard (défaut 7)
 //   --no-tools            joueur qui refuse tous les outils du marchand
+//   --costs=3.72          coûts de la section 10 de la spec (savoirs des âges
+//                         4 à 10, Charrue, Merveilles 3 à 10), export COSTS_372
+//   --costs-file=<json>   même forme que COSTS_372, lue dans un fichier (sert
+//                         à tools/couts-ages-tardifs.mjs)
+//   --wonders=v1          le joueur construit la Merveille de chaque âge : il
+//                         la lance dès qu'il entre dans l'âge (ou dès que la
+//                         précédente est finie), sans rien changer à sa
+//                         récolte : le chantier vit de ce que l'île produit.
+//                         Conduite v1 ; une autre conduite prendra un autre
+//                         nom, pour garder les chiffres de la spec rejouables.
+//   --wonder-focus        avec --wonders=v1 : quand aucun savoir n'attend de
+//                         matériau, le joueur focalise le matériau du chantier
+//                         le plus en retard au lieu de la nourriture
+//   --wonder-from=<âge>   premier âge dont on construit la Merveille (défaut 3)
+//
+// La partie s'arrête d'elle-même quand le dernier savoir de l'arbre est acquis.
 
 const store = new Map()
 globalThis.localStorage = {
@@ -38,7 +54,7 @@ globalThis.localStorage = {
 }
 
 const { Game, meanLightFactor } = await import('../src/game/sim.ts')
-const { TECHS, TECH_BY_ID, AGES } = await import('../src/game/content.ts')
+const { TECHS, TECH_BY_ID, AGES, WONDERS, WONDER_BY_AGE } = await import('../src/game/content.ts')
 const { SAVE_KEY, emptySave } = await import('../src/game/state.ts')
 
 const args = Object.fromEntries(
@@ -81,6 +97,24 @@ if (args.costs === 'proportional') {
   const { PROPORTIONAL } = await import('./savoirs-rule.mjs')
   for (const t of TECHS) if (PROPORTIONAL[t.id]) t.materials = PROPORTIONAL[t.id]
 }
+// Section 10 : une table { techs: { id: { cost?, materials } }, wonders: { id: cost } }.
+{
+  let table = null
+  if (args.costs === '3.72') table = (await import('./savoirs-rule.mjs')).COSTS_372
+  if (args['costs-file']) table = JSON.parse((await import('node:fs')).readFileSync(args['costs-file'], 'utf8'))
+  if (table) {
+    for (const t of TECHS) {
+      const c = table.techs?.[t.id]
+      if (!c) continue
+      if (c.cost) t.cost = c.cost
+      if (c.materials) t.materials = c.materials
+    }
+    for (const w of WONDERS) if (table.wonders?.[w.id]) w.cost = table.wonders[w.id]
+  }
+}
+if (args.wonders && args.wonders !== 'v1') throw new Error(`--wonders=${args.wonders} : seule la conduite v1 existe`)
+const WONDERS_ON = args.wonders === 'v1'
+const WONDER_FROM = Number(args['wonder-from'] ?? 3)
 
 // ── Le bilan par âge : ce qui est produit en jouant, ce que les savoirs
 // prennent. Seul le jeu actif compte (l'absence a son propre relevé).
@@ -110,6 +144,18 @@ let active = false
       for (const [r, n] of Object.entries(tech.materials ?? {})) b.spent[r] = (b.spent[r] ?? 0) + n
     }
     return ok
+  }
+  // Ce que la Merveille prend, rangé à l'âge de la Merveille (jeu actif seul,
+  // comme la production).
+  const tickWonder = P.tickWonder
+  P.tickWonder = function (dt) {
+    const cur = this.save.wonder
+    const before = cur ? { ...cur.paid } : null
+    tickWonder.call(this, dt)
+    if (!cur || !active) return
+    const b = bucket(cur.age)
+    b.wonder ??= {}
+    for (const [r, v] of Object.entries(cur.paid)) b.wonder[r] = (b.wonder[r] ?? 0) + v - (before[r] ?? 0)
   }
 }
 
@@ -145,6 +191,9 @@ if (args.from === 'human' && rule) {
 }
 const DT = 0.5
 const firstAffordable = new Map()
+// L'instant où le SAVOIR suffit : l'écart avec « abordable », c'est l'attente
+// d'un matériau.
+const insightReady = new Map()
 const RES = ['food', 'wood', 'stone', 'fiber', 'clay', 'copper', 'iron', 'insight']
 const snap = () => {
   const o = Object.fromEntries(RES.map((r) => [r, Math.round(g.amount(r))]).filter(([, v]) => v > 0))
@@ -159,6 +208,17 @@ if (args.cycle) {
   for (let k = play; k < MAX; k += play) awayQueue.push([k, away])
 }
 let lastAge = g.save.age
+// Production cumulée du jeu actif, toutes les 10 s (--json) : le calibrage des
+// Merveilles y lit ce que l'île produit pendant une fenêtre de l'âge.
+const timeline = []
+const totalMade = (r) => [...eco.values()].reduce((s, b) => s + (b.made[r] ?? 0), 0)
+let wondersDone = g.save.wonders.length
+function noteWonders() {
+  while (g.save.wonders.length > wondersDone) {
+    const age = g.save.wonders[wondersDone++]
+    log.push({ kind: 'wonderDone', age, name: WONDER_BY_AGE.get(age).name, t })
+  }
+}
 
 // Pour la règle de coût proportionnel : à l'instant où chaque savoir
 // apparaît dans la liste, les taux MOYENS (nuit comprise, sans encourager)
@@ -210,6 +270,24 @@ function chooseFocus() {
       }
     }
   }
+  // --wonder-focus, et aucun savoir n'attend de matériau : le chantier, sur
+  // son matériau le plus en retard (reste dû / taux focalisé, quel que soit le
+  // focus du moment). Ça coûte du savoir : la nourriture focalisée nourrit
+  // bien plus le terme `material` du savoir que le fer ou le cuivre.
+  const cur = g.save.wonder
+  if (worst === 0 && WONDERS_ON && args['wonder-focus'] && cur) {
+    const def = WONDER_BY_AGE.get(cur.age)
+    for (const [r, total] of Object.entries(def.cost)) {
+      const left = total - (cur.paid[r] ?? 0)
+      if (left <= 0 || !g.unlocked.has(r)) continue
+      const focused = g.save.focus === r ? g.rates[r] : g.rates[r] / 0.3
+      const wait = left / Math.max(1e-6, focused)
+      if (wait > worst) {
+        worst = wait
+        best = r
+      }
+    }
+  }
   if (g.save.focus !== best) g.setFocus(best)
 }
 
@@ -221,7 +299,7 @@ function buyAll() {
     for (const tech of list) {
       if (g.canResearch(tech) && !firstAffordable.has(tech.id)) firstAffordable.set(tech.id, t)
       if (g.research(tech.id)) {
-        log.push({ kind: 'tech', id: tech.id, name: tech.name, age: tech.age, t, affordable: firstAffordable.get(tech.id) ?? t, stock: snap() })
+        log.push({ kind: 'tech', id: tech.id, name: tech.name, age: tech.age, t, affordable: firstAffordable.get(tech.id) ?? t, insightReady: insightReady.get(tech.id) ?? t, stock: snap() })
         bought = true
         break
       }
@@ -235,16 +313,22 @@ while (t < MAX) {
     const before = snap()
     g.creditAbsence(s)
     log.push({ kind: 'away', t, seconds: s, before, after: snap() })
+    noteWonders()
     buyAll()
   }
   // Les savoirs que l'on PEUT acheter sont repérés avant l'achat : c'est
   // l'instant « abordable », celui qui compte pour le rythme.
-  for (const tech of g.available()) if (!firstAffordable.has(tech.id) && g.canResearch(tech)) firstAffordable.set(tech.id, t)
+  for (const tech of g.available()) {
+    if (!firstAffordable.has(tech.id) && g.canResearch(tech)) firstAffordable.set(tech.id, t)
+    if (!insightReady.has(tech.id) && g.amount('insight') >= costOf(tech).insight) insightReady.set(tech.id, t)
+  }
   buyAll()
   noteAvail()
   while (g.landOffer) {
     g.chooseLand(g.landOffer.kinds[0], 20 * ++landSlot, 0)
   }
+  if (WONDERS_ON && !g.save.wonder && g.save.age >= WONDER_FROM && g.startWonder())
+    log.push({ kind: 'wonderStart', age: g.save.age, name: WONDER_BY_AGE.get(g.save.age).name, t })
   if (args.focus !== 'food') chooseFocus()
   if (ENCOURAGE && g.canEncourage()) g.encourage()
   // Depuis la 3.71.1, le marchand propose ses outils au lieu de se payer
@@ -267,27 +351,65 @@ while (t < MAX) {
   g.tick(DT, NOW + t * 1000)
   active = false
   t += DT
+  noteWonders()
+  if (t % 10 === 0) timeline.push({ t, made: Object.fromEntries(RES.map((r) => [r, Math.round(totalMade(r))])) })
   if (g.save.age !== lastAge) {
     lastAge = g.save.age
     log.push({ kind: 'age', age: lastAge, name: AGES[lastAge].name, t, stock: snap(), insightRate: +g.rates.insight.toFixed(3) })
     if (lastAge >= UNTIL) break
   }
+  if (g.available().length === 0) {
+    log.push({ kind: 'end', age: g.save.age, t, stock: snap() })
+    break
+  }
+}
+
+/** Pour chaque Merveille lancée : l'âge (entrée, durée en jeu actif), le
+ *  lancement, l'achèvement et sa part de la durée de l'âge. */
+function wonderSummary() {
+  const entry = (age) => (age === 0 ? 0 : log.find((e) => e.kind === 'age' && e.age === age)?.t)
+  const out = []
+  for (const s of log.filter((e) => e.kind === 'wonderStart')) {
+    const from = entry(s.age) ?? 0
+    const to = entry(s.age + 1) ?? log.find((e) => e.kind === 'end')?.t ?? t
+    const done = log.find((e) => e.kind === 'wonderDone' && e.age === s.age)?.t ?? null
+    let progress = 1
+    if (done == null) {
+      const def = WONDER_BY_AGE.get(s.age)
+      const paid = g.save.wonder?.age === s.age ? g.save.wonder.paid : {}
+      const need = Object.values(def.cost).reduce((x, y) => x + y, 0)
+      const got = Object.entries(def.cost).reduce((x, [r, n]) => x + Math.min(n, paid[r] ?? 0), 0)
+      progress = got / need
+    }
+    out.push({ age: s.age, name: s.name, entry: from, length: to - from, start: s.t, done, share: done == null ? null : (done - from) / (to - from), progress })
+  }
+  return out
 }
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 if (args.json) {
-  process.stdout.write(JSON.stringify({ args, log, avail }, null, 1) + '\n')
+  process.stdout.write(JSON.stringify({ args, log, avail, timeline, wonders: wonderSummary() }) + '\n')
 } else {
   for (const e of log) {
     if (e.kind === 'tech')
       console.log(
-        `${mmss(e.affordable).padStart(7)} abordable  ${mmss(e.t).padStart(7)} acheté  [${e.age}] ${e.name.padEnd(24)} stock ${JSON.stringify(e.stock)}`,
+        `${mmss(e.affordable).padStart(7)} abordable  ${mmss(e.t).padStart(7)} acheté  [${e.age}] ${e.name.padEnd(24)}${e.affordable - e.insightReady >= 1 ? ` (matériaux +${mmss(e.affordable - e.insightReady)})` : ''} stock ${JSON.stringify(e.stock)}`,
       )
     else if (e.kind === 'age') console.log(`${mmss(e.t).padStart(7)} ══ ${e.name} ══ savoir ${e.insightRate}/s  stock ${JSON.stringify(e.stock)}`)
     else if (e.kind === 'migrate') console.log(`   0:00 -- migration : ${JSON.stringify(e.stock)}`)
+    else if (e.kind === 'wonderStart') console.log(`${mmss(e.t).padStart(7)} ▲▲ chantier lancé : ${e.name}`)
+    else if (e.kind === 'wonderDone') console.log(`${mmss(e.t).padStart(7)} ▲▲ achevée : ${e.name}`)
+    else if (e.kind === 'end') console.log(`${mmss(e.t).padStart(7)} ══ fin de l'arbre ══ stock ${JSON.stringify(e.stock)}`)
     else console.log(`${mmss(e.t).padStart(7)} -- absence ${(e.seconds / 3600).toFixed(1)} h : ${JSON.stringify(e.before)} → ${JSON.stringify(e.after)}`)
   }
   if (t >= MAX) console.log(`(arrêt au plafond ${mmss(MAX)})`)
+  if (WONDERS_ON) {
+    console.log('\nMerveilles (jeu actif) : durée de l’âge, lancement et achèvement depuis l’entrée dans l’âge')
+    for (const w of wonderSummary()) {
+      const done = w.done == null ? `non achevée (${Math.round(w.progress * 100)} %)` : `achevée ${mmss(w.done - w.entry)} = ${Math.round(w.share * 100)} % de l’âge`
+      console.log(`[${w.age}] ${w.name.padEnd(26)} âge ${mmss(w.length)}  lancée +${mmss(Math.max(0, w.start - w.entry))}  ${done}`)
+    }
+  }
   if (args.eco) {
     console.log('\nBilan par âge (jeu actif) : produit / dépensé par les savoirs de l’âge = ratio')
     for (const [age, b] of [...eco].sort((x, y) => x[0] - y[0])) {
@@ -295,11 +417,14 @@ if (args.json) {
       for (const r of RES) {
         const made = b.made[r] ?? 0
         const spent = b.spent[r] ?? 0
+        const wonder = Math.round(b.wonder?.[r] ?? 0)
         if (made < 0.5 && spent === 0) continue
         const ratio = spent > 0 ? (made / spent).toFixed(1) : '∞'
+        const both = spent + wonder > 0 ? (made / (spent + wonder)).toFixed(1) : '∞'
         const rt = b.rates?.[r]
         const rates = rt ? `  focalisé ${rt.focus.toFixed(2)}/s, au repos ${rt.idle.toFixed(2)}/s` : ''
-        console.log(`   ${r.padEnd(8)} produit ${String(Math.round(made)).padStart(8)}  dépensé ${String(spent).padStart(6)}  ×${ratio}${rates}`)
+        const w = WONDERS_ON ? `  Merveille ${String(wonder).padStart(7)}  ×${both} avec elle` : ''
+        console.log(`   ${r.padEnd(8)} produit ${String(Math.round(made)).padStart(8)}  dépensé ${String(spent).padStart(6)}  ×${ratio}${w}${rates}`)
       }
     }
   }
