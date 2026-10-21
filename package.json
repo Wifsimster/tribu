@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node --import ./tests/resolve-ts.mjs --test 'tests/*.test.mjs'",
+    "test": "node --import ./tests/resolve-ts.mjs --test --test-concurrency=2 'tests/*.test.mjs'",
     "preview": "vite preview --host",
     "check:console": "node tools/console-check.mjs",
     "perf:budget": "node tools/perf-budget.mjs"
