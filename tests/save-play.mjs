@@ -1,0 +1,133 @@
+// Une partie jouée âge par âge, sous Node, et le chemin de chargement du jeu
+// (`Game` relit `localStorage`, `load()` refait les étapes de `buildWorld`
+// qui touchent au plan, `game.flush` réécrit). Sert au test de rechargement
+// (save-reload.test.mjs) et produit la sauvegarde figée du budget de rendu :
+//   node --import ./tests/resolve-ts.mjs tests/save-play.mjs 1337042 10 12 > tools/saves/age10.json
+
+const warn = console.warn
+console.warn = (...a) => {
+  if (!String(a[0]).includes('indisponible')) warn(...a)
+}
+
+export const store = new Map()
+globalThis.localStorage = {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+}
+
+const { Game } = await import('../src/game/sim.ts')
+const { SAVE_KEY } = await import('../src/game/state.ts')
+const { TECHS, TOOLS, RELICS, livingBuildings } = await import('../src/game/content.ts')
+const { Island } = await import('../src/render/island.ts')
+const { Village } = await import('../src/render/village.ts')
+const { Fauna } = await import('../src/render/fauna.ts')
+
+export const NOW = 1_800_000_000_000
+const random = Math.random
+export function seeded(seed) {
+  let a = seed >>> 0
+  Math.random = () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Les étapes de `buildWorld` (src/main.ts) qui décident du plan, dans le
+ *  même ordre ; `placeGoods` compris. Le test « l'ordre suit main.ts » de
+ *  save-reload.test.mjs casse si main.ts change cet ordre sans ce fichier. */
+export function load(game) {
+  const s = game.save
+  const island = new Island(s.seed, s.age, s.land)
+  const village = new Village(island, s.age, game.knows('electricity'), false)
+  village.setCargo(game.rates)
+  const plan = s.layoutV === 3 ? s.layout : []
+  const kept = plan.every((p) => island.isLand(p.x, p.z))
+  village.adoptLayout(kept ? plan : [])
+  village.adoptGoods(kept && s.layoutV === 3 ? s.goods : null)
+  s.layoutV = 3
+  const fauna = new Fauna(island, village.obstaclePoints)
+  const stageOf = (v) => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
+  if (s.wonder) {
+    const ws = game.wonderState()
+    village.setWonder(s.wonder.age, ws ? stageOf(ws.progress) : 0)
+  } else if (s.wonders.length > 0) {
+    village.setWonder(s.wonders[s.wonders.length - 1], 4)
+  }
+  village.sync(livingBuildings(game.buildings, s.age))
+  s.layout = village.layout
+  village.setRelics(s.relics)
+  const pen = fauna.pen
+  village.goodsAvoid = pen ? [pen] : []
+  village.setTools(s.tools)
+  s.goods = village.goodsAt
+  return { island, village }
+}
+
+/** Ouvre la partie enregistrée, la monte, la réécrit : un chargement. */
+export function reload(randomSeed) {
+  seeded(randomSeed)
+  const game = new Game(NOW)
+  const world = load(game)
+  game.flush(NOW)
+  Math.random = random
+  return { game, ...world }
+}
+
+/** Les savoirs jusqu'à `age`, moins un de cet âge-là (sans bâtiment, si
+ *  possible) : l'âge suivant ne s'ouvre pas tout seul au chargement. */
+export function techsUpTo(age) {
+  const cur = TECHS.filter((t) => t.age === age)
+  const skip = cur.findLast((t) => !t.effects.some((e) => e.kind === 'building')) ?? cur.at(-1)
+  return TECHS.filter((t) => t.age <= age && t !== skip).map((t) => t.id)
+}
+
+/** Une partie jouée âge par âge jusqu'à `age`, avec `parcels` terres gagnées
+ *  dès qu'une carte est offerte : chaque âge recharge le monde, comme le
+ *  passage d'âge (`buildWorld`). Rend la sauvegarde écrite et ce que la
+ *  partie a écrit en dernier, pour vérifier que la sauvegarde le garde. */
+export function play(seed, age, parcels) {
+  store.clear()
+  seeded(seed)
+  const g0 = new Game(NOW)
+  g0.save.seed = seed
+  g0.flush(NOW)
+  let played = null
+  for (let a = 0; a <= age; a++) {
+    const raw = JSON.parse(store.get(SAVE_KEY))
+    raw.age = a
+    raw.techs = techsUpTo(a)
+    raw.seenFacts = raw.techs
+    raw.wonders = [...Array(a).keys()]
+    raw.relics = RELICS.slice(0, Math.floor(a * 1.2)).map((r) => r.id)
+    raw.tools = TOOLS.filter((t) => t.age <= a).map((t) => t.id)
+    raw.res = { food: 900 + a, wood: 800, stone: 700, fiber: 300, clay: 200, copper: 90, iron: 70, insight: 40 + a }
+    store.set(SAVE_KEY, JSON.stringify(raw))
+    played = raw
+    let { game, island } = reload(seed * 97 + a)
+    // Les terres offertes à cet âge, posées à l'ancre que le jeu propose en
+    // premier : chaque pose reconstruit le monde, comme dans main.ts.
+    while (game.save.land.length < parcels && game.landOffer) {
+      const kind = game.landOffer.kinds[0]
+      const at = island.anchorCandidates(kind)[0]
+      if (!at || !game.chooseLand(kind, at.q, at.r)) break
+      game.flush(NOW)
+      ;({ game, island } = reload(seed * 89 + a * 7 + game.save.land.length))
+    }
+  }
+  return { saved: JSON.parse(store.get(SAVE_KEY)), played }
+}
+
+// En ligne de commande : la sauvegarde d'une partie jouée, en JSON.
+if (import.meta.main) {
+  const [seed, age, parcels] = process.argv.slice(2).map(Number)
+  if (![seed, age, parcels].every(Number.isInteger)) {
+    console.error('usage : save-play.mjs <graine> <âge> <parcelles>')
+    process.exit(1)
+  }
+  const { saved } = play(seed, age, parcels)
+  process.stdout.write(JSON.stringify(saved, null, 1) + '\n')
+}
