@@ -93,7 +93,7 @@ Pivots (espace `rig`, avant ×1,32) : torse `(0, 0,44, 0)`, tête
 - `tests/fauna-models.test.mjs` vérifie le **contrat** : chaque glb a les
   pièces et les pivots de la silhouette procédurale qu'il remplace.
 - Les modèles arrivent en différé ; la silhouette procédurale sert de repli
-  jusqu'au chargement (`main.ts:174-176`).
+  jusqu’au chargement (`main.ts:178`).
 - Le script d'export (« compact.py de l'artiste », `fauna-glb.ts:7`) **n'est
   pas versionné** dans le dépôt, et Blender ne tourne pas sur le serveur : il
   est sur le poste « PC fixe », piloté par MCP.
@@ -426,7 +426,7 @@ Chaque incrément doit tous les passer, et la PR donne les commandes avec leur s
     gibier), « Création originale du projet, modélisée dans Blender 5.2 pour
     Tribu ». Aucun modèle tiers. Si un CC0 est utilisé, sa source et sa licence
     sont dans la ligne.
-14. Changelog (`CHANGELOG`/`src/game/changelog.ts`) et `package.json` à la
+14. Changelog (`src/game/changelog.ts`) et `package.json` à la
     version de l'incrément.
 
 ---
