@@ -18,7 +18,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MultiplyBlending,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   RepeatWrapping,
   PerspectiveCamera,
   PlaneGeometry,
@@ -153,7 +153,10 @@ export class Stage {
     })
     this.renderer.setPixelRatio(targetPixelRatio())
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = PCFSoftShadowMap
+    // PCF simple. En three r185, le rendu WebGL n'a plus de PCFSoftShadowMap :
+    // WebGLShadowMap.js le remplace par PCFShadowMap au premier rendu, avec un
+    // avertissement de dépréciation dans la console. Même rendu, sans le bruit.
+    this.renderer.shadowMap.type = PCFShadowMap
     this.renderer.toneMapping = ACESFilmicToneMapping
     this.renderer.toneMappingExposure = LIGHT.exposure
 
