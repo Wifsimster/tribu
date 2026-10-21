@@ -3579,7 +3579,11 @@ export class Village implements GroundSource {
       if (!bad && !inland) continue
       this.propPlacements.splice(i, 1)
       this.placed.delete(pl.id)
-      const k = this.lots.findIndex((t) => t.x === pl.x && t.z === pl.z)
+      // Le phare des terres garde sa parcelle tant qu'il n'a pas trouvé
+      // mieux : les délogés plus gros passent avant lui, et s'il reste, nul
+      // ne doit s'être posé dessus entre-temps (graine 31337, six parcelles :
+      // le moulin reposé sur sa place).
+      const k = inland ? -1 : this.lots.findIndex((t) => t.x === pl.x && t.z === pl.z)
       if (k >= 0) this.lots.splice(k, 1)
       this.evicted.push({ id: pl.id, x: pl.x, z: pl.z, rot: pl.rot, r, inland })
     }
@@ -3648,6 +3652,10 @@ export class Village implements GroundSource {
       this.evicted = []
       for (const e of order) {
         if (!buildings.has(e.id) || this.placed.has(e.id)) continue
+        if (e.inland) {
+          const k = this.lots.findIndex((t) => t.x === e.x && t.z === e.z)
+          if (k >= 0) this.lots.splice(k, 1)
+        }
         const s = e.inland ? this.shoreSlot(true, true) : this.slotFor(e.id, true)
         if (s) {
           const rot = e.id === 'lighthouse' ? Math.atan2(-s.x, -s.z) : this.slotRot

@@ -91,13 +91,35 @@ test('grand tracé : le phare rejoint la côte, ou la voie côté terre sur le c
   assert.ok(seen.voie > 0, `aucun phare contre la voie (${JSON.stringify(seen)})`)
 })
 
+const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
+/** `n` parcelles posées à l'ancre par défaut, comme « Pose-la pour moi ». */
+function plots(seed, n) {
+  const land = []
+  for (let i = 0; i < n; i++) {
+    const at = new Island(seed, 0, land, undefined, true).defaultAnchor()
+    if (!at) break
+    land.push({ kind: KINDS[i % 6], q: at.q, r: at.r })
+  }
+  return land
+}
+
 test('partie neuve : à l’âge 7, la mer recule et le phare quitte les terres', () => {
-  for (const seed of [42, 99, 5]) {
-    let save = { seed, age: 0, land: [], layout: [], layoutV: 4, goods: null, belt: null, streets: null, wonderAt: null, museumAt: null }
+  // Graine 31337 à six parcelles : le phare des terres rendait sa place
+  // avant d'en trouver une autre, le moulin reposé s'y posait, et le phare,
+  // resté là faute de cap, le touchait.
+  for (const [seed, n] of [[42, 0], [99, 0], [5, 0], [31337, 6]]) {
+    let save = { seed, age: 0, land: plots(seed, n), layout: [], layoutV: 4, goods: null, belt: null, streets: null, wonderAt: null, museumAt: null }
     for (let a = 0; a <= 8; a++) {
       const l = load({ ...save, age: a }, a > 0)
       save = l.save
-      if (a >= 7) checkLighthouse(l.v, `graine ${seed}, âge ${a}`)
+      if (a < 7) continue
+      checkLighthouse(l.v, `graine ${seed}, ${n} parcelles, âge ${a}`)
+      const lots = l.v.lots
+      for (let i = 0; i < lots.length; i++)
+        for (let j = i + 1; j < lots.length; j++) {
+          const gap = Math.hypot(lots[i].x - lots[j].x, lots[i].z - lots[j].z) - lots[i].r - lots[j].r
+          assert.ok(gap >= Village.ALLEY - 1e-6, `graine ${seed}, âge ${a} : deux bâtiments à ${gap.toFixed(2)} u`)
+        }
     }
     // Rechargé à l'âge 8 : le phare ne bouge plus.
     const again = load(save)
