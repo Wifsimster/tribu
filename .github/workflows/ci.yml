@@ -1,6 +1,6 @@
 name: CI
 
-# Chaque PR passe par les tests et le build avant d'être fusionnée.
+# Chaque PR passe par le lint, les tests et le build avant d'être fusionnée.
 # Sans ce job, `pnpm test` ne tournait nulle part : le build du Dockerfile
 # ne lance que `pnpm build`, et seulement au déploiement, après la release.
 on:
@@ -36,6 +36,9 @@ jobs:
         run: |
           corepack enable
           pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
 
       - name: Tests
         run: pnpm test
