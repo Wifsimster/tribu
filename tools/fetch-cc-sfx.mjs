@@ -19,12 +19,20 @@
  * Les licences acceptées sont classées par ordre de préférence : CC0 d'abord
  * (rien à respecter), puis CC BY / CC BY-SA (attribution obligatoire, écrite
  * dans public/audio/CREDITS.md). Tout le reste est ignoré.
+ *
+ * ÉPINGLÉS : `nuit` et `oiseaux` ne passent plus par la recherche. Elle avait
+ * ramené une prononciation jèrriaise de 0,85 s pour les grillons et un aube
+ * muette pendant 52 s pour les oiseaux (issue #20). Ces deux sons pointent
+ * donc vers un fichier précis, vérifié par empreinte sha256 : des grillons
+ * CC0 d'OpenGameArt, et l'aperçu public d'une prise CC0 de Freesound (seul
+ * l'original exige un compte, l'aperçu se télécharge comme une page).
  */
 import { mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { createHash } from 'node:crypto'
 import { mergeCredits } from './credits-file.mjs'
 
 const run = promisify(execFile)
@@ -64,22 +72,39 @@ const SOUNDS = [
   {
     id: 'oiseaux',
     kind: 'bed',
-    seconds: 12,
-    queries: ['birdsong morning', 'forest birds ambience', 'dawn chorus'],
-    want: /(birdsong|birds|dawn chorus)/i,
-    avoid: /(traffic|car|city|urban|plane|aircraft|people|talk)/i,
-    dur: [10, 240],
+    // Un chœur de l'aube en campagne anglaise, près d'une haie : merles,
+    // grives, troglodytes, aucun moteur ni voix. La fenêtre 290-310 s est la
+    // plus dense et la plus régulière des dix minutes, mesurée bande par
+    // bande (chants 20 dB au-dessus du grave et du médium). Le passe-haut à
+    // 250 Hz ôte un ronflement lointain, sans toucher aux chants.
+    source: {
+      title: 'Dawn Chorus - Gloucestershire - May 2016',
+      author: 'mike_stranks',
+      license: 'CC0 1.0',
+      licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      page: 'https://freesound.org/people/mike_stranks/sounds/345484/',
+      url: 'https://cdn.freesound.org/previews/345/345484_5385809-hq.mp3',
+      sha256: '1132530ea48a1dd55d28dee4f759e51adc2b2b0a83d362d2e67da94cf70296b4',
+    },
+    loop: { start: 290, seconds: 18, crossfade: 2, highpass: 250 },
   },
   {
     id: 'nuit',
     kind: 'bed',
-    seconds: 12,
-    queries: ['crickets night ambience', 'cricket chirping field', 'crickets night', 'field cricket', 'cricket'],
-    want: /cricket/i,
-    // Commons intitule honnêtement ses prises : « cricket and dogs » annonce
-    // des aboiements, et un chien n'a rien à faire sur une île du Paléolithique.
-    avoid: /(dog|traffic|car|city|urban|human|people|talk)/i,
-    dur: [8, 240],
+    // Une nuit de grillons, déjà pensée pour boucler : le fichier contient
+    // deux fois la même boucle de 505 036 échantillons (11,452 s, corrélation
+    // 0,9999 d'une copie à l'autre). On en découpe exactement une période :
+    // la fin rejoint le début sans fondu, donc sans creux.
+    source: {
+      title: 'Crickets Ambient Noise - loopable (crickets-oneloop.mp3)',
+      author: 'Ted Kerr (wolfgang)',
+      license: 'CC0 1.0',
+      licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      page: 'https://opengameart.org/content/crickets-ambient-noise-loopable',
+      url: 'https://opengameart.org/sites/default/files/crickets-oneloop.mp3',
+      sha256: '3b26c4d529c722716eac9eab52f64cf4e7507d35f8cd4e01ff08b097a2746cbd',
+    },
+    loop: { start: 1, period: 505036 / 44100 },
   },
   {
     id: 'pluie',
@@ -136,6 +161,7 @@ async function search(term) {
 }
 
 async function pick(s) {
+  if (s.source) return s.source
   const seen = new Map()
   for (const q of s.queries) {
     for (const r of await search(q)) {
@@ -165,7 +191,46 @@ async function duration(file) {
   return Number.parseFloat(stdout.trim()) || 0
 }
 
+/** Sonie intégrée (LUFS) d'un fichier, par le filtre ebur128. */
+async function loudness(file) {
+  const { stderr } = await run('ffmpeg', ['-nostats', '-hide_banner', '-i', file, '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'])
+  const m = /I:\s+(-?[\d.]+) LUFS/.exec(stderr.slice(stderr.lastIndexOf('Summary')))
+  if (!m) throw new Error(`sonie illisible pour ${file}`)
+  return Number(m[1])
+}
+
+/** Nappe épinglée : boucle découpée puis gain LINÉAIRE vers -23 LUFS.
+ *  `loudnorm` en mode dynamique fait varier le gain au fil du fichier : le
+ *  dernier échantillon n'aurait plus le niveau du premier, et la boucle
+ *  claquerait au raccord. Une seule valeur de gain garde la jointure intacte. */
+async function pinnedLoop(inFile, outFile, s) {
+  const { start, seconds, crossfade: x, highpass, period } = s.loop
+  const r = BED.rate
+  // Mono, rééchantillonné et filtré AVANT la découpe : les filtres ont une
+  // mémoire, ils doivent avoir déjà tourné quand la boucle commence.
+  const pre = `aformat=channel_layouts=mono,aresample=${r}${highpass ? `,highpass=f=${highpass}` : ''}`
+  const window = `${pre},atrim=start=${start}:end=${start + seconds + x},asetpts=PTS-STARTPTS`
+  const graph = period
+    ? // Une période exacte d'un fichier qui se répète : rien à fondre.
+      `[0:a]${pre},atrim=start_sample=${Math.round(start * r)}:end_sample=${Math.round(start * r) + Math.round(period * r)},asetpts=PTS-STARTPTS[out]`
+    : // Fondu enchaîné à puissance constante (qsin) : sur une prise sans
+      // corrélation entre la fin et le début, un fondu linéaire creuse de 3 dB.
+      // Deux lectures du fichier, comme pour les autres nappes : avec un
+      // asplit, ffmpeg rend un fichier vide.
+      `[0:a]${window},atrim=start=${x},asetpts=PTS-STARTPTS[body];` +
+      `[1:a]${window},atrim=end=${x},asetpts=PTS-STARTPTS[head];` +
+      `[body][head]acrossfade=d=${x}:c1=qsin:c2=qsin[out]`
+  const wav = `${inFile}.wav`
+  const inputs = period ? ['-i', inFile] : ['-i', inFile, '-i', inFile]
+  await run('ffmpeg', ['-y', ...inputs, '-filter_complex', graph, '-map', '[out]', '-c:a', 'pcm_f32le', wav])
+  const gain = -23 - (await loudness(wav))
+  await run('ffmpeg', ['-y', '-i', wav, '-af', `volume=${gain.toFixed(2)}dB`, '-ar', String(r), '-ac', '1', '-b:a', BED.bitrate, outFile])
+  const got = await duration(outFile)
+  if (got < (period ?? seconds) - 0.1) throw new Error(`boucle de ${got.toFixed(2)} s, ${period ?? seconds} s attendues`)
+}
+
 async function postProcess(inFile, outFile, s) {
+  if (s.loop) return pinnedLoop(inFile, outFile, s)
   const p = s.kind === 'bed' ? BED : SHOT
   const total = await duration(inFile)
   if (s.kind === 'bed') {
@@ -233,7 +298,13 @@ for (const s of wanted) {
     const raw = join(TMP, `${s.id}-raw`)
     const dl = await fetch(hit.url, { headers: { 'user-agent': UA } })
     if (!dl.ok) throw new Error(`téléchargement HTTP ${dl.status}`)
-    await writeFile(raw, Buffer.from(await dl.arrayBuffer()))
+    const body = Buffer.from(await dl.arrayBuffer())
+    // Un fichier épinglé qui a changé n'est plus celui qu'on a mesuré.
+    if (hit.sha256) {
+      const got = createHash('sha256').update(body).digest('hex')
+      if (got !== hit.sha256) throw new Error(`empreinte inattendue (${got}) : la source a changé`)
+    }
+    await writeFile(raw, body)
     await postProcess(raw, outFile, s)
     const st = await stat(outFile)
     written++
@@ -241,7 +312,9 @@ for (const s of wanted) {
     credits[s.id] =
       `- **${s.id}** — « ${hit.title} »${hit.author ? ` par ${hit.author}` : ''} · ` +
       `${hit.license}${hit.licenseUrl ? ` (${hit.licenseUrl})` : ''} · ${hit.page} · ` +
-      `retaillé (${s.kind === 'bed' ? 'boucle et fondu' : 'détourage et fondu'}) par tools/fetch-cc-sfx.mjs`
+      (s.loop
+        ? `fichier ${hit.url} · retaillé (${s.loop.period ? 'une période exacte' : `extrait de ${s.loop.start} s, boucle par fondu`}, mono, gain linéaire) par tools/fetch-cc-sfx.mjs`
+        : `retaillé (${s.kind === 'bed' ? 'boucle et fondu' : 'détourage et fondu'}) par tools/fetch-cc-sfx.mjs`)
     console.log(`✓ ${s.id.padEnd(8)} ${(st.size / 1024).toFixed(0).padStart(4)} ko  [${hit.license}] ${hit.title.slice(0, 45)}`)
   } catch (e) {
     console.error(`✗ ${s.id} — ${e.message}`)

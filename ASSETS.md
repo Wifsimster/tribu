@@ -73,7 +73,9 @@ peintes dans les sommets (attribut `COLOR_0`), sans texture.
 ## Sons — `public/audio/`
 
 Les 15 fichiers `.mp3` ne sont pas des créations du projet : quatre prises
-Wikimedia Commons (CC0, domaine public, CC BY 4.0, CC BY-SA 4.0) et onze sons
-générés avec ElevenLabs au palier gratuit (usage non commercial). Le détail,
-fichier par fichier (titre, auteur, licence, lien, prompt), est dans
+réelles et onze sons générés avec ElevenLabs au palier gratuit (usage non
+commercial). Les prises réelles : `cloche` (Wikimedia Commons, CC0), `pluie`
+(Wikimedia Commons, CC BY 4.0, attribution obligatoire), `nuit` (OpenGameArt,
+CC0) et `oiseaux` (Freesound, CC0). Le détail, fichier par fichier (titre,
+auteur, licence, page, adresse du fichier, prompt), est dans
 [`public/audio/CREDITS.md`](public/audio/CREDITS.md).

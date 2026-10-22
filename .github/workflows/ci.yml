@@ -40,6 +40,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # tests/audio-level.test.mjs mesure la sonie des sons avec ffmpeg.
+      - name: Install ffmpeg
+        run: |
+          command -v ffmpeg || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg; }
+          ffmpeg -version | head -1
+
       - name: Tests
         run: pnpm test
 

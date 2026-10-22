@@ -51,8 +51,7 @@ const SOUNDS = [
   { id: 'mer', kind: 'bed', seconds: 12, query: 'calm sea waves small shore', dur: [10, 90] },
   { id: 'feu', kind: 'bed', seconds: 10, query: 'campfire crackling close', dur: [8, 90] },
   { id: 'pluie', kind: 'bed', seconds: 12, query: 'light rain leaves no thunder', dur: [10, 90] },
-  { id: 'nuit', kind: 'bed', seconds: 12, query: 'crickets night field', dur: [10, 90] },
-  { id: 'oiseaux', kind: 'bed', seconds: 12, query: 'forest birds morning ambience', dur: [10, 90] },
+  // `nuit` et `oiseaux` : prises épinglées et vérifiées, voir tools/fetch-cc-sfx.mjs.
   { id: 'bourdon', kind: 'bed', seconds: 8, query: 'electric hum lamp buzz', dur: [5, 60] },
   // ── Sons d'interaction ──────────────────────────────────────────────────
   { id: 'toc', kind: 'shot', seconds: 1, query: 'knock wood single', dur: [0.2, 3] },
