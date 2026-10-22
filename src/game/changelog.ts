@@ -10,6 +10,20 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.72.0',
+    title: 'Les grandes Merveilles redeviennent atteignables',
+    items: [
+      "Les grandes Merveilles redeviennent atteignables. Chacune coûte maintenant ce que ton île produit à son époque : lance-la en entrant dans un âge, elle s'achève avant le suivant, sans que tu changes ta récolte.",
+      "La tour de fer demandait 60 000 fer, 25 000 pierre et 10 000 bois ; elle demande 470 fer, 21 900 pierre et 22 500 bois. Le gratte-ciel passe à 4 300 fer, 52 000 pierre et 2 400 cuivre, la fusée à 4 050 fer, 2 950 cuivre et 3 150 fibres, le réacteur à fusion à 9 150 fer, 6 600 cuivre et 104 000 pierre (900 000 fer avant). La cathédrale demande 5 300 pierre, 5 550 bois et 210 fer.",
+      "Les trois premières aussi se bâtissent dans leur âge : le cercle de stalagmites pour 15 pierre et 25 bois, le grand dolmen pour 80 pierre et 85 bois, la ziggourat pour 550 pierre, 130 argile et 1 600 bois. Pour y arriver dès le Paléolithique, le chantier te laisse 10 de chaque matériau, plus 30 par âge, au lieu de 50 plus 30 par âge.",
+      "Chaque découverte de l'Antiquité à l'ère des limites réclame ce que l'île produit à ce moment-là. Les provisions de ceux qui cherchent se paient en nourriture, et l'argile et les fibres servent à chaque époque. Le fer et le cuivre, que les Merveilles prennent déjà, coûtent bien moins : 15 fer pour les Voies romaines au lieu de 60.",
+      "La Charrue ne demande plus que 1 600 de savoir (2 100 avant), et son harnais un peu de fibre.",
+      "Au Moyen Âge et de l'ère moderne à la fin de l'arbre, une découverte arrive environ toutes les dix minutes et demie. Au Moyen Âge, elles tombaient toutes les 6 à 8 minutes. À l'ère des limites, on pouvait en attendre une plus d'une demi-heure.",
+      "Rien n'est retiré. Les découvertes déjà faites ne sont ni repayées ni remboursées. Si ton chantier en cours a déjà reçu plus que son nouveau prix, ta Merveille s'achève au chargement, avec ses +4 % de récolte.",
+      "Recharger la page juste après ton retour ne crédite plus ton absence une seconde fois.",
+    ],
+  },
+  {
     version: '3.71.2',
     title: "L'histoire remise à l'heure",
     items: [

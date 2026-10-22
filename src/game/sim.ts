@@ -410,7 +410,17 @@ export class Game {
 
     if (migrateReserve) this.migrateInsightReserve()
 
-    if (offlineSeconds > 60) this.creditAbsence(offlineSeconds)
+    // Un chantier déjà payé en entier (les Merveilles coûtent moins depuis la
+    // 3.72.0) s'achève tout de suite, une fois : sans ça il restait « en
+    // cours » à 100 % pour toujours. Le trop-versé n'est pas rendu.
+    this.tickWonder(0)
+
+    // L'absence créditée, la sauvegarde est réécrite à la date du retour,
+    // comme dans creditGap : jusqu'à la 3.71.1, un rechargement dans les cinq
+    // secondes (avant la première sauvegarde de la boucle) recréditait la
+    // même absence depuis l'ancienne date.
+    const credited = offlineSeconds > 60
+    if (credited) this.creditAbsence(offlineSeconds)
     this.catchUpAge()
     // Une sauvegarde d'avant les parcelles (ou qui a franchi un âge en
     // rattrapage) reçoit en file tous ses jalons passés. Ils attendent le
@@ -423,6 +433,7 @@ export class Game {
         'age',
         `La Chronique s'ouvre — la tribu porte déjà ${this.save.techs.length} découverte${this.save.techs.length > 1 ? 's' : ''}`,
       )
+    if (credited) writeSave(this.save, now)
   }
 
   /** Crédite une absence : au CHARGEMENT (constructeur) mais aussi au RETOUR
@@ -1302,7 +1313,10 @@ export class Game {
     for (const [id, total] of Object.entries(def.cost) as [ResourceId, number][]) {
       const paid = cur.paid[id] ?? 0
       if (paid >= total) continue
-      const floor = 50 + this.save.age * 30
+      // Le plancher : 10 + 30 par âge (50 + 30 jusqu'à la 3.71). À 50, le
+      // Paléolithique n'y arrivait jamais (le joueur dépense ses premières
+      // pierres dès qu'elles tombent) et sa Merveille débordait sur deux âges.
+      const floor = 10 + this.save.age * 30
       const avail = this.amount(id) - floor
       if (avail <= 0) continue
       // Le chantier prend une PART DE LA PRODUCTION, jamais la réserve. Avant,
@@ -1319,16 +1333,18 @@ export class Game {
     }
     const after = this.wonderProgress(def, cur.paid)
     const stageOf = (v: number): number => (v >= 1 ? 4 : v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
-    if (stageOf(after) !== stageOf(before)) {
-      if (after >= 1) {
-        this.save.wonder = null
-        this.save.wonders.push(def.age)
-        this.record('wonder', `${def.name} est achevée`)
-        this.refreshRates()
-        this.emit({ type: 'wonderDone', def })
-      } else {
-        this.emit({ type: 'wonderStage', def, stage: stageOf(after) })
-      }
+    // Achevée dès que tout est payé, même si c'était déjà le cas avant ce
+    // tick : un chantier d'avant la 3.72.0 peut avoir versé plus que les
+    // nouveaux coûts.
+    if (after >= 1) {
+      this.save.wonder = null
+      if (this.save.wonders.includes(def.age)) return
+      this.save.wonders.push(def.age)
+      this.record('wonder', `${def.name} est achevée`)
+      this.refreshRates()
+      this.emit({ type: 'wonderDone', def })
+    } else if (stageOf(after) !== stageOf(before)) {
+      this.emit({ type: 'wonderStage', def, stage: stageOf(after) })
     }
   }
 

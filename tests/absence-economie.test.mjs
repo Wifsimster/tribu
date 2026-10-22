@@ -140,7 +140,7 @@ test('Merveille : 8 h d’absence font avancer le chantier au débit du jeu, san
   const res0 = { ...g.save.res }
   g.creditAbsence(8 * 3600)
   const w = g.save.wonder ?? { paid: Object.fromEntries(Object.entries(def.cost)) }
-  const floor = 50 + 3 * 30
+  const floor = 10 + 3 * 30
   let advanced = 0
   for (const [id, total] of Object.entries(def.cost)) {
     const paid = w.paid[id] ?? 0

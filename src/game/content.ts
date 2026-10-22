@@ -500,8 +500,8 @@ export const TECHS: TechDef[] = [
     id: 'plough',
     name: 'Charrue',
     age: 3,
-    cost: 2100,
-    materials: { iron: 70, wood: 95, food: 3650 },
+    cost: 1600,
+    materials: { food: 3700, iron: 15, wood: 220, fiber: 25 },
     requires: ['ironworking'],
     fact: "Le soc en fer permet de retourner les sols lourds du nord de l'Europe, restés incultes tant qu'on n'avait que l'araire en bois.",
     funFact:
@@ -575,7 +575,7 @@ export const TECHS: TechDef[] = [
     name: 'Béton romain',
     age: 4,
     cost: 4800,
-    materials: { stone: 200, clay: 80 },
+    materials: { stone: 510, clay: 30, food: 3600 },
     requires: ['aqueduct'],
     fact: "Chaux, eau de mer et cendre volcanique de Pouzzoles : le béton romain durcit encore aujourd'hui — les jetées antiques se sont renforcées avec les siècles au lieu de s'éroder.",
     funFact:
@@ -591,7 +591,7 @@ export const TECHS: TechDef[] = [
     name: 'Moulin à eau',
     age: 4,
     cost: 6000,
-    materials: { wood: 180, iron: 50 },
+    materials: { wood: 950, food: 8250, iron: 15 },
     requires: ['concrete'],
     fact: "Décrit par Vitruve vers −25, le moulin à eau culmine au IIe siècle à Barbegal, près d'Arles : seize roues alignées, de quoi moudre pour dix mille personnes.",
     funFact:
@@ -606,7 +606,7 @@ export const TECHS: TechDef[] = [
     name: 'Verre soufflé',
     age: 4,
     cost: 7500,
-    materials: { clay: 120, copper: 60 },
+    materials: { wood: 890, clay: 85, copper: 25 },
     requires: ['concrete'],
     fact: "Le soufflage du verre naît en Syrie au Ier siècle avant notre ère : une bulle d'air au bout d'une canne, et le verre cesse d'être un luxe de rois.",
     funFact:
@@ -621,7 +621,7 @@ export const TECHS: TechDef[] = [
     name: 'Voies romaines',
     age: 4,
     cost: 9000,
-    materials: { stone: 300, iron: 60 },
+    materials: { stone: 1750, food: 11200, iron: 15 },
     requires: ['watermill'],
     fact: "Quatre-vingt mille kilomètres de voies dallées, une borne tous les mille pas — le mille — et certaines portent encore du trafic deux mille ans plus tard.",
     funFact:
@@ -637,7 +637,7 @@ export const TECHS: TechDef[] = [
     name: 'Codex',
     age: 4,
     cost: 11000,
-    materials: { fiber: 200, clay: 60 },
+    materials: { fiber: 130, food: 10800, clay: 25 },
     requires: ['glass'],
     fact: "À partir du IIe siècle, le codex — des pages cousues — supplante peu à peu le rouleau : on peut enfin ouvrir un livre au milieu, chercher, comparer, annoter.",
     funFact:
@@ -652,8 +652,8 @@ export const TECHS: TechDef[] = [
     id: 'horsecollar',
     name: "Collier d'épaule",
     age: 5,
-    cost: 13000,
-    materials: { fiber: 180, iron: 80 },
+    cost: 16800,
+    materials: { food: 28200, fiber: 160, iron: 25 },
     requires: ['roads'],
     fact: "Venu de Chine, le collier d'épaule augmente fortement la traction utile du cheval : il appuie sur les épaules là où l'attelage antique comprimait la gorge.",
     funFact:
@@ -668,8 +668,8 @@ export const TECHS: TechDef[] = [
     id: 'threefield',
     name: 'Assolement triennal',
     age: 5,
-    cost: 16000,
-    materials: { wood: 150, food: 400 },
+    cost: 23600,
+    materials: { food: 66800, wood: 2200 },
     requires: ['horsecollar'],
     fact: "Blé d'hiver, avoine de printemps, jachère : la rotation triennale nourrit chevaux et paysans, et les famines reculent dans l'Europe du Nord.",
     funFact:
@@ -683,8 +683,8 @@ export const TECHS: TechDef[] = [
     id: 'windmill',
     name: 'Moulin à vent',
     age: 5,
-    cost: 20000,
-    materials: { wood: 300, stone: 150 },
+    cost: 30900,
+    materials: { wood: 2900, stone: 1900, fiber: 55 },
     requires: ['threefield'],
     fact: "Les premiers moulins à vent d'Europe apparaissent vers 1180 face à la Manche : des moulins-pivots dont le corps entier tourne pour chercher le vent.",
     funFact:
@@ -699,8 +699,8 @@ export const TECHS: TechDef[] = [
     id: 'clock',
     name: 'Horloge mécanique',
     age: 5,
-    cost: 24000,
-    materials: { iron: 150, copper: 80 },
+    cost: 41100,
+    materials: { iron: 45, clay: 80, copper: 35, wood: 660 },
     requires: ['windmill'],
     fact: "Vers 1300, l'échappement découpe le temps en battements égaux : les beffrois sonnent des heures fixes, et la journée de travail change de maître.",
     funFact:
@@ -715,8 +715,8 @@ export const TECHS: TechDef[] = [
     id: 'press',
     name: 'Imprimerie',
     age: 5,
-    cost: 30000,
-    materials: { iron: 120, fiber: 150 },
+    cost: 53000,
+    materials: { fiber: 190, food: 78000, iron: 30 },
     requires: ['clock', 'codex'],
     fact: "Vers 1450 à Mayence, Gutenberg marie caractères mobiles, alliage plomb-étain et presse à vis : en cinquante ans, l'Europe imprime plus de livres qu'elle n'en avait copiés en mille ans.",
     funFact:
@@ -733,7 +733,7 @@ export const TECHS: TechDef[] = [
     name: 'Caravelle',
     age: 6,
     cost: 38000,
-    materials: { wood: 400, fiber: 250 },
+    materials: { wood: 2000, fiber: 110, food: 46600 },
     requires: ['press'],
     fact: "La caravelle portugaise mêle voiles carrées et latines : elle remonte au vent et revient. C'est elle qui ouvre les caps de l'Afrique, puis l'Atlantique.",
     funFact:
@@ -747,7 +747,7 @@ export const TECHS: TechDef[] = [
     name: 'Perspective',
     age: 6,
     cost: 46000,
-    materials: { wood: 200, clay: 150 },
+    materials: { clay: 110, wood: 1200, food: 56400 },
     requires: ['press'],
     fact: "Vers 1425, Brunelleschi fait regarder Florence à travers un trou percé dans un panneau peint : la perspective géométrique naît en place publique, démonstration à l'appui.",
     funFact:
@@ -761,7 +761,7 @@ export const TECHS: TechDef[] = [
     name: 'Lunette astronomique',
     age: 6,
     cost: 56000,
-    materials: { copper: 300, clay: 200 },
+    materials: { stone: 1500, copper: 70, clay: 35 },
     requires: ['perspective'],
     fact: "Galilée pointe fin 1609 une lunette de foire vers le ciel ; en janvier 1610, quatre lunes tournent autour de Jupiter — tout ne tourne donc pas autour de la Terre.",
     funFact:
@@ -776,7 +776,7 @@ export const TECHS: TechDef[] = [
     name: 'Lettre de change',
     age: 6,
     cost: 68000,
-    materials: { fiber: 300, copper: 250 },
+    materials: { food: 89300, stone: 1450, fiber: 120, copper: 100 },
     requires: ['caravel'],
     fact: "Les banquiers florentins font voyager l'argent sans or : une lettre signée à Florence se paie à Bruges. Le crédit devient une infrastructure.",
     funFact:
@@ -792,7 +792,7 @@ export const TECHS: TechDef[] = [
     name: 'Anatomie',
     age: 6,
     cost: 82000,
-    materials: { fiber: 250, iron: 200 },
+    materials: { food: 138000, fiber: 130, iron: 30 },
     requires: ['perspective'],
     fact: "En 1543, Vésale dissèque et dessine lui-même : son De fabrica corrige Galien sur plus de deux cents points. Le corps devient un territoire cartographié.",
     funFact:
@@ -809,7 +809,7 @@ export const TECHS: TechDef[] = [
     name: 'Machine à vapeur',
     age: 7,
     cost: 100000,
-    materials: { iron: 400, copper: 250 },
+    materials: { wood: 2700, stone: 1450, iron: 65, copper: 50, food: 61300 },
     requires: ['bank'],
     fact: "La machine de Watt (1769) ajoute un condenseur séparé à celle de Newcomen : quatre fois moins de charbon, et l'usine cesse de dépendre des rivières.",
     funFact:
@@ -824,7 +824,7 @@ export const TECHS: TechDef[] = [
     name: 'Chemin de fer',
     age: 7,
     cost: 120000,
-    materials: { iron: 600, wood: 400 },
+    materials: { wood: 6700, food: 139000, stone: 3700, iron: 80 },
     requires: ['steamengine'],
     fact: "En 1830, la ligne Liverpool–Manchester inaugure l'horaire régulier ; dix ans plus tard, les compagnies imposent une heure unique et les villes règlent leurs horloges les unes sur les autres.",
     funFact:
@@ -840,7 +840,7 @@ export const TECHS: TechDef[] = [
     name: 'Éclairage au gaz',
     age: 7,
     cost: 145000,
-    materials: { iron: 350, stone: 400 },
+    materials: { stone: 6700, clay: 170, iron: 50 },
     requires: ['steamengine'],
     fact: "Londres allume ses premiers réverbères au gaz en 1807, sur Pall Mall : la nuit urbaine devient un espace public, et les théâtres jouent plus tard.",
     funFact:
@@ -855,7 +855,7 @@ export const TECHS: TechDef[] = [
     name: 'Acier Bessemer',
     age: 7,
     cost: 175000,
-    materials: { iron: 800, stone: 300 },
+    materials: { iron: 200, stone: 6050, clay: 110 },
     requires: ['railway'],
     fact: "Le convertisseur Bessemer (1856) souffle de l'air à travers la fonte en fusion : l'acier tombe à un dixième de son prix — les rails, les ponts et les charpentes suivent.",
     funFact:
@@ -870,7 +870,7 @@ export const TECHS: TechDef[] = [
     name: 'Télégraphe',
     age: 7,
     cost: 210000,
-    materials: { copper: 600, wood: 300 },
+    materials: { wood: 13100, copper: 250, fiber: 350, food: 319000 },
     requires: ['railway'],
     fact: "1844 : Morse télégraphie de Washington à Baltimore. L'information voyage désormais plus vite que n'importe quel messager.",
     funFact:
@@ -886,8 +886,8 @@ export const TECHS: TechDef[] = [
     id: 'electricity',
     name: 'Électricité',
     age: 8,
-    cost: 250000,
-    materials: { copper: 900, iron: 500 },
+    cost: 364000,
+    materials: { copper: 670, wood: 15500, iron: 310 },
     requires: ['telegraph', 'gaslight'],
     fact: "En 1907, 8 % des foyers américains ont l'électricité ; en 1930, près de 70 %. La centrale d'Edison, à Pearl Street, n'allumait en 1882 que quatre cents lampes : c'est au XXe siècle que la nuit domestique disparaît, en une génération.",
     funFact:
@@ -902,8 +902,8 @@ export const TECHS: TechDef[] = [
     id: 'automobile',
     name: 'Automobile',
     age: 8,
-    cost: 300000,
-    materials: { iron: 900, copper: 400 },
+    cost: 243000,
+    materials: { wood: 15500, iron: 410, fiber: 410 },
     requires: ['bessemer'],
     fact: "La Ford T sort en 1908 ; la chaîne d'assemblage de 1913 fait tomber son temps de montage de douze heures à quatre-vingt-treize minutes.",
     funFact:
@@ -918,8 +918,8 @@ export const TECHS: TechDef[] = [
     id: 'radio',
     name: 'Radio',
     age: 8,
-    cost: 360000,
-    materials: { copper: 800, wood: 300 },
+    cost: 513000,
+    materials: { copper: 1300, wood: 32900, clay: 340 },
     requires: ['electricity'],
     fact: "En 1901, Marconi fait traverser l'Atlantique à trois points Morse. Trente ans plus tard, une voix parle en direct dans des millions de foyers.",
     funFact:
@@ -933,8 +933,8 @@ export const TECHS: TechDef[] = [
     id: 'flight',
     name: 'Aviation',
     age: 8,
-    cost: 430000,
-    materials: { iron: 700, fiber: 400 },
+    cost: 455000,
+    materials: { wood: 68400, fiber: 2700, iron: 2500 },
     requires: ['automobile'],
     fact: "Le 17 décembre 1903, le Flyer des frères Wright tient l'air douze secondes et trente-sept mètres — moins que l'envergure d'un 747.",
     funFact:
@@ -948,8 +948,8 @@ export const TECHS: TechDef[] = [
     id: 'penicillin',
     name: 'Pénicilline',
     age: 8,
-    cost: 520000,
-    materials: { clay: 500, food: 2000 },
+    cost: 410000,
+    materials: { food: 1730000, clay: 540 },
     requires: ['electricity'],
     fact: "Une moisissure contamine une boîte de Petri en 1928 ; en 1944, la pénicilline sort par tonnes des cuves. Les blessures cessent d'être des condamnations.",
     funFact:
@@ -966,8 +966,8 @@ export const TECHS: TechDef[] = [
     id: 'computer',
     name: 'Ordinateur personnel',
     age: 9,
-    cost: 620000,
-    materials: { copper: 1200, iron: 600 },
+    cost: 569000,
+    materials: { copper: 1100, stone: 15500, food: 946000, iron: 510, wood: 9350 },
     requires: ['radio'],
     fact: "En 1977, l'Apple II arrive assemblé, clavier compris : l'ordinateur quitte les centres de calcul pour la table de la cuisine.",
     funFact:
@@ -981,8 +981,8 @@ export const TECHS: TechDef[] = [
     id: 'satellite',
     name: 'Satellites',
     age: 9,
-    cost: 750000,
-    materials: { iron: 1000, copper: 800 },
+    cost: 864000,
+    materials: { iron: 1550, copper: 1150, fiber: 1250 },
     requires: ['flight'],
     fact: "Le GPS doit sa précision à Einstein : sans corriger la relativité, ses horloges dériveraient de dix kilomètres par jour.",
     funFact:
@@ -996,8 +996,8 @@ export const TECHS: TechDef[] = [
     id: 'internet',
     name: 'Internet',
     age: 9,
-    cost: 900000,
-    materials: { copper: 1500, iron: 800 },
+    cost: 642000,
+    materials: { stone: 21900, copper: 700, food: 1040000 },
     requires: ['computer'],
     fact: "En 1969, le premier message d'ARPANET plante après deux lettres : « LO ». Le réseau qui relie aujourd'hui la moitié de l'humanité a commencé par un crash.",
     funFact:
@@ -1011,8 +1011,8 @@ export const TECHS: TechDef[] = [
     id: 'solar',
     name: 'Énergie solaire',
     age: 9,
-    cost: 1100000,
-    materials: { copper: 1800, stone: 800 },
+    cost: 699000,
+    materials: { stone: 28100, copper: 670, clay: 290 },
     requires: ['internet'],
     fact: "Les cellules de Bell (1954) convertissaient 6 % de la lumière ; les panneaux courants dépassent 20 %, et le solaire est devenu l'électricité la moins chère de l'histoire.",
     funFact:
@@ -1029,8 +1029,8 @@ export const TECHS: TechDef[] = [
     id: 'smartphone',
     name: 'Smartphone',
     age: 9,
-    cost: 1350000,
-    materials: { copper: 2000, iron: 1000 },
+    cost: 803000,
+    materials: { stone: 18900, clay: 550, copper: 710, iron: 490 },
     requires: ['internet', 'satellite'],
     fact: "En 2007, le téléphone avale l'appareil photo, le GPS, le baladeur et l'ordinateur : l'humanité met l'essentiel de son savoir dans sa poche.",
     funFact:
@@ -1051,8 +1051,8 @@ export const TECHS: TechDef[] = [
     id: 'ai',
     name: 'Intelligence artificielle',
     age: 10,
-    cost: 2000000,
-    materials: { copper: 3000, iron: 1500, fiber: 1000 },
+    cost: 956000,
+    materials: { copper: 1250, stone: 22500, fiber: 420, iron: 580 },
     requires: ['smartphone'],
     fact: "L'architecture Transformer, publiée en 2017 dans un article de huit pages intitulé « Attention Is All You Need », est le socle commun de presque tous les grands modèles de langage d'aujourd'hui.",
     funFact:
@@ -1067,8 +1067,8 @@ export const TECHS: TechDef[] = [
     id: 'storage',
     name: 'Stockage du réseau',
     age: 10,
-    cost: 2600000,
-    materials: { copper: 4000, iron: 2500 },
+    cost: 1270000,
+    materials: { copper: 1200, iron: 1100, clay: 620 },
     requires: ['ai'],
     fact: "Le prix d'un kilowattheure de batterie au lithium a chuté d'environ 90 % entre 2010 et 2023. C'est cette courbe, plus qu'aucune décision politique, qui rend le solaire et l'éolien pilotables.",
     funFact:
@@ -1083,8 +1083,8 @@ export const TECHS: TechDef[] = [
     id: 'desal',
     name: 'Dessalement',
     age: 10,
-    cost: 3400000,
-    materials: { iron: 3000, stone: 6000 },
+    cost: 1220000,
+    materials: { stone: 29600, food: 1500000, iron: 2250 },
     requires: ['storage'],
     fact: "Israël tire environ 85 % de son eau domestique de la mer. L'osmose inverse est passée d'une dizaine de kilowattheures par mètre cube à près de trois : ce n'est pas la technique qui la limitait, c'est l'énergie.",
     funFact:
@@ -1098,8 +1098,8 @@ export const TECHS: TechDef[] = [
     id: 'crispr',
     name: 'Édition du génome',
     age: 10,
-    cost: 4200000,
-    materials: { fiber: 3000, copper: 2000 },
+    cost: 2120000,
+    materials: { food: 5200000, fiber: 1950, copper: 1400 },
     requires: ['storage'],
     fact: "CRISPR-Cas9, publié en 2012, vaut à Emmanuelle Charpentier et Jennifer Doudna le prix Nobel de chimie 2020. En 2023, la première thérapie qui l'emploie est autorisée : elle corrige la drépanocytose.",
     funFact:
@@ -1114,8 +1114,8 @@ export const TECHS: TechDef[] = [
     id: 'carbon',
     name: 'Captage du carbone',
     age: 10,
-    cost: 5600000,
-    materials: { iron: 6000, stone: 9000, copper: 3000 },
+    cost: 4030000,
+    materials: { stone: 77900, iron: 4400, wood: 54500, copper: 1600 },
     requires: ['desal'],
     fact: "Les premières usines de captage direct dans l'air tournent en Islande, alimentées par la géothermie. Elles retirent quelques milliers de tonnes de CO₂ par an — quand l'humanité en émet près de quarante milliards.",
     funFact:
@@ -1130,8 +1130,8 @@ export const TECHS: TechDef[] = [
     id: 'quantum',
     name: 'Ordinateur quantique',
     age: 10,
-    cost: 7400000,
-    materials: { copper: 8000, iron: 5000, fiber: 4000 },
+    cost: 4760000,
+    materials: { copper: 2550, iron: 2350, fiber: 390, clay: 300 },
     requires: ['crispr', 'carbon'],
     fact: "Un qubit ne tient sa superposition que quelques centaines de microsecondes. L'essentiel de la recherche ne porte donc pas sur le calcul mais sur la CORRECTION d'erreurs : il faut aujourd'hui des milliers de qubits physiques pour un seul qubit logique fiable.",
     funFact:
@@ -1471,17 +1471,17 @@ export interface WonderDef {
 }
 
 export const WONDERS: WonderDef[] = [
-  { age: 0, id: 'stalagmites', name: 'Le cercle de stalagmites', cost: { stone: 900, wood: 300 }, fact: "Au fond de la grotte de Bruniquel, dans le Tarn-et-Garonne, quelque 400 stalagmites brisées dessinent deux cercles, marqués de traces de feu. Elles ont 176 500 ans : l'une des plus anciennes constructions humaines connues, bâtie par des Néandertaliens à plus de 300 mètres de l'entrée — sans autre lumière que celle qu'ils apportaient." },
-  { age: 1, id: 'dolmen', name: 'Le grand dolmen', cost: { stone: 2200, wood: 900 }, fact: 'La dalle de couverture du dolmen de Browne’s Hill, en Irlande, pèse environ 100 tonnes : la plus lourde d’Europe, levée il y a plus de 5 000 ans.' },
-  { age: 2, id: 'ziggurat', name: 'La ziggourat', cost: { stone: 4500, clay: 2500, wood: 1500 }, fact: "La ziggourat d'Ur (~−2100) alignait des millions de briques crues gainées de briques cuites au bitume. Son cœur d'origine porte encore les restaurations de Nabonide, quinze siècles plus tard." },
-  { age: 3, id: 'phare', name: 'Le grand phare', cost: { stone: 8000, iron: 2000, copper: 1500 }, fact: "Le phare d'Alexandrie (~−280) montait à plus de 100 mètres ; son feu, réfléchi par un miroir de bronze, se voyait à 50 kilomètres. Il tint dix-sept siècles avant les séismes." },
-  { age: 4, id: 'trophee', name: 'La colonne trophée', cost: { stone: 15000, wood: 4000, iron: 3000 }, fact: 'La colonne Trajane (113) déroule 200 mètres de bas-reliefs en spirale — 2 500 personnages racontant deux guerres, lisibles comme une bande dessinée de marbre.' },
-  { age: 5, id: 'cathedrale', name: 'La cathédrale', cost: { stone: 30000, wood: 9000, iron: 5000 }, fact: 'Une cathédrale gothique était le chantier de plusieurs générations : à Strasbourg, 424 ans séparent la première pierre de la flèche — un maçon pouvait y naître, y travailler et mourir sans la voir finie.' },
-  { age: 6, id: 'dome', name: 'Le grand dôme', cost: { stone: 55000, clay: 20000, iron: 9000 }, fact: 'Le dôme de Brunelleschi à Florence (1436) fut bâti SANS cintrage : quatre millions de briques posées en spirale autoportante — personne ne savait si ça tiendrait. Ça tient depuis six siècles.' },
-  { age: 7, id: 'tour', name: 'La tour de fer', cost: { iron: 60000, stone: 25000, wood: 10000 }, fact: "La tour Eiffel (1889) assemble 18 038 pièces de fer puddlé par 2,5 millions de rivets, posés à quatre ouvriers par rivet. Montée en deux ans, deux mois et cinq jours." },
-  { age: 8, id: 'gratteciel', name: 'Le gratte-ciel', cost: { iron: 120000, stone: 50000, copper: 25000 }, fact: "L'Empire State Building (1931) monta de 102 étages en 410 jours — jusqu'à quatre étages et demi par semaine, en pleine Grande Dépression." },
-  { age: 9, id: 'fusee', name: 'La fusée', cost: { iron: 250000, copper: 100000, fiber: 60000 }, fact: 'Saturn V (1967) reste la machine la plus puissante jamais construite : 3 000 tonnes au décollage, dont 91 % de carburant — pour envoyer 45 tonnes vers la Lune.' },
-  { age: 10, id: 'fusion', name: 'Le réacteur à fusion', cost: { iron: 900000, copper: 400000, stone: 300000 }, fact: "ITER, en construction à Cadarache, est la plus grande collaboration scientifique jamais montée : trente-cinq pays, un aimant capable de soulever un porte-avions, un plasma à 150 millions de degrés — dix fois le cœur du Soleil. En décembre 2022, une expérience américaine a pour la première fois libéré plus d'énergie que le laser n'en avait déposé sur la cible : un gain sur la cible, pas encore sur la prise de courant." },
+  { age: 0, id: 'stalagmites', name: 'Le cercle de stalagmites', cost: { stone: 15, wood: 25 }, fact: "Au fond de la grotte de Bruniquel, dans le Tarn-et-Garonne, quelque 400 stalagmites brisées dessinent deux cercles, marqués de traces de feu. Elles ont 176 500 ans : l'une des plus anciennes constructions humaines connues, bâtie par des Néandertaliens à plus de 300 mètres de l'entrée — sans autre lumière que celle qu'ils apportaient." },
+  { age: 1, id: 'dolmen', name: 'Le grand dolmen', cost: { stone: 80, wood: 85 }, fact: 'La dalle de couverture du dolmen de Browne’s Hill, en Irlande, pèse environ 100 tonnes : la plus lourde d’Europe, levée il y a plus de 5 000 ans.' },
+  { age: 2, id: 'ziggurat', name: 'La ziggourat', cost: { stone: 550, clay: 130, wood: 1600 }, fact: "La ziggourat d'Ur (~−2100) alignait des millions de briques crues gainées de briques cuites au bitume. Son cœur d'origine porte encore les restaurations de Nabonide, quinze siècles plus tard." },
+  { age: 3, id: 'phare', name: 'Le grand phare', cost: { stone: 1550, iron: 55, copper: 210 }, fact: "Le phare d'Alexandrie (~−280) montait à plus de 100 mètres ; son feu, réfléchi par un miroir de bronze, se voyait à 50 kilomètres. Il tint dix-sept siècles avant les séismes." },
+  { age: 4, id: 'trophee', name: 'La colonne trophée', cost: { stone: 2950, wood: 2250, iron: 120 }, fact: 'La colonne Trajane (113) déroule 200 mètres de bas-reliefs en spirale — 2 500 personnages racontant deux guerres, lisibles comme une bande dessinée de marbre.' },
+  { age: 5, id: 'cathedrale', name: 'La cathédrale', cost: { stone: 5300, wood: 5550, iron: 210 }, fact: 'Une cathédrale gothique était le chantier de plusieurs générations : à Strasbourg, 424 ans séparent la première pierre de la flèche — un maçon pouvait y naître, y travailler et mourir sans la voir finie.' },
+  { age: 6, id: 'dome', name: 'Le grand dôme', cost: { stone: 4150, clay: 290, iron: 180 }, fact: 'Le dôme de Brunelleschi à Florence (1436) fut bâti SANS cintrage : quatre millions de briques posées en spirale autoportante — personne ne savait si ça tiendrait. Ça tient depuis six siècles.' },
+  { age: 7, id: 'tour', name: 'La tour de fer', cost: { iron: 470, stone: 21900, wood: 22500 }, fact: "La tour Eiffel (1889) assemble 18 038 pièces de fer puddlé par 2,5 millions de rivets, posés à quatre ouvriers par rivet. Montée en deux ans, deux mois et cinq jours." },
+  { age: 8, id: 'gratteciel', name: 'Le gratte-ciel', cost: { iron: 4300, stone: 52000, copper: 2400 }, fact: "L'Empire State Building (1931) monta de 102 étages en 410 jours — jusqu'à quatre étages et demi par semaine, en pleine Grande Dépression." },
+  { age: 9, id: 'fusee', name: 'La fusée', cost: { iron: 4050, copper: 2950, fiber: 3150 }, fact: 'Saturn V (1967) reste la machine la plus puissante jamais construite : 3 000 tonnes au décollage, dont 91 % de carburant — pour envoyer 45 tonnes vers la Lune.' },
+  { age: 10, id: 'fusion', name: 'Le réacteur à fusion', cost: { iron: 9150, copper: 6600, stone: 104000 }, fact: "ITER, en construction à Cadarache, est la plus grande collaboration scientifique jamais montée : trente-cinq pays, un aimant capable de soulever un porte-avions, un plasma à 150 millions de degrés — dix fois le cœur du Soleil. En décembre 2022, une expérience américaine a pour la première fois libéré plus d'énergie que le laser n'en avait déposé sur la cible : un gain sur la cible, pas encore sur la prise de courant." },
 ]
 
 export const WONDER_BY_AGE = new Map(WONDERS.map((w) => [w.age, w]))

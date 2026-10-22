@@ -31,6 +31,8 @@
 //   --no-tools            joueur qui refuse tous les outils du marchand
 //   --costs=3.72          coûts de la section 10 de la spec (savoirs des âges
 //                         4 à 10, Charrue, Merveilles 3 à 10), export COSTS_372
+//   --costs=3.72.0        la table de la 3.72.0 (section 10.10, export
+//                         COSTS_3720) : celle de content.ts depuis la 3.72.0
 //   --costs-file=<json>   même forme que COSTS_372, lue dans un fichier (sert
 //                         à tools/couts-ages-tardifs.mjs)
 //   --wonders=v1          le joueur construit la Merveille de chaque âge : il
@@ -97,10 +99,13 @@ if (args.costs === 'proportional') {
   const { PROPORTIONAL } = await import('./savoirs-rule.mjs')
   for (const t of TECHS) if (PROPORTIONAL[t.id]) t.materials = PROPORTIONAL[t.id]
 }
-// Section 10 : une table { techs: { id: { cost?, materials } }, wonders: { id: cost } }.
+// Section 10 : une table { techs: { id: { cost?, materials } }, wonders: { âge: cost } }.
+// Les Merveilles se rangent par âge : la 3.71.2 a échangé le phare et la
+// colonne trophée, le coût reste attaché à l'âge (un id est encore lu).
 {
   let table = null
   if (args.costs === '3.72') table = (await import('./savoirs-rule.mjs')).COSTS_372
+  if (args.costs === '3.72.0') table = (await import('./savoirs-rule.mjs')).COSTS_3720
   if (args['costs-file']) table = JSON.parse((await import('node:fs')).readFileSync(args['costs-file'], 'utf8'))
   if (table) {
     for (const t of TECHS) {
@@ -109,7 +114,10 @@ if (args.costs === 'proportional') {
       if (c.cost) t.cost = c.cost
       if (c.materials) t.materials = c.materials
     }
-    for (const w of WONDERS) if (table.wonders?.[w.id]) w.cost = table.wonders[w.id]
+    for (const w of WONDERS) {
+      const c = table.wonders?.[w.age] ?? table.wonders?.[w.id]
+      if (c) w.cost = c
+    }
   }
 }
 if (args.wonders && args.wonders !== 'v1') throw new Error(`--wonders=${args.wonders} : seule la conduite v1 existe`)
@@ -291,6 +299,21 @@ function chooseFocus() {
   if (g.save.focus !== best) g.setFocus(best)
 }
 
+/** Le taux de savoir MOYEN du moment (nuit comprise, sans encourager, récolte
+ *  du moment) : celui qui règle l'attente du prochain savoir. */
+function meanInsight() {
+  const lf = g.lightFactor
+  const enc = g.encourageLeft
+  g.encourageLeft = 0
+  g.lightFactor = meanLightFactor(g.nightFloor)
+  g.refreshRates()
+  const insight = +g.rates.insight.toFixed(4)
+  g.lightFactor = lf
+  g.encourageLeft = enc
+  g.refreshRates()
+  return insight
+}
+
 function buyAll() {
   let bought = true
   while (bought) {
@@ -299,7 +322,7 @@ function buyAll() {
     for (const tech of list) {
       if (g.canResearch(tech) && !firstAffordable.has(tech.id)) firstAffordable.set(tech.id, t)
       if (g.research(tech.id)) {
-        log.push({ kind: 'tech', id: tech.id, name: tech.name, age: tech.age, t, affordable: firstAffordable.get(tech.id) ?? t, insightReady: insightReady.get(tech.id) ?? t, stock: snap() })
+        log.push({ kind: 'tech', id: tech.id, name: tech.name, age: tech.age, t, affordable: firstAffordable.get(tech.id) ?? t, insightReady: insightReady.get(tech.id) ?? t, cost: tech.cost, stock: snap(), meanInsight: meanInsight() })
         bought = true
         break
       }
@@ -409,6 +432,21 @@ if (args.json) {
       const done = w.done == null ? `non achevée (${Math.round(w.progress * 100)} %)` : `achevée ${mmss(w.done - w.entry)} = ${Math.round(w.share * 100)} % de l’âge`
       console.log(`[${w.age}] ${w.name.padEnd(26)} âge ${mmss(w.length)}  lancée +${mmss(Math.max(0, w.start - w.entry))}  ${done}`)
     }
+  }
+  {
+    // Le rythme (section 4) : de l'achat d'un savoir au moment où le suivant
+    // devient abordable, rangé à l'âge du savoir attendu.
+    const techs = log.filter((e) => e.kind === 'tech')
+    const by = new Map()
+    for (let i = 1; i < techs.length; i++) {
+      const gap = techs[i].affordable - techs[i - 1].t
+      const age = techs[i].age
+      if (!by.has(age)) by.set(age, [])
+      by.get(age).push(gap)
+    }
+    console.log('\nIntervalle entre deux savoirs (achat précédent → abordable), par âge du savoir')
+    for (const [age, gaps] of [...by].sort((x, y) => x[0] - y[0]))
+      console.log(`[${age}] ${mmss(Math.min(...gaps))}-${mmss(Math.max(...gaps))}  (${gaps.map(mmss).join(' ')})`)
   }
   if (args.eco) {
     console.log('\nBilan par âge (jeu actif) : produit / dépensé par les savoirs de l’âge = ratio')
