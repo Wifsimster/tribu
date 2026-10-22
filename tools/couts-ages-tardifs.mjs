@@ -7,7 +7,7 @@
 //
 //   node --import ./tests/resolve-ts.mjs tools/couts-ages-tardifs.mjs [--rounds=6] [--out=table.json]
 //   … --v=3.72.0   la table de la 3.72.0 (section 10.10) : Merveilles 0 à 10,
-//                  coûts en savoir des âges 5 à 10 recalés (INSIGHT_AGES),
+//                  coûts en savoir des âges 4 à 10 recalés (INSIGHT_AGES),
 //                  chaque Merveille visée à WONDER_TARGET de son âge
 //
 // Chaque tour fait tourner tools/sim-savoirs.mjs --no-encourage --wonders=v1
@@ -70,7 +70,7 @@ function nextTable(out) {
   for (const t of TECHS) {
     const retune = RETUNE.includes(t.age)
     if (!WEIGHTS_372[t.id]) continue
-    // 3.72.0 : les âges dans la cible gardent la table 10.5 telle quelle.
+    // 3.72.0 : la Charrue (seule hors INSIGHT_AGES) garde la table 10.5 telle quelle.
     if (V3720 && !retune) {
       techs[t.id] = COSTS_372.techs[t.id]
       continue

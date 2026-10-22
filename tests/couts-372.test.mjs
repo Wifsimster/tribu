@@ -161,6 +161,35 @@ test('le chantier ne prend pas le matériau qu’un savoir payable en savoir att
   assert.equal(wood.flow, 0)
 })
 
+// ── Le marchand suit la même règle
+test('le marchand ne vend pas un outil payé dans ce que les savoirs de l’âge attendent', () => {
+  // Âge du fer, Forge du fer connue : le sel coûte 400 nourriture, 200 argile
+  // et 300 bois. La Charrue a son savoir et demande 220 bois : payer le sel
+  // avec 400 bois en laisserait 100.
+  const sel = TOOLS.find((t) => t.id === 'sel')
+  const caravan = { nextIn: 1e9, visiting: true, visitLeft: 30, haggled: false, traded: true }
+  const res = { food: 1e6, wood: 400, stone: 5000, fiber: 1000, clay: 5000, copper: 1000, iron: 1000, insight: 2000 }
+  const s = saveAt(3, { res, caravan })
+  s.techs.push('ironworking')
+  store.set(SAVE_KEY, JSON.stringify(s))
+  const g = new Game(NOW)
+  assert.ok(g.techReserve().wood >= TECH_BY_ID.get('plough').materials.wood)
+  g.offerTool()
+  assert.equal(g.toolOffer, null, 'pas d’offre')
+  // Déjà proposé (les stocks ont baissé depuis) : l'achat est refusé, rien n'est payé.
+  g.toolOffer = sel
+  assert.equal(g.acceptTool(), false)
+  assert.equal(g.amount('wood'), 400)
+  assert.ok(!g.save.tools.includes('sel'))
+  // Assez de bois pour les deux : il vend.
+  g.save.res.wood = 5000
+  g.toolOffer = null
+  g.offerTool()
+  assert.equal(g.toolOffer, sel)
+  assert.equal(g.acceptTool(), true)
+  assert.equal(g.amount('wood'), 4700)
+})
+
 // ── Bug de la 3.71.1 : un rechargement dans les 5 s recréditait l'absence
 test('absence créditée au chargement : la sauvegarde est réécrite, un rechargement à +3 s ne recrédite rien', () => {
   const s = saveAt(3, { res: { food: 100, wood: 100, stone: 100, fiber: 10, clay: 10, copper: 10, iron: 10, insight: 0 } })
@@ -199,23 +228,22 @@ test('simulateur, joueur de référence : chaque Merveille lancée à l’entré
 })
 
 // ── Critère 21 : le rythme des âges recalés
-test('simulateur, avec et sans Merveilles, avec et sans changer de récolte : aux âges 5 à 10, un savoir toutes les 7:30 à 15:00', { timeout: 600_000 }, () => {
+test('simulateur, avec et sans Merveilles, avec et sans changer de récolte : aux âges 4 à 10, un savoir toutes les 7:30 à 15:00', { timeout: 600_000 }, () => {
   for (const extra of [[], ['--wonders=v1', '--wonder-from=0'], ['--focus=food'], ['--wonders=v1', '--wonder-from=0', '--focus=food']]) {
     const techs = simulate(...extra).log.filter((e) => e.kind === 'tech')
     assert.equal(techs.length, TECHS.length, 'tout l’arbre')
     for (let i = 1; i < techs.length; i++) {
-      if (techs[i].age < 5) continue
+      if (techs[i].age < 4) continue
       const gap = techs[i].affordable - techs[i - 1].t
       assert.ok(gap >= 450 && gap <= 900, `${techs[i].name} (${extra.join(' ') || 'sans Merveille'}) : ${gap} s`)
     }
   }
 })
 
-// ── Critère 24 : le chantier n'affame pas le joueur qui ne change jamais de
-// récolte. Sans les outils du marchand : un outil payé en bois juste avant la
-// Voile la fait attendre 4 min, Merveille ou pas dans le calcul (voir 10.11).
-test('simulateur, --focus=food avec les onze Merveilles : au plus 2 min d’attente de matériau par âge', { timeout: 600_000 }, () => {
-  const techs = simulate('--wonders=v1', '--wonder-from=0', '--focus=food', '--no-tools').log.filter((e) => e.kind === 'tech')
+// ── Critère 24 : ni le chantier ni le marchand n'affament le joueur qui ne
+// change jamais de récolte.
+test('simulateur, --focus=food avec les onze Merveilles et les outils : au plus 2 min d’attente de matériau par âge', { timeout: 600_000 }, () => {
+  const techs = simulate('--wonders=v1', '--wonder-from=0', '--focus=food').log.filter((e) => e.kind === 'tech')
   assert.equal(techs.length, TECHS.length, 'tout l’arbre')
   const waits = new Map()
   for (const e of techs) waits.set(e.age, (waits.get(e.age) ?? 0) + e.affordable - e.insightReady)

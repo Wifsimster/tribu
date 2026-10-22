@@ -123,7 +123,7 @@ const IDLE_FRACTION = 0.3
 const INSIGHT_PER_MATERIAL = 0.07
 
 /** La part de la récolte à venir sur laquelle le chantier compte avant de
- *  prendre un matériau que les savoirs de l'âge demanderont (wonderKeeps).
+ *  prendre un matériau que les savoirs de l'âge demanderont (techReserve).
  *  À 100 %, la nuit et les outils du marchand faisaient encore attendre le
  *  joueur qui ne change jamais de récolte : 5 min à l'âge du bronze, 10 à
  *  l'ère moderne (tools/sim-savoirs.mjs --focus=food --wonders=v1
@@ -1263,7 +1263,7 @@ export class Game {
     if (!cur) return null
     const def = WONDER_BY_AGE.get(cur.age)
     if (!def) return null
-    const kept = this.wonderKeeps()
+    const kept = this.techReserve()
     const lines = (Object.entries(def.cost) as [ResourceId, number][]).map(([id, total]) => {
       const paid = Math.min(total, cur.paid[id] ?? 0)
       // Laissé aux savoirs : le chantier n'y touche pas tant que le stock ne
@@ -1323,7 +1323,7 @@ export class Game {
       return
     }
     const before = this.wonderProgress(def, cur.paid)
-    const kept = this.wonderKeeps()
+    const kept = this.techReserve()
     for (const [id, total] of Object.entries(def.cost) as [ResourceId, number][]) {
       const paid = cur.paid[id] ?? 0
       if (paid >= total) continue
@@ -1368,14 +1368,15 @@ export class Game {
     }
   }
 
-  /** Ce que le chantier laisse aux savoirs, matériau par matériau. Les
+  /** Ce que le chantier et le marchand laissent aux savoirs, matériau par
+   *  matériau : ni l'un ni l'autre ne descend un stock en dessous. Les
    *  savoirs qui restent à l'âge, du moins cher au plus cher en savoir :
    *  pour chacun, les matériaux qu'ils demandent jusqu'à lui, moins ce que
    *  l'île en récoltera d'ici à ce que le savoir suffise (WONDER_KEEP_HARVEST
-   *  de la récolte du moment : la nuit et le marchand en prennent leur part).
+   *  de la récolte du moment : la nuit en prend sa part).
    *  Un savoir déjà payable en savoir qui attend un matériau le reçoit tout
    *  entier : le chantier n'y touche plus jusqu'à l'achat. */
-  private wonderKeeps(): Partial<Record<ResourceId, number>> {
+  techReserve(): Partial<Record<ResourceId, number>> {
     const keep: Partial<Record<ResourceId, number>> = {}
     const insight = this.amount('insight')
     const insightRate = Math.max(1e-9, this.rates.insight)
@@ -1660,10 +1661,15 @@ export class Game {
     this.emit({ type: 'caravanOffer', def })
   }
 
+  /** Payable d'un coup, sans entamer ce que les savoirs de l'âge vont
+   *  demander (techReserve, la règle du chantier) : jusqu'à la 3.72.0, un
+   *  outil payé 300 bois une minute avant la Voile la faisait attendre 4 min. */
   private canPayTool(def: ToolDef): boolean {
-    return Object.entries(def.price).every(
-      ([res, n]) => this.unlocked.has(res as ResourceId) && this.amount(res as ResourceId) >= n,
-    )
+    const reserve = this.techReserve()
+    return Object.entries(def.price).every(([res, n]) => {
+      const id = res as ResourceId
+      return this.unlocked.has(id) && this.amount(id) - n >= Math.max(0, reserve[id] ?? 0)
+    })
   }
 
   /** L'objet que le marchand tend, en attente de réponse. Hors sauvegarde :
