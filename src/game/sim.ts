@@ -1256,7 +1256,18 @@ export class Game {
   wonderDetail(): {
     def: WonderDef
     progress: number
-    lines: { id: ResourceId; paid: number; total: number; flow: number; eta: number; held: boolean }[]
+    lines: {
+      id: ResourceId
+      paid: number
+      total: number
+      flow: number
+      eta: number
+      /** Stock sous le plancher : le chantier n'y touche pas. */
+      held: boolean
+      floor: number
+      /** Le plancher vient de ce que les savoirs de l'âge vont demander. */
+      forTechs: boolean
+    }[]
     eta: number
   } | null {
     const cur = this.save.wonder
@@ -1266,15 +1277,27 @@ export class Game {
     const kept = this.techReserve()
     const lines = (Object.entries(def.cost) as [ResourceId, number][]).map(([id, total]) => {
       const paid = Math.min(total, cur.paid[id] ?? 0)
-      // Laissé aux savoirs : le chantier n'y touche pas tant que le stock ne
-      // dépasse pas ce qu'ils vont demander (voir tickWonder).
-      const held = paid < total && (kept[id] ?? 0) > 0 && this.amount(id) <= kept[id]!
+      // Le plancher du chantier, le même que dans tickWonder : tant que le
+      // stock ne le dépasse pas, le chantier n'y touche pas. Jusqu'à la 3.72.0,
+      // la carte ne voyait que la part des savoirs et affichait un débit sous
+      // le matelas de 10 + 30 par âge.
+      const { floor, forTechs } = this.wonderFloor(id, kept)
+      const held = paid < total && this.amount(id) <= floor
       // Le débit réellement versé : 60 % de la production, et seulement ce qui
-      // dépasse le plancher de réserve (voir tickWonder).
+      // dépasse le plancher (voir tickWonder).
       const flow = paid >= total || held ? 0 : this.wonderFlow(id)
-      // Débit nul sur un reste dû (colon parti, matériau laissé aux savoirs) :
+      // Débit nul sur un reste dû (colon parti, matériau sous le plancher) :
       // pas d'échéance.
-      return { id, paid, total, flow, eta: paid >= total ? 0 : flow > 0 ? (total - paid) / flow : Infinity, held }
+      return {
+        id,
+        paid,
+        total,
+        flow,
+        eta: paid >= total ? 0 : flow > 0 ? (total - paid) / flow : Infinity,
+        held,
+        floor,
+        forTechs,
+      }
     })
     return {
       def,
@@ -1282,6 +1305,21 @@ export class Game {
       lines,
       eta: Math.max(0, ...lines.map((l) => l.eta)),
     }
+  }
+
+  /** Le stock sous lequel le chantier ne descend pas un matériau : 10 + 30
+   *  par âge (50 + 30 jusqu'à la 3.71). À 50, le Paléolithique n'y arrivait
+   *  jamais (le joueur dépense ses premières pierres dès qu'elles tombent) et
+   *  sa Merveille débordait sur deux âges. Au-dessus, ce que les savoirs de
+   *  l'âge vont demander (techReserve) : le chantier ne les affame jamais
+   *  (sans cette part, le joueur qui ne change pas de récolte attendait 73 min
+   *  son bois et sa pierre à l'âge du bronze, bus par la ziggourat).
+   *  Seule source du plancher : tickWonder prélève au-dessus, wonderDetail
+   *  l'affiche. */
+  private wonderFloor(id: ResourceId, kept: Partial<Record<ResourceId, number>>): { floor: number; forTechs: boolean } {
+    const base = 10 + this.save.age * 30
+    const techs = kept[id] ?? 0
+    return { floor: Math.max(base, techs), forTechs: techs > base }
   }
 
   /** Ce que le chantier prend par seconde : 60 % de la production, avec un
@@ -1327,14 +1365,7 @@ export class Game {
     for (const [id, total] of Object.entries(def.cost) as [ResourceId, number][]) {
       const paid = cur.paid[id] ?? 0
       if (paid >= total) continue
-      // Le plancher : 10 + 30 par âge (50 + 30 jusqu'à la 3.71). À 50, le
-      // Paléolithique n'y arrivait jamais (le joueur dépense ses premières
-      // pierres dès qu'elles tombent) et sa Merveille débordait sur deux âges.
-      // Au-dessus, ce que les savoirs de l'âge vont demander : le chantier ne
-      // les affame jamais (sans cette part, le joueur qui ne change pas de
-      // récolte attendait 73 min son bois et sa pierre à l'âge du bronze,
-      // bus par la ziggourat).
-      const floor = Math.max(10 + this.save.age * 30, kept[id] ?? 0)
+      const { floor } = this.wonderFloor(id, kept)
       const avail = this.amount(id) - floor
       if (avail <= 0) continue
       // Le chantier prend une PART DE LA PRODUCTION, jamais la réserve. Avant,

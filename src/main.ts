@@ -361,7 +361,9 @@ function openWonderCard(): void {
         l.paid >= l.total
           ? 'complet'
           : l.held
-            ? 'laissé à tes savoirs'
+            ? l.forTechs
+              ? 'laissé à tes savoirs'
+              : `en réserve jusqu'à ${fmt(l.floor)}`
             : !Number.isFinite(l.eta)
             ? 'en pause'
             : l.eta > 90
@@ -383,9 +385,11 @@ function openWonderCard(): void {
     `${rows}<div class="wc-total">${
       Number.isFinite(d.eta)
         ? `Achèvement estimé dans ${eta} au débit actuel`
-        : d.lines.some((l) => l.held)
+        : d.lines.some((l) => l.held && l.forTechs)
           ? 'Le chantier attend que tes découvertes aient ce qu’il leur faut'
-          : 'Le chantier attend le retour du colon'
+          : d.lines.some((l) => l.held)
+            ? 'Le chantier attend que tes réserves remontent'
+            : 'Le chantier attend le retour du colon'
     }</div>`,
     'Détail du chantier',
   )

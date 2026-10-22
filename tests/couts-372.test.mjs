@@ -158,7 +158,41 @@ test('le chantier ne prend pas le matériau qu’un savoir payable en savoir att
   assert.ok(g.amount('stone') >= copper.materials.stone, 'jamais sous ce que le savoir demande')
   const wood = g.wonderDetail().lines.find((l) => l.id === 'wood')
   assert.equal(wood.held, true)
+  assert.equal(wood.forTechs, true)
   assert.equal(wood.flow, 0)
+})
+
+// ── La carte du chantier lit le même plancher que le chantier
+test('la carte du chantier ne montre aucun débit sous le plancher de 10 + 30 par âge', () => {
+  // Antiquité, colonne trophée en cours : un matériau que les savoirs de
+  // l'âge ne réclament pas (ou moins que le plancher), tenu sous 130. Jusqu'à
+  // la 3.72.0, la carte lui donnait un débit et une échéance que le chantier
+  // ne tenait pas.
+  const age = 4
+  const base = 10 + 30 * age
+  const res = { food: 1e6, wood: 1e5, stone: 1e5, fiber: 1e4, clay: 1e4, copper: 1e4, iron: 1e4, insight: 0 }
+  store.set(SAVE_KEY, JSON.stringify(saveAt(age, { res, wonder: { age, paid: {} } })))
+  const g = new Game(NOW)
+  const kept = g.techReserve()
+  const id = Object.keys(WONDER_BY_AGE.get(age).cost).find((m) => (kept[m] ?? 0) < base)
+  assert.ok(id, 'un matériau de la colonne sous le seul plancher de base')
+  g.save.res[id] = base - 20
+  const line = g.wonderDetail().lines.find((l) => l.id === id)
+  assert.equal(line.floor, base)
+  assert.equal(line.held, true)
+  assert.equal(line.forTechs, false)
+  assert.equal(line.flow, 0)
+  assert.equal(line.eta, Infinity)
+  // Et le chantier, sur le même stock, ne prélève rien.
+  g.tick(0.05, NOW + 50)
+  assert.equal(g.save.wonder.paid[id] ?? 0, 0, 'rien versé sous le plancher')
+  // Au-dessus du plancher, la carte et le chantier reprennent ensemble.
+  g.save.res[id] = base + 500
+  const up = g.wonderDetail().lines.find((l) => l.id === id)
+  assert.equal(up.held, false)
+  assert.ok(up.flow > 0 && Number.isFinite(up.eta))
+  g.tick(0.5, NOW + 600)
+  assert.ok((g.save.wonder.paid[id] ?? 0) > 0, 'versé au-dessus du plancher')
 })
 
 // ── Le marchand suit la même règle
