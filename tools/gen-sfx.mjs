@@ -84,18 +84,9 @@ const SOUNDS = [
     seconds: 12,
     text: 'Steady light rain falling on grass and leaves, soft and even, no thunder, no wind gusts, no music, clean field recording',
   },
-  {
-    id: 'nuit',
-    kind: 'bed',
-    seconds: 12,
-    text: 'Warm summer night in the countryside, steady continuous chorus of field crickets chirping in the grass, even and seamless, no voices, no speech, no birds, no frogs, no wind, no music, clean field recording',
-  },
-  {
-    id: 'oiseaux',
-    kind: 'bed',
-    seconds: 12,
-    text: 'Morning dawn chorus in the countryside, many small songbirds singing continuously from hedges and trees at a medium distance, even and seamless, no voices, no speech, no wind, no water, no music, clean field recording',
-  },
+  // PAS de `nuit` ni d'`oiseaux` : ce sont des prises réelles en CC0,
+  // épinglées dans tools/fetch-cc-sfx.mjs (issue #20). Les régénérer ici
+  // remplacerait des sons libres par des sons à usage non commercial.
   {
     id: 'bourdon',
     kind: 'bed',

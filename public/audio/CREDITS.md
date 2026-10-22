@@ -7,21 +7,29 @@ publiés avec le jeu.
 ## Wikimedia Commons
 
 Prises réelles, récupérées et retaillées par `tools/fetch-cc-sfx.mjs` en
-v3.9.0 (112e956) : extrait de 12 s bouclé par fondu enchaîné pour les nappes
-(la prise de `nuit`, longue de 0,85 s, est d'abord répétée), détourage, coupe
-à 6 s et fondu de sortie pour la cloche, sonie normalisée pour tous.
+v3.9.0 (112e956) : extrait de 12 s bouclé par fondu enchaîné pour la pluie,
+détourage, coupe à 6 s et fondu de sortie pour la cloche, sonie normalisée
+pour les deux.
 
 - **cloche** — « 2011 Christmas bells at Notre-Dame de Paris (excerpt).wav » par Mxsmanic · CC0 (http://creativecommons.org/publicdomain/zero/1.0/deed.en) · https://commons.wikimedia.org/wiki/File%3A2011%20Christmas%20bells%20at%20Notre-Dame%20de%20Paris%20(excerpt).wav · retaillé (détourage et fondu) par tools/fetch-cc-sfx.mjs
-- **nuit** — « Jer-Cricket.ogg » par Man vyi · Public domain · https://commons.wikimedia.org/wiki/File%3AJer-Cricket.ogg · retaillé (boucle et fondu) par tools/fetch-cc-sfx.mjs
-- **oiseaux** — « Home Dawn Chorus 2020-04-28 0600.mp3 » par Robert EA Harvey · CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0) · https://commons.wikimedia.org/wiki/File%3AHome%20Dawn%20Chorus%202020-04-28%200600.mp3 · retaillé (boucle et fondu) par tools/fetch-cc-sfx.mjs
 - **pluie** — « Rain on leaves (Gravity Sound).wav » par Gravity Sound · CC BY 4.0 (https://creativecommons.org/licenses/by/4.0) · https://commons.wikimedia.org/wiki/File%3ARain%20on%20leaves%20(Gravity%20Sound).wav · retaillé (boucle et fondu) par tools/fetch-cc-sfx.mjs
-
-`oiseaux.mp3` est une adaptation d'une œuvre sous CC BY-SA 4.0 : il est
-diffusé sous la même licence, CC BY-SA 4.0.
 
 Vérifié le 2026-10-20 : chaque fichier source, téléchargé depuis Commons et
 passé par le même traitement ffmpeg que `tools/fetch-cc-sfx.mjs`, redonne un
 mp3 identique octet pour octet au fichier de ce dossier.
+
+## OpenGameArt et Freesound
+
+Prises réelles sous CC0, épinglées dans `tools/fetch-cc-sfx.mjs` (adresse
+exacte du fichier et empreinte sha256) en v3.72.2 : elles remplacent un
+`oiseaux` muet et un `nuit` qui était en fait la prononciation d'un mot
+jèrriais (issue #20). Mono 22 050 Hz, 32 kbit/s, gain linéaire vers
+-23 LUFS. `nuit` est une période exacte de la boucle d'origine, `oiseaux` un
+extrait de 18 s bouclé par fondu enchaîné de 2 s. Pour Freesound, c'est
+l'aperçu public qui est téléchargé : l'original exige un compte.
+
+- **nuit** — « Crickets Ambient Noise - loopable (crickets-oneloop.mp3) » par Ted Kerr (wolfgang) · CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/) · https://opengameart.org/content/crickets-ambient-noise-loopable · fichier https://opengameart.org/sites/default/files/crickets-oneloop.mp3 · retaillé (une période exacte, mono, gain linéaire) par tools/fetch-cc-sfx.mjs
+- **oiseaux** — « Dawn Chorus - Gloucestershire - May 2016 » par mike_stranks · CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/) · https://freesound.org/people/mike_stranks/sounds/345484/ · fichier https://cdn.freesound.org/previews/345/345484_5385809-hq.mp3 · retaillé (extrait de 290 s, boucle par fondu, mono, gain linéaire) par tools/fetch-cc-sfx.mjs
 
 ## ElevenLabs
 

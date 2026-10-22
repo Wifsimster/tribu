@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.72.2',
+    title: 'Les oiseaux chantent, les grillons aussi',
+    items: [
+      "Le jour, les oiseaux chantent enfin. Leur nappe sonore était muette depuis la 3.9.0 : la prise d'origine ne commençait qu'après 52 secondes de silence. On entend maintenant un vrai chœur de l'aube, enregistré au bord d'une haie du Gloucestershire.",
+      "La nuit, de vrais grillons. L'ancienne nappe n'en était pas : c'était un mot de jèrriais (« grillon ») prononcé et répété en boucle. La nouvelle boucle de 11 secondes se raccorde sans couture.",
+      "Les deux prises sont sous CC0, sans aucune clause d'usage. Leur origine figure dans les crédits des sons, comme pour les quinze autres.",
+    ],
+  },
+  {
     version: '3.72.1',
     title: 'Le chantier dit ce qu’il fait',
     items: [
