@@ -3,6 +3,8 @@
 Base : master `9772d54` (v3.69.0). Tient compte de la nuit au tiers du cycle prévue en 3.70.0 (fusionnée depuis, voir section 8).
 Aucun code du jeu n'est modifié par cette spec. Les chiffres viennent de `tools/sim-savoirs.mjs`, qui fait tourner le vrai `Game` de `src/game/sim.ts` sous Node.
 
+La section 10 (âges 4 à 10, Charrue, Merveilles) part de master `a0932d0` (v3.71.1). Implémentée en 3.72.0 avec les ajouts de 10.10 : Merveilles 0 à 2, coût en savoir des âges 4 à 10, plancher du chantier, part laissée aux savoirs par le chantier et le marchand.
+
 Implémentée en 3.71.0 : réserve et migration dans `src/game/sim.ts` et `src/game/state.ts`, table 9.3 dans `src/game/content.ts`, tests dans `tests/insight-reserve.test.mjs`. Le taux `r` de l'absence et de la migration est la moyenne de la vraie courbe jour/nuit (`meanLightFactor`), pas `(1 + plancher) / 2`. Depuis, `--rule=proposal` est ignoré par le simulateur (la règle est dans le jeu) et `--costs=proportional` ne change plus rien.
 
 ## 1. Le retour
@@ -228,7 +230,7 @@ Il achète l'Agriculture dès que sa fibre arrive, puis un savoir toutes les 4 �
 
 ## 8. Limites de la simulation
 
-- Pas d'expéditions, de Merveille ni de pêche : elles ajoutent un peu de savoir (≤ 12 + 25 × âge par voyage) et ne changent pas le diagnostic.
+- Pas d'expéditions, de Merveille ni de pêche (sections 2 à 9 ; la section 10 construit les Merveilles avec `--wonders=v1`) : elles ajoutent un peu de savoir (≤ 12 + 25 × âge par voyage) et ne changent pas le diagnostic.
 - Le joueur achète par coût croissant et pose toujours la première terre offerte.
 - Les mesures des sections 2 à 9 ont été faites avec une copie de la nuit 3.70 dans `tools/sim-savoirs.mjs` (`--night=3.70`, courbe sans mise à l'échelle), avant la fusion de la 3.70.0. Depuis, le jeu porte la nuit et `lightScaleFor` garde le rendement d'un tour : le mode est retiré du script, le savoir de l'absence et de la migration passe par `meanLightFactor` de `src/game/sim.ts`.
 - Le bilan par âge range la production par âge courant et la dépense par âge du savoir : un savoir d'un âge acheté au suivant (le Grenier, la Voile) décale un peu les ratios.
@@ -422,3 +424,393 @@ Il n'attend plus la fibre : l'Agriculture se paie à l'ouverture, sur sa nourrit
 - `src/game/content.ts` : remplacer les `materials` des âges 0 à 3 par la table 9.3. Pas de calcul au chargement : les coûts restent des constantes lisibles dans `TECHS`, et la règle sert à les produire.
 - La feuille de savoir affiche déjà les matériaux manquants (`missingFor`) : la nourriture y apparaît comme les autres.
 - Changelog : « Les découvertes demandent maintenant des provisions : la nourriture sert enfin, et la fibre ne bloque plus le Néolithique. »
+
+## 10. Âges 4 à 10, Charrue et Merveilles
+
+Base : master `a0932d0` (v3.71.1 : savoir compté une fois, `INSIGHT_PER_MATERIAL = 0,07`, Merveille qui avance hors ligne, marchand qui propose). Aucun code du jeu ne change ici. La table est dans `tools/savoirs-rule.mjs` (`COSTS_372`), produite par `tools/couts-ages-tardifs.mjs` ; `tools/sim-savoirs.mjs --costs=3.72` la pose dans le simulateur.
+
+### 10.1 Constat
+
+Joueur de référence (section 2, sans encourager, focalise ce qui manque), partie complète jusqu'au dernier savoir :
+
+```
+node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --until=11 --max=200000 --eco
+node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --until=11 --max=200000 --eco --wonders=v1
+```
+
+- **Les matériaux des âges 4 à 10 ne suivent pas l'île.** Nourriture : rien à dépenser aux âges 4, 6, 7, 9 et 10, ×2 100 au Moyen Âge, ×7 500 à l'ère moderne. Argile sans emploi aux âges 5, 7, 9 et 10, fibre aux âges 3, 7 et 9. Bois ×16 à ×400, pierre ×11 à ×210, ou sans emploi (pierre aux âges 6 et 8, bois aux âges 9 et 10). Table complète en 10.6.
+- **Les Merveilles 3 à 10 sont hors d'atteinte.** Lancée en entrant à l'âge du fer, la colonne trophée finit 241:36 plus tard (à 325:54 de jeu), soit 3,7 fois la durée de l'âge. Comme on ne construit qu'un chantier à la fois, elle bloque les quatre Merveilles suivantes : à la fin de l'arbre (679 min), deux Merveilles sur huit ont été lancées et une seule est achevée. Au débit de ce joueur, chaque Merveille demande 17 à 76 h de jeu actif dans son âge (dernière colonne de 10.4). Ce n'est pas qu'une question d'attente : la Merveille prend 60 % de ce que l'île produit et laisse les savoirs à court. L'arbre finit 39 min plus tard qu'avec un joueur qui ne construit rien (679 contre 640 min).
+- **Rythme de l'âge du fer.** Charrue : 16:46 après la Forge du fer, hors cible (10-12 min, ±25 % : 7:30 à 15:00). La Forge du fer, elle, met 11:03 après la Voile : elle est dans la cible. Les « 23 min » de la section 2.1 se comptaient depuis l'entrée dans l'âge, avec `INSIGHT_PER_MATERIAL = 0,05` : le joueur y achète d'abord la Voile, un savoir de l'âge du bronze (9:29), puis la Forge.
+
+### 10.2 Règle des savoirs : celle de la section 9, avec des parts explicites
+
+**coût(r) = 0,8 · w_r · T · taux_r**, comme en 9.2 : `T` = coût en savoir / taux de savoir moyen, `taux_r` = taux focalisé moyen de `r` (nuit comprise, sans encourager) à l'apparition du savoir, `Σ w ≤ 0,9`, `w ≤ 0,5` hors nourriture. Les coûts en savoir ne changent pas, sauf celui de la Charrue (10.3).
+
+Les parts (`WEIGHTS_372`) suivent trois contraintes :
+
+1. **Nourriture, argile et fibres ont un débouché dans chaque âge**, de 3 à 10. La fibre entre à l'âge du fer par le harnais de la Charrue, seul savoir de l'âge qui change.
+2. **Fer et cuivre ≤ 0,3.** La Merveille de l'âge prend déjà 60 % de leur production (10.4), et ce sont les deux ressources les plus lentes (fer focalisé : 0,23/s à l'Antiquité, 0,74/s à l'ère industrielle). L'Automobile est à fer 0,2 : à 0,3, elle attendait le fer 2:41 avec le gratte-ciel en chantier.
+3. **Un matériau a un sens historique** : la chaux et la pouzzolane du béton, le grain du moulin à eau, le parchemin du codex, les moules en argile de l'horloge, les voiles de la caravelle, les cornues réfractaires de l'éclairage au gaz, la silice de la fibre optique, le lithium des argiles pour le stockage, la biomasse du captage du carbone. La nourriture est, comme en 9.2, les provisions de ceux qui cherchent.
+
+Arrondi : `nice` sous 10 000, trois chiffres significatifs au-dessus (`nice3`).
+
+### 10.3 Charrue : 1 600 de savoir au lieu de 2 100
+
+`coût = 12 min × taux de savoir moyen à son apparition` (2,22/s) = 1 600. T = 719 s. Mesuré : 11:43 après la Forge du fer (16:46 avant). Ses matériaux suivent la règle avec les parts nourriture 0,4, fer 0,2, bois 0,1, fibre 0,1. La Forge du fer ne bouge pas (10.1).
+
+### 10.4 Règle des Merveilles
+
+Pour chaque matériau `r` de la Merveille d'un âge de durée `D` (jeu actif, de l'entrée dans l'âge à l'entrée dans le suivant ; à l'âge 10, jusqu'au dernier savoir) :
+
+**coût(r) = 0,6 · production_r(entrée → entrée + 0,8 · D)**
+
+- `0,6`, c'est la part que le chantier prend à la production (`wonderFlow`). Lancée en entrant dans l'âge, la Merveille finit donc vers 80 % de l'âge, au milieu de la cible 70-90 %.
+- La production est celle du joueur de référence qui **lance la Merveille en entrant dans l'âge sans changer sa récolte** (`--wonders=v1`) : il focalise un matériau quand un savoir l'attend, sinon la nourriture. La Merveille vit de ce que l'île produit et le rythme des savoirs ne change pas.
+- Pourquoi pas un joueur qui focalise le chantier (`--wonder-focus`) : focaliser le fer au lieu de la nourriture fait chuter le terme `material` du savoir (`0,07 × taux`, et la nourriture a de loin le plus gros taux). Avec la table ci-dessous, ce joueur finit chaque Merveille à 24-62 % de l'âge, mais l'arbre lui prend 677 min au lieu de 593. Calée sur lui, la Merveille obligerait le joueur à choisir entre elle et ses savoirs, puisqu'il faudrait focaliser pour l'avoir à temps.
+- Les compositions restent celles de `content.ts` (elles portent les faits historiques), seules les quantités changent.
+- C'est un point fixe : les Merveilles finies donnent +4 % de récolte, et la Charrue moins chère avance tout. `tools/couts-ages-tardifs.mjs` joue une partie sans Merveille, en tire une table, rejoue avec elle, et recommence jusqu'à ce que la table ne bouge plus (5 tours).
+
+| Âge | Merveille | Avant | Après | Durée de l'âge | Achevée après | Avant, au même débit |
+|---|---|---|---|---|---|---|
+| 3 | La colonne trophée | 8 000 pierre, 2 000 fer, 1 500 cuivre | 1 300 pierre, 50 fer, 180 cuivre | 60:24 | 49:59 (83 %) | 32 h (×40) |
+| 4 | Le grand phare | 15 000 pierre, 4 000 bois, 3 000 fer | 2 900 pierre, 2 150 bois, 120 fer | 52:12 | 41:56 (80 %) | 17 h (×25) |
+| 5 | La cathédrale | 30 000 pierre, 9 000 bois, 5 000 fer | 3 250 pierre, 3 350 bois, 130 fer | 36:14 | 28:51 (80 %) | 19 h (×38) |
+| 6 | Le grand dôme | 55 000 pierre, 20 000 argile, 9 000 fer | 3 900 pierre, 270 argile, 170 fer | 40:00 | 32:01 (80 %) | 40 h (×74) |
+| 7 | La tour de fer | 60 000 fer, 25 000 pierre, 10 000 bois | 450 fer, 23 900 pierre, 22 200 bois | 42:46 | 34:15 (80 %) | 76 h (×133) |
+| 8 | Le gratte-ciel | 120 000 fer, 50 000 pierre, 25 000 cuivre | 4 500 fer, 51 800 pierre, 2 300 cuivre | 62:59 | 53:56 (86 %) | 22 h (×27) |
+| 9 | La fusée | 250 000 fer, 100 000 cuivre, 60 000 fibre | 5 400 fer, 3 950 cuivre, 4 200 fibre | 76:35 | 61:17 (80 %) | 47 h (×46) |
+| 10 | Le réacteur à fusion | 900 000 fer, 400 000 cuivre, 300 000 pierre | 26 600 fer, 13 100 cuivre, 208 000 pierre | 137:16 | 110:43 (81 %) | 62 h (×34) |
+
+« Avant, au même débit » : 0,8 · D × le plus grand rapport ancien / nouveau coût, soit le temps qu'il faudrait au joueur de référence, dans cet âge, pour le chantier d'aujourd'hui. Les chiffres de la passe précédente (tour de fer 11,4 h, fusion 26,6 h) supposaient un joueur qui focalise le chantier ; le rapport ×25 à ×133 reste le même ordre.
+
+### 10.5 Table des savoirs, avant / après
+
+Coût en savoir inchangé sauf la Charrue. T mesuré dans la partie de référence avec Merveilles.
+
+| Âge | Savoir | Savoir | T | Matériaux avant | Matériaux après |
+|---|---|---|---|---|---|
+| 3 | Charrue | 2 100 → **1 600** | 719 s | 70 fer, 95 bois, 3 650 nourriture | 3 700 nourriture, 15 fer, 220 bois, 25 fibre |
+| 4 | Béton romain | 4 800 | 515 s | 200 pierre, 80 argile | 510 pierre, 30 argile, 3 600 nourriture |
+| 4 | Moulin à eau | 6 000 | 564 s | 180 bois, 50 fer | 950 bois, 8 250 nourriture, 15 fer |
+| 4 | Verre soufflé | 7 500 | 705 s | 120 argile, 60 cuivre | 890 bois, 85 argile, 25 cuivre |
+| 4 | Voies romaines | 9 000 | 643 s | 300 pierre, 60 fer | 1 750 pierre, 11 200 nourriture, 15 fer |
+| 4 | Codex | 11 000 | 622 s | 200 fibre, 60 argile | 130 fibre, 10 800 nourriture, 25 argile |
+| 5 | Collier d'épaule | 13 000 | 537 s | 180 fibre, 80 fer | 20 700 nourriture, 120 fibre, 20 fer |
+| 5 | Assolement triennal | 16 000 | 496 s | 150 bois, 400 nourriture | 43 500 nourriture, 1 400 bois |
+| 5 | Moulin à vent | 20 000 | 438 s | 300 bois, 150 pierre | 1 700 bois, 1 100 pierre, 30 fibre |
+| 5 | Horloge mécanique | 24 000 | 391 s | 150 fer, 80 cuivre | 25 fer, 45 argile, 20 cuivre, 370 bois |
+| 5 | Imprimerie | 30 000 | 416 s | 120 fer, 150 fibre | 100 fibre, 44 700 nourriture, 15 fer |
+| 6 | Caravelle | 38 000 | 481 s | 400 bois, 250 fibre | 2 000 bois, 110 fibre, 46 600 nourriture |
+| 6 | Perspective | 46 000 | 583 s | 200 bois, 150 argile | 110 argile, 1 200 bois, 56 400 nourriture |
+| 6 | Lunette astronomique | 56 000 | 558 s | 300 cuivre, 200 argile | 1 500 pierre, 70 cuivre, 35 argile |
+| 6 | Lettre de change | 68 000 | 790 s | 300 fibre, 250 cuivre | 89 300 nourriture, 1 450 pierre, 120 fibre, 100 cuivre |
+| 6 | Anatomie | 82 000 | 817 s | 250 fibre, 200 fer | 138 000 nourriture, 130 fibre, 30 fer |
+| 7 | Machine à vapeur | 100 000 | 476 s | 400 fer, 250 cuivre | 2 700 bois, 1 450 pierre, 65 fer, 50 cuivre, 61 300 nourriture |
+| 7 | Chemin de fer | 120 000 | 601 s | 600 fer, 400 bois | 6 700 bois, 139 000 nourriture, 3 700 pierre, 80 fer |
+| 7 | Éclairage au gaz | 145 000 | 726 s | 350 fer, 400 pierre | 6 700 pierre, 170 argile, 50 fer |
+| 7 | Acier Bessemer | 175 000 | 592 s | 800 fer, 300 pierre | 200 fer, 6 050 pierre, 110 argile |
+| 7 | Télégraphe | 210 000 | 710 s | 600 cuivre, 300 bois | 13 100 bois, 250 cuivre, 350 fibre, 319 000 nourriture |
+| 8 | Électricité | 250 000 | 697 s | 900 cuivre, 500 fer | 420 cuivre, 9 650 bois, 190 fer |
+| 8 | Automobile | 300 000 | 837 s | 900 fer, 400 cuivre | 17 300 bois, 460 fer, 460 fibre |
+| 8 | Radio | 360 000 | 1 006 s | 800 cuivre, 300 bois | 680 cuivre, 21 300 bois, 220 argile |
+| 8 | Aviation | 430 000 | 1 601 s | 700 fer, 400 fibre | 54 100 bois, 2 150 fibre, 1 950 fer |
+| 8 | Pénicilline | 520 000 | 1 453 s | 500 argile, 2 000 nourriture | 1 730 000 nourriture, 630 argile |
+| 9 | Ordinateur personnel | 620 000 | 851 s | 1 200 cuivre, 600 fer | 1 200 cuivre, 16 500 pierre, 1 010 000 nourriture, 540 fer, 9 900 bois |
+| 9 | Satellites | 750 000 | 1 030 s | 1 000 fer, 800 cuivre | 1 300 fer, 950 cuivre, 1 050 fibre |
+| 9 | Internet | 900 000 | 1 029 s | 1 500 cuivre, 800 fer | 29 900 pierre, 950 cuivre, 1 420 000 nourriture |
+| 9 | Énergie solaire | 1 100 000 | 1 267 s | 1 800 cuivre, 800 pierre | 49 100 pierre, 1 150 cuivre, 500 argile |
+| 9 | Smartphone | 1 350 000 | 1 554 s | 2 000 cuivre, 1 000 fer | 30 200 pierre, 1 250 argile, 1 450 cuivre, 990 fer |
+| 10 | Intelligence artificielle | 2 000 000 | 1 415 s | 3 000 cuivre, 1 500 fer, 1 000 fibre | 2 250 cuivre, 39 700 pierre, 740 fibre, 1 000 fer |
+| 10 | Stockage du réseau | 2 600 000 | 1 629 s | 4 000 cuivre, 2 500 fer | 2 550 cuivre, 2 350 fer, 1 350 argile |
+| 10 | Dessalement | 3 400 000 | 1 891 s | 3 000 fer, 6 000 pierre | 79 500 pierre, 4 020 000 nourriture, 6 000 fer |
+| 10 | Édition du génome | 4 200 000 | 2 336 s | 3 000 fibre, 2 000 cuivre | 9 920 000 nourriture, 3 700 fibre, 2 700 cuivre |
+| 10 | Captage du carbone | 5 600 000 | 1 821 s | 6 000 fer, 9 000 pierre, 3 000 cuivre | 102 000 pierre, 5 800 fer, 71 500 bois, 2 100 cuivre |
+| 10 | Ordinateur quantique | 7 400 000 | 1 097 s | 8 000 cuivre, 5 000 fer, 4 000 fibre | 3 900 cuivre, 3 600 fer, 590 fibre, 460 argile |
+
+Le fer et le cuivre baissent presque partout (le fer de l'Antiquité à 15 au lieu de 50-60) : leurs anciens coûts valaient plusieurs minutes de récolte focalisée, et c'était la Merveille qu'ils étranglaient. La nourriture, le bois et la pierre montent en proportion de ce que l'île en produit.
+
+### 10.6 Simulation
+
+```
+S="node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --until=11 --max=200000"
+$S --eco                    # avant, sans Merveille
+$S --eco --wonders=v1       # avant, Merveilles 3 à 10
+$S --costs=3.72 --eco                          # après, sans Merveille
+$S --costs=3.72 --eco --wonders=v1             # après : la référence
+$S --costs=3.72 --eco --wonders=v1 --focus=food
+$S --costs=3.72 --eco --wonders=v1 --wonder-focus
+$S --costs=3.72 --wonders=v1 --cycle=1200:28800    # joueur occasionnel
+$S --costs=3.72 --wonders=v1 --away=9000:28800     # une nuit à 2 h 30 de jeu
+node --import ./tests/resolve-ts.mjs tools/couts-ages-tardifs.mjs   # refait la table
+```
+
+**Ouverture des âges** (jeu actif, minutes) :
+
+| Âge ouvert | Avant, sans Merveille | Après, sans Merveille | Avant, Merveilles | Après, Merveilles |
+|---|---|---|---|---|
+| Âge du fer | 84:17 | 84:17 | 84:17 | 84:17 |
+| Antiquité | 150:22 | 144:45 | 150:22 | 144:41 |
+| Moyen Âge | 202:37 | 197:27 | 202:37 | 196:53 |
+| Renaissance | 241:17 | 235:42 | 243:13 | 233:07 |
+| Ère industrielle | 283:50 | 278:23 | 289:23 | 273:08 |
+| Ère moderne | 332:14 | 323:34 | 358:08 | 315:54 |
+| Ère contemporaine | 398:55 | 390:11 | 424:48 | 378:53 |
+| Ère des limites | 487:17 | 479:07 | 514:52 | 455:28 |
+| Fin de l'arbre | 639:57 | 628:30 | 679:02 | 592:44 |
+
+Sans Merveille, l'arbre gagne 11 min (la Charrue). Avec les Merveilles, il gagne 86 min sur avant : elles ne prennent plus le fer des savoirs, et les huit bonus de +4 % arrivent à temps. Un seul savoir attend un matériau dans la partie de référence (Automobile, 41 s).
+
+**Intervalle entre deux savoirs** (cible de la section 4 : 10-12 min, ±25 %) :
+
+| Âge | Avant | Après, sans Merveille | Après, Merveilles |
+|---|---|---|---|
+| 3 | 8:37-16:46 (Charrue) | 8:50-11:43 | 8:48-11:43 |
+| 4 | 7:38-9:11 | 7:53-8:47 | 7:47-9:05 |
+| 5 | 6:51-8:25 | 6:07-8:52 | 6:10-8:31 |
+| 6 | 7:05-9:34 | 7:40-9:10 | 7:15-8:45 |
+| 7 | 7:51-11:56 | 7:55-11:13 | 7:38-9:35 |
+| 8 | 11:43-15:40 | 11:18-16:03 | 9:48-14:23 |
+| 9 | 13:05-20:50 | 13:36-20:05 | 12:04-18:56 |
+| 10 | 19:18-33:56 | 18:38-33:44 | 15:50-36:07 |
+
+Forge du fer 11:03, Charrue 11:43 : dans la cible. Aux âges 5 et 8 à 10, les intervalles sortent de la cible, des deux côtés (6 min au Moyen Âge, jusqu'à 36 min à l'ère des limites). C'est le coût en savoir qui les règle, hors du sujet de cette section (voir 10.8).
+
+**Merveilles, achèvement en part de la durée de l'âge** (lancée à l'entrée dans l'âge, ou dès que la précédente est finie) :
+
+| Âge | Référence | `--focus=food` | `--wonder-focus` | Une nuit de 8 h à 2:30 | Joueur occasionnel |
+|---|---|---|---|---|---|
+| 3 | 83 % | 90 % | 58 % | 83 % | 15:44 (au retour de la nuit) |
+| 4 | 80 % | 94 % | 49 % | 22 % (finie pendant la nuit) | 9:05 (au retour) |
+| 5 | 80 % | 81 % | 37 % | 118 % | 7:07 (au retour) |
+| 6 | 80 % | 79 % | 24 % | 87 % (lancée à +4:23) | 12:27 (au retour) |
+| 7 | 80 % | 102 % | 51 % | 101 % | 16:42 (au retour) |
+| 8 | 86 % | 119 % (lancée à +1:00) | 54 % | 107 % | 19:44 (au retour) |
+| 9 | 80 % | 103 % (lancée à +12:03) | 38 % | 86 % (lancée à +4:16) | 15:00 (au retour) |
+| 10 | 81 % | 98 % atteints à la fin | 62 % | 81 % | 0:16 (au retour) |
+| Fin de l'arbre | 592:44 | 578:14 | 676:36 | 545:26 | 244:53 |
+
+- **Référence** : 80 à 86 %, dans la cible.
+- **`--focus=food`** (ne touche jamais à la récolte) : 79 à 119 %. Les Merveilles des âges 7 à 9 débordent sur l'âge suivant, qui démarre la sienne en retard, et le réacteur reste à 98 %. Ce joueur attend aussi des matériaux que le chantier prend à 60 % : le fer de l'Aviation (18 min), la pierre des Voies romaines et de l'Acier Bessemer (9 min chacune). Il finit pourtant l'arbre 14 min avant la référence, sa nourriture focalisée nourrissant le savoir.
+- **`--wonder-focus`** : chaque Merveille à 24-62 % de l'âge, au prix de 84 min de plus sur l'arbre.
+- **Une nuit de 8 h** (à 2:30, au début de l'Antiquité) : le phare se finit pendant la nuit. La réserve de savoir (section 5) raccourcit ensuite le Moyen Âge (23:54 au lieu de 36:14), alors que la Merveille, elle, vit des matériaux, que la réserve n'accélère pas : la cathédrale déborde (118 %), le retard se propage jusqu'à l'ère moderne (101-107 %), puis tout revient à 81-86 %. Avant : une Merveille finie (la colonne, 234 %) et une à 94 % sur toute la partie.
+- **Joueur occasionnel** (20 min de jeu, 8 h d'absence, en boucle ; les durées sont en jeu actif) : **chaque Merveille est achevée au premier retour qui suit son lancement**. Une nuit crédite 8 h au taux moyen, contre 30 à 110 min de production dans le coût. Les huit sont faites, l'arbre en 244:53 de jeu actif : 13 sessions, environ 4 jours à une nuit de 8 h entre deux. Avant : cinq sur huit, deux sautées parce que la précédente occupait le chantier, et le réacteur à 30 % à la fin. C'est voulu : la Merveille est une œuvre d'idle, que la 3.71.1 fait avancer hors ligne. Le joueur occasionnel la voit finie au retour plutôt que pendant sa session.
+
+**Bilan production / dépense par âge** (jeu actif ; avant : savoirs seuls, sans Merveille ; après : savoirs seuls / savoirs et Merveille de l'âge, partie de référence) :
+
+| Âge | Nourriture | Bois | Pierre | Fibres | Argile | Cuivre | Fer |
+|---|---|---|---|---|---|---|---|
+| 3 | ×3,4 → ×3,3 | ×8,8 → ×6,5 | ×2,5 → ×2,3 / ×1,1 | ∞ → ×21 | ×1,9 → ×1,8 | ×2,8 → ×2,6 / ×1,2 | ×0,9 → ×1,0 / ×0,7 |
+| 4 | ∞ → ×7,4 | ×27 → ×2,7 / ×1,3 | ×11 → ×2,9 / ×1,3 | ×2,9 → ×4,6 | ×1,7 → ×3,3 | ×6,9 → ×17 | ×2,4 → ×9,1 / ×1,8 |
+| 5 | ×2 122 → ×8,0 | ×16 → ×2,1 / ×1,1 | ×45 → ×6,3 / ×1,6 | ×1,8 → ×2,4 | ∞ → ×10 | ×5,6 → ×23 | ×0,8 → ×4,7 / ×1,5 |
+| 6 | ∞ → ×5,7 | ×18 → ×3,6 | ∞ → ×3,1 / ×1,3 | ×1,0 → ×2,3 | ×1,8 → ×4,5 / ×1,6 | ×1,1 → ×3,8 | ×1,9 → ×13 / ×2,0 |
+| 7 | ∞ → ×12 | ×70 → ×2,2 / ×1,1 | ×58 → ×2,8 / ×1,2 | ∞ → ×6,0 | ∞ → ×5,9 | ×1,8 → ×5,1 | ×0,7 → ×3,2 / ×1,5 |
+| 8 | ×7 548 → ×9,0 | ×403 → ×1,3 | ∞ → ∞ / ×2,2 | ×13 → ×2,2 | ×7,9 → ×5,2 | ×2,1 → ×4,7 / ×1,5 | ×3,0 → ×3,6 / ×1,3 |
+| 9 | ∞ → ×18 | ∞ → ×24 | ×213 → ×1,5 | ∞ → ×8,4 / ×1,7 | ∞ → ×3,9 | ×1,1 → ×1,5 / ×0,9 | ×3,2 → ×4,1 / ×1,4 |
+| 10 | ∞ → ×15 | ∞ → ×8,8 | ×30 → ×2,3 / ×1,2 | ×1,8 → ×3,2 | ∞ → ×7,0 | ×1,4 → ×2,2 / ×1,1 | ×2,2 → ×2,9 / ×1,2 |
+
+Plus aucun ∞ : chaque ressource a un débouché à chaque âge, la pierre de l'ère moderne par le gratte-ciel. Les ressources que la Merveille prend tombent à ×0,7-2,2 : c'est la Merveille qui absorbe le surplus de bois et de pierre (M6). Les ratios sous ×1 (fer de l'âge du fer, cuivre de l'ère contemporaine) se paient sur le stock d'entrée. Ce qui reste haut n'est pas un défaut (9.4) : nourriture ×6 à ×18, cuivre ×17-23 aux âges 4-5 (seul le verre et l'horloge en veulent, et à 0,1 ou 0,2), bois ×24 à l'ère contemporaine.
+
+### 10.7 Où dans le code
+
+- `src/game/content.ts` : les `materials` des 36 savoirs des âges 4 à 10, le `cost` et les `materials` de la Charrue, le `cost` des Merveilles 3 à 10, recopiés de `COSTS_372`. Toujours des constantes lisibles.
+- **Chantier en cours dans une sauvegarde** : avec les nouveaux coûts, `paid` peut déjà dépasser le total de chaque matériau. `tickWonder` ne passe plus par aucun matériau dû, la progression vaut 1 avant et après, `stageOf` ne change pas : le chantier resterait « en cours » à 100 % pour toujours. Au chargement (ou dans `tickWonder`), une Merveille dont tout est payé doit être déclarée achevée : `wonders.push`, `wonderDone`, `refreshRates`. Le trop-versé n'est pas rendu.
+- Les savoirs déjà acquis ne sont ni repayés ni remboursés.
+- Changelog : « Les Merveilles se bâtissent maintenant dans leur époque, et chaque découverte réclame ce que l'île produit à ce moment-là. »
+
+### 10.8 Ce qui reste
+
+- **La tour de fer demande 450 fer pour 23 900 pierre.** C'est la règle appliquée telle quelle : à l'ère industrielle, l'île produit 0,74 fer/s focalisé contre 17 de pierre et 1 287 de nourriture. Trois savoirs seulement multiplient le fer (Monnaie ×1,5, Bessemer ×2,2, Stockage ×2,2, plus un outil du marchand ×1,25 et une terre ×1,1) ; une douzaine multiplient la nourriture. Une Merveille « de fer » qui compte surtout de la pierre se lit mal. Le levier serait l'économie du fer (multiplicateurs), pas le coût de la Merveille : je ne le tranche pas ici, c'est une décision de contenu pour le lead.
+- **Merveilles 0 à 2, hors sujet ici, même défaut** : avec `--wonder-from=0`, les menhirs finissent à 79 min, soit 10 fois la durée du Paléolithique. La ziggourat, lancée à leur suite, occupe le chantier jusqu'au Moyen Âge : la colonne trophée et le phare ne sont jamais lancés, et la cathédrale démarre 9 min après l'entrée dans son âge (103 %). Les Merveilles 6 à 10 restent dans la cible (79-84 %). La même règle s'applique en changeant `w.age < 3` dans `tools/couts-ages-tardifs.mjs`.
+- **Intervalles hors cible aux âges 5 et 8 à 10** (10.6) : réglés par les coûts en savoir, que cette section ne touche pas.
+- **Le joueur qui ne touche jamais à la récolte et bâtit** attend trois fois un matériau (9, 9 et 18 min) ; sans Merveille, il n'attend jamais. La garantie de 9.2 (« aucun matériau ne bloque seul ») suppose que toute la production revienne aux savoirs, alors que la Merveille en prend 60 %. Les parts de fer à 0,1-0,3 limitent l'effet sans l'annuler.
+- Taux relevés avec la saison du moment (±12 % sur la nourriture) et une seule graine (7).
+
+### 10.9 Critères d'acceptation
+
+13. Les `materials` des savoirs des âges 4 à 10, le coût et les matériaux de la Charrue et le `cost` des Merveilles 3 à 10 de `content.ts` égalent `COSTS_372`.
+14. `tools/sim-savoirs.mjs --no-encourage --until=11 --max=200000 --wonders=v1` sur le code implémenté (sans `--costs`) : chaque Merveille des âges 3 à 10 est lancée à l'entrée de son âge et achevée entre 70 et 90 % de sa durée.
+15. Même commande avec `--eco` : aux âges 3 à 10, aucune ressource débloquée n'a « dépensé 0 » et « Merveille 0 » à la fois. Nourriture, argile et fibres ont une dépense de savoirs non nulle à chaque âge de 4 à 10.
+16. Même commande sans `--eco` : Forge du fer et Charrue deviennent abordables entre 7:30 et 15:00 après le savoir précédent.
+17. Sans `--wonders`, `--focus=food` : le dernier savoir arrive au plus 5 % plus tard qu'avec le joueur qui focalise ce qui manque (621:51 contre 628:30 mesurés).
+18. Une sauvegarde avec un chantier en cours dont `paid` couvre les nouveaux coûts : la Merveille est achevée au premier `tick` après le chargement, avec son bonus de +4 %.
+
+### 10.10 Ce que la 3.72.0 applique
+
+Sept décisions du lead s'ajoutent à 10.1-10.9 :
+
+1. **Les Merveilles 0 à 2 suivent la même cible** : achevées vers 80 % de leur âge chez le joueur de référence qui les lance en entrant dans l'âge (`--wonder-from=0`).
+2. **Le coût en savoir des âges 4 à 10 est recalé** (10.6 : 6 min au Moyen Âge, jusqu'à 36 min à l'ère des limites). Formule de la section 5 : **coût = T × taux de savoir actif**, avec T = 10,5 min (`INSIGHT_T`). Le taux est celui du joueur de référence qui bâtit, mesuré sur l'attente du savoir : (coût − stock laissé par l'achat précédent) / (instant où le savoir suffit − achat précédent). Les matériaux de ces savoirs sont refaits par la règle de 10.2 avec le nouveau T. La première passe ne recalait que les âges 5 et 8 à 10 ; la deuxième y a ajouté les âges 6 et 7 (6:14 entre deux savoirs avec les Merveilles, et l'Imprimerie à 53 000 coûtait plus que la Caravelle à 38 000, qu'elle précède dans l'histoire) ; la troisième l'âge 4 (7:08).
+3. **La Charrue garde la table 10.5** telle quelle.
+4. **Le chantier n'affame jamais les savoirs** (voir plus bas).
+5. **Le marchand non plus** : il ne propose pas un outil dont le prix ferait passer un matériau sous la part réservée aux savoirs, et refuse la vente si l'outil est déjà proposé. C'est la même fonction que pour le chantier.
+6. **Chaque Merveille vise 80 à 86 %** : à la première passe, la colonne trophée, alors à l'âge 3, finissait à 77 %.
+7. **`--wonder-focus` peut attendre plus de 15 min** entre deux savoirs (jusqu'à 20:30 à l'âge 9) : ce joueur choisit de payer ses Merveilles en savoir. Ce n'est pas la cible, et rien ne le corrige.
+
+**Pourquoi le taux mesuré sur l'attente, pas le taux à l'entrée de l'âge.** Le taux de savoir double ou triple d'un bout à l'autre d'un âge (×3,2 au Moyen Âge) : un taux d'entrée unique donnerait des savoirs au même prix, le premier à 10 min, le dernier à 3. Le taux relevé à l'instant de l'achat précédent ne va pas non plus : il dépend de la récolte du moment, et le fer focalisé nourrit très peu le savoir (terme `material`). Il donnait des coûts en dents de scie (Électricité 402 k, Automobile 245 k). Mesuré sur l'attente, le taux comprend la nuit et la récolte réelle, et le point fixe tombe juste.
+
+**Pourquoi 10,5 min et pas 11.** Calé à 11 min sur le joueur qui bâtit, le même arbre sans Merveille (11 bonus de +4 % en moins) attend jusqu'à 15:14 à l'ère moderne, au-dessus des 15:00. À 10,5 min, il attend au plus 14:13.
+
+**Le plancher du chantier passe de 50 + 30 × âge à 10 + 30 × âge** (`tickWonder`). Au Paléolithique, le joueur de référence dépense ses pierres et son bois dès qu'ils tombent : ses stocks ne dépassent jamais 17. Avec un plancher de 50, le chantier n'y prélève rien, quel que soit le coût. Même à 2 pierres et 2 bois, les menhirs (le cercle de stalagmites depuis la 3.71.2) ne s'achèvent qu'à 28:53, au Néolithique, et le dolmen démarre avec 21 min de retard (118 %). Plancher nul au Paléolithique : la Taille du silex attend 3 min ses 3 pierres, que le chantier boit (débit minimum de 0,4/s). À 10, aucun savoir n'attend de matériau, et le Paléolithique s'allonge de 5 s (8:01 au lieu de 7:56). Aux âges suivants, 40 de moins dans le matelas ne se voient pas.
+
+**Le chantier et le marchand laissent aux savoirs ce qu'il leur faut** (`techReserve`, `WONDER_KEEP_HARVEST`). Au-dessus du plancher, le chantier ne descend pas un matériau sous ce que les savoirs restants de l'âge vont demander. Le marchand ne vend pas un outil dont le prix descendrait un matériau sous cette part :
+
+- Les savoirs restants de l'âge sont rangés du moins cher au plus cher en savoir. Pour chacun, on cumule les matériaux demandés jusqu'à lui, et on retire ce que l'île en récoltera d'ici à ce que le savoir suffise : 70 % de la récolte du moment, pendant (savoir cumulé − stock de savoir) / taux de savoir. La part laissée est le maximum de ces restes.
+- Un savoir déjà payable en savoir qui attend un matériau le reçoit tout entier : le chantier n'y touche plus jusqu'à l'achat.
+- La carte « Le chantier » montre ces matériaux « laissés à tes savoirs », sans échéance.
+
+Pourquoi pas seulement le savoir qui attend (la règle la plus simple) : le joueur qui ne change jamais de récolte attendait encore 33 min à l'âge du bronze. Le chantier avait bu, avant que la Roue et la Voile n'apparaissent, le bois qu'elles allaient demander. Pourquoi 70 % de la récolte à venir et pas 100 % : la nuit en prend sa part, et à 100 % il attendait encore 5 min à l'âge du bronze et 10 à l'ère moderne. Pourquoi le marchand aussi : avec le chantier seul, la Voile attendait encore 4:17, parce qu'à 90:28 le joueur payait 300 bois l'outil du sel, une minute avant que le savoir de la Voile suffise. Le joueur de référence n'en est presque pas gêné : il focalise ce qui manque, et sa récolte du moment couvre la part laissée. Les sept outils des âges 2 à 8 sont toujours achetés ; chez le joueur qui ne change jamais de récolte, le sel arrive à 99:30 au lieu de 90:28.
+
+**Toutes les Merveilles : la règle de 10.4 est corrigée par un facteur mesuré.** Aux âges 0 à 2, le chantier ne prend pas 60 % de la production : le plancher, les achats de savoir qui vident le stock, le débit minimum de 0,4/s qui dépasse la récolte au repos, la part laissée aux savoirs. Plus tard, les +4 % des Merveilles précédentes arrivent avant l'âge, et la règle ne les compte pas. `tools/couts-ages-tardifs.mjs` multiplie donc la production de la fenêtre par un facteur par âge. À chaque tour, il le corrige vers un achèvement à 83 % (`WONDER_TARGET`, exposant 0,7 pour amortir). Les compositions restent celles de `content.ts`.
+
+```
+# depuis le content.ts de 1ebe61b (la première passe de la 3.72.0)
+node --import ./tests/resolve-ts.mjs tools/couts-ages-tardifs.mjs --v=3.72.0 --rounds=16 --out=table.json
+```
+
+16 tours (50 s). Le gratte-ciel oscille entre 79 et 86 % d'un tour à l'autre : le recalage du savoir de l'ère moderne et le coût de sa Merveille se répondent. Sur les tours 15 à 20, le tour 15 laisse le gratte-ciel à 79 % ; le tour 16 met les onze Merveilles entre 81,9 et 83,9 %, la plus resserrée autour de 83 %, et c'est la table retenue. Elle est dans `tools/savoirs-rule.mjs` (`COSTS_3720`), et `content.ts` la porte (`tests/couts-372.test.mjs` compare les deux, et la table ci-dessous).
+
+| Âge | Savoir | Savoir | Matériaux | Avant (3.71.1) |
+|---|---|---|---|---|
+| 3 | Charrue | 2 100 → **1 600** | 3 700 nourriture, 15 fer, 220 bois, 25 fibres | 70 fer, 95 bois, 3 650 nourriture (10.5) |
+| 4 | Béton romain | 4 800 → **6 550** | 750 pierre, 45 argile, 5 250 nourriture | 200 pierre, 80 argile |
+| 4 | Moulin à eau | 6 000 → **7 350** | 1 250 bois, 10 700 nourriture, 15 fer | 180 bois, 50 fer |
+| 4 | Verre soufflé | 7 500 → **9 850** | 1 250 bois, 120 argile, 35 cuivre | 120 argile, 60 cuivre |
+| 4 | Voies romaines | 9 000 → **10 600** | 2 200 pierre, 13 800 nourriture, 20 fer | 300 pierre, 60 fer |
+| 4 | Codex | 11 000 → **14 900** | 190 fibres, 14 700 nourriture, 40 argile | 200 fibres, 60 argile |
+| 5 | Collier d'épaule | 13 000 → **18 200** | 31 600 nourriture, 170 fibres, 25 fer | 180 fibres, 80 fer |
+| 5 | Assolement triennal | 16 000 → **21 800** | 59 000 nourriture, 2 150 bois | 150 bois, 400 nourriture |
+| 5 | Moulin à vent | 20 000 → **28 500** | 2 650 bois, 1 750 pierre, 50 fibres | 300 bois, 150 pierre |
+| 5 | Horloge mécanique | 24 000 → **45 100** | 55 fer, 90 argile, 45 cuivre, 780 bois | 150 fer, 80 cuivre |
+| 5 | Imprimerie | 30 000 → **55 800** | 180 fibres, 86 500 nourriture, 30 fer | 120 fer, 150 fibres |
+| 6 | Caravelle | 38 000 → **79 400** | 3 800 bois, 220 fibres, 111 000 nourriture | 400 bois, 250 fibres |
+| 6 | Perspective | 46 000 → **62 800** | 130 argile, 1 500 bois, 88 200 nourriture | 200 bois, 150 argile |
+| 6 | Lunette astronomique | 56 000 → **68 800** | 2 000 pierre, 90 cuivre, 45 argile | 300 cuivre, 200 argile |
+| 6 | Lettre de change | 68 000 → **83 500** | 83 600 nourriture, 1 350 pierre, 120 fibres, 95 cuivre | 300 fibres, 250 cuivre |
+| 6 | Anatomie | 82 000 → **128 000** | 222 000 nourriture, 210 fibres, 55 fer | 250 fibres, 200 fer |
+| 7 | Machine à vapeur | 100 000 → **155 000** | 4 150 bois, 2 250 pierre, 95 fer, 75 cuivre, 104 000 nourriture | 400 fer, 250 cuivre |
+| 7 | Chemin de fer | 120 000 → **154 000** | 8 850 bois, 205 000 nourriture, 4 900 pierre, 110 fer | 600 fer, 400 bois |
+| 7 | Éclairage au gaz | 145 000 → **215 000** | 10 300 pierre, 250 argile, 75 fer | 350 fer, 400 pierre |
+| 7 | Acier Bessemer | 175 000 → **226 000** | 300 fer, 9 100 pierre, 170 argile | 800 fer, 300 pierre |
+| 7 | Télégraphe | 210 000 → **247 000** | 18 000 bois, 350 cuivre, 480 fibres, 375 000 nourriture | 600 cuivre, 300 bois |
+| 8 | Électricité | 250 000 → **338 000** | 580 cuivre, 13 500 bois, 270 fer | 900 cuivre, 500 fer |
+| 8 | Automobile | 300 000 → **254 000** | 15 200 bois, 400 fer, 400 fibres | 900 fer, 400 cuivre |
+| 8 | Radio | 360 000 → **543 000** | 1 400 cuivre, 34 800 bois, 360 argile | 800 cuivre, 300 bois |
+| 8 | Aviation | 430 000 → **581 000** | 42 900 bois, 1 700 fibres, 1 550 fer | 700 fer, 400 fibres |
+| 8 | Pénicilline | 520 000 → **393 000** | 1 660 000 nourriture, 520 argile | 500 argile, 2 000 nourriture |
+| 9 | Ordinateur personnel | 620 000 → **532 000** | 960 cuivre, 13 400 pierre, 909 000 nourriture, 440 fer, 8 050 bois | 1 200 cuivre, 600 fer |
+| 9 | Satellites | 750 000 → **896 000** | 1 500 fer, 1 100 cuivre, 1 200 fibres | 1 000 fer, 800 cuivre |
+| 9 | Internet | 900 000 → **615 000** | 23 400 pierre, 740 cuivre, 949 000 nourriture | 1 500 cuivre, 800 fer |
+| 9 | Énergie solaire | 1 100 000 → **715 000** | 30 000 pierre, 720 cuivre, 310 argile | 1 800 cuivre, 800 pierre |
+| 9 | Smartphone | 1 350 000 → **891 000** | 21 000 pierre, 610 argile, 780 cuivre, 540 fer | 2 000 cuivre, 1 000 fer |
+| 10 | Intelligence artificielle | 2 000 000 → **914 000** | 1 200 cuivre, 21 500 pierre, 400 fibres, 550 fer | 3 000 cuivre, 1 500 fer, 1 000 fibres |
+| 10 | Stockage du réseau | 2 600 000 → **1 230 000** | 1 250 cuivre, 1 150 fer, 660 argile | 4 000 cuivre, 2 500 fer |
+| 10 | Dessalement | 3 400 000 → **1 250 000** | 31 500 pierre, 1 490 000 nourriture, 2 400 fer | 3 000 fer, 6 000 pierre |
+| 10 | Édition du génome | 4 200 000 → **2 230 000** | 5 320 000 nourriture, 2 100 fibres, 1 550 cuivre | 3 000 fibres, 2 000 cuivre |
+| 10 | Captage du carbone | 5 600 000 → **4 250 000** | 75 300 pierre, 4 250 fer, 52 700 bois, 1 550 cuivre | 6 000 fer, 9 000 pierre, 3 000 cuivre |
+| 10 | Ordinateur quantique | 7 400 000 → **4 690 000** | 2 850 cuivre, 2 600 fer, 430 fibres, 330 argile | 8 000 cuivre, 5 000 fer, 4 000 fibres |
+
+| Âge | Merveille | Coût | Avant (3.71.1) |
+|---|---|---|---|
+| 0 | Le cercle de stalagmites | 15 pierre, 25 bois | 900 pierre, 300 bois |
+| 1 | Le grand dolmen | 95 pierre, 90 bois | 2 200 pierre, 900 bois |
+| 2 | La ziggourat | 450 pierre, 100 argile, 970 bois | 4 500 pierre, 2 500 argile, 1 500 bois |
+| 3 | Le grand phare | 1 600 pierre, 55 fer, 260 cuivre | 8 000 pierre, 2 000 fer, 1 500 cuivre |
+| 4 | La colonne trophée | 4 300 pierre, 2 950 bois, 160 fer | 15 000 pierre, 4 000 bois, 3 000 fer |
+| 5 | La cathédrale | 5 500 pierre, 5 750 bois, 220 fer | 30 000 pierre, 9 000 bois, 5 000 fer |
+| 6 | Le grand dôme | 6 000 pierre, 420 argile, 260 fer | 55 000 pierre, 20 000 argile, 9 000 fer |
+| 7 | La tour de fer | 580 fer, 28 000 pierre, 29 400 bois | 60 000 fer, 25 000 pierre, 10 000 bois |
+| 8 | Le gratte-ciel | 3 600 fer, 54 900 pierre, 2 600 cuivre | 120 000 fer, 50 000 pierre, 25 000 cuivre |
+| 9 | La fusée | 4 250 fer, 3 100 cuivre, 3 300 fibres | 250 000 fer, 100 000 cuivre, 60 000 fibres |
+| 10 | Le réacteur à fusion | 9 350 fer, 6 800 cuivre, 107 000 pierre | 900 000 fer, 400 000 cuivre, 300 000 pierre |
+
+Les coûts en savoir ne croissent plus toujours avec la liste. L'Automobile passe avant l'Électricité : elle ne demande que l'Acier Bessemer et s'ouvre dès l'entrée dans l'âge. La Caravelle (79 400) coûte plus que l'Imprimerie (55 800), qu'elle suit dans l'histoire.
+
+### 10.11 Simulation de la 3.72.0
+
+```
+S="node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs --no-encourage --until=11 --max=200000"
+$S --eco                                    # sans Merveille
+$S --eco --wonders=v1 --wonder-from=0       # la référence : les onze Merveilles
+$S --eco --wonders=v1                       # Merveilles 3 à 10, comme en 10.6
+$S --focus=food                             # sans Merveille, sans changer de récolte
+$S --wonders=v1 --wonder-from=0 --focus=food
+$S --wonders=v1 --wonder-from=0 --focus=food --no-tools
+$S --wonders=v1 --wonder-from=0 --wonder-focus
+$S --wonders=v1 --wonder-from=0 --away=9000:28800
+$S --wonders=v1 --wonder-from=0 --cycle=1200:28800   # joueur occasionnel
+```
+
+« Avant » : le même script sur le `content.ts` de a0932d0 (3.71.1).
+
+**Ouverture des âges** (jeu actif) :
+
+| Âge ouvert | Avant, sans Merveille | Après, sans Merveille | Avant, Merveilles 0-10 | Après, Merveilles 0-10 | Après, Merveilles 3-10 |
+|---|---|---|---|---|---|
+| Néolithique | 7:56 | 7:56 | 7:56 | 8:01 | 7:56 |
+| Âge du bronze | 36:04 | 36:04 | 37:57 | 36:10 | 36:04 |
+| Âge du fer | 84:17 | 84:37 | 88:44 | 86:11 | 84:37 |
+| Antiquité | 150:22 | 145:07 | 169:36 | 144:39 | 145:46 |
+| Moyen Âge | 202:37 | 209:16 | 220:41 | 206:02 | 210:44 |
+| Renaissance | 241:17 | 268:15 | 258:46 | 258:33 | 266:34 |
+| Ère industrielle | 283:50 | 327:45 | 300:36 | 310:54 | 322:38 |
+| Ère moderne | 332:14 | 387:50 | 360:18 | 363:28 | 379:41 |
+| Ère contemporaine | 398:55 | 450:46 | 425:21 | 415:35 | 435:46 |
+| Ère des limites | 487:17 | 514:32 | 521:07 | 468:02 | 491:03 |
+| Fin de l'arbre | 639:57 | 590:00 | 676:47 | 531:08 | 557:14 |
+
+Avec les Merveilles, chaque âge de 4 à 9 dure maintenant 52 à 61 min, l'ère des limites 63. Les âges 4 à 7 s'allongent (Antiquité 49 min et Renaissance 38 min à la première passe). Les âges 8 à 10 raccourcissent : avec les Merveilles 3 à 10, l'ère des limites dure 66 min, contre 137 en 10.6. L'arbre finit 50 min plus tôt sans Merveille, 2 h 26 plus tôt avec. La première passe (âges 4, 6 et 7 non recalés) finissait en 545:12 et 493:33. Sans Merveille, l'âge du fer s'ouvre 20 s plus tard qu'en 3.71.1 : le marchand attend que la Voile ait son bois pour vendre le sel.
+
+**Intervalle entre deux savoirs** (achat précédent → abordable ; cible 10-12 min, ±25 % : 7:30 à 15:00) :
+
+| Âge | Avant, sans Merveille | Après, sans Merveille | Après, Merveilles 0-10 | Après, Merveilles 3-10 | Après, sans Merveille, `--focus=food` | Après, Merveilles 0-10, `--focus=food` |
+|---|---|---|---|---|---|---|
+| 3 | 8:37-16:46 | 8:57-11:50 | 8:19-11:59 | 8:54-11:48 | 8:48-11:29 | 8:15-11:46 |
+| **4** | 7:38-9:11 | 9:37-11:34 | 10:21-10:32 | 10:29-11:47 | 9:40-11:23 | 9:23-11:02 |
+| **5** | 6:51-8:25 | 11:12-12:18 | 10:28-10:32 | 10:36-11:24 | 11:14-12:07 | 9:51-11:21 |
+| **6** | 7:05-9:34 | 10:44-13:18 | 10:14-10:36 | 9:57-12:09 | 10:42-13:09 | 9:57-10:53 |
+| **7** | 7:51-11:56 | 10:54-13:09 | 10:29-10:34 | 10:05-12:14 | 10:57-13:16 | 10:01-10:53 |
+| **8** | 11:43-15:40 | 11:29-13:31 | 9:46-10:43 | 9:52-12:13 | 11:09-13:36 | 9:47-11:25 |
+| **9** | 13:05-20:50 | 11:38-13:24 | 10:26-10:35 | 9:43-12:16 | 11:24-13:49 | 9:56-11:01 |
+| **10** | 19:18-33:56 | 11:44-13:10 | 10:16-10:48 | 10:15-11:59 | 12:04-13:19 | 10:10-11:03 |
+
+Les âges 4 à 10 tiennent la cible dans les cinq conduites. L'ère contemporaine du joueur qui ne change jamais de récolte, sans Merveille, sortait de 36 s à la première passe (15:36 : les Satellites attendaient 3:30 leurs matériaux) : elle est à 13:49 au plus.
+
+**Merveilles, achèvement en part de la durée de l'âge** (lancée à l'entrée ou dès que la précédente est finie) :
+
+| Âge | Référence | Merveilles 3-10 | `--focus=food` | `--wonder-focus` | Une nuit de 8 h à 2:30 | Joueur occasionnel |
+|---|---|---|---|---|---|---|
+| 0 | 83 % | — | 359 % | 50 % | 83 % | 83 % |
+| 1 | 83 % | — | 222 % (lancée à +20:23) | 35 % | 83 % | 79 % |
+| 2 | 83 % | — | 144 % (+33:35) | 53 % | 83 % | 82 % |
+| 3 | 83 % | 90 % | 112 % (+19:58) | 58 % | 83 % | 70 % |
+| 4 | 83 % | 85 % | 114 % (+7:01) | 52 % | 19 % (pendant la nuit) | 48 % |
+| 5 | 83 % | 87 % | 98 % (+8:32) | 38 % | 109 % | 29 % |
+| 6 | 83 % | 84 % | 83 % | 28 % | 87 % (+3:42) | 20 % |
+| 7 | 84 % | 79 % | 95 % | 50 % | 89 % | 7 % |
+| 8 | 84 % | 85 % | 86 % | 46 % | 86 % | 3 % |
+| 9 | 84 % | 87 % | 84 % | 40 % | 83 % | 100 % |
+| 10 | 82 % | 84 % | 82 % | 53 % | 81 % | 92 % |
+| Fin de l'arbre | 531:08 | 557:14 | 522:46 | 610:17 | 483:20 | 221:48 |
+
+Avant (3.71.1), la référence avec les onze Merveilles en finissait trois : les menhirs à 79 min (997 % du Paléolithique), la ziggourat et la cathédrale ; le gratte-ciel restait à 56 %. Le joueur occasionnel en finissait huit, toutes en débordant sur l'âge suivant (125 à 347 %), et le réacteur restait à 31 %.
+
+- **Référence** : 82 à 84 %. Le grand phare (âge 3) est à 83 % ; la colonne trophée, à l'âge 3 lors de la première passe, finissait à 77 %.
+- **Merveilles 3 à 10** : 79 à 90 %, dans les 70-90 % du critère 14.
+- **Joueur occasionnel** : chaque Merveille est finie dans son âge. Aux âges 5 à 8, le chantier avance pendant les absences de 8 h et s'achève tôt. La fusée s'achève pendant l'absence qui ouvre aussi l'ère des limites (100 %). L'arbre prend 222 min de jeu actif, contre 208 à la première passe.
+- **`--wonder-focus`** (le joueur focalise le chantier quand aucun savoir n'attend de matériau) : jusqu'à 20:30 entre deux savoirs à l'âge 9. C'est un choix du joueur, qui paie ses Merveilles en savoir (décision 7).
+- **`--focus=food`, avec les Merveilles des premiers âges, outils du marchand compris** : le joueur qui ne touche jamais à la récolte n'attend plus ses matériaux que deux fois. La Taille du silex attend 0:11, comme sans Merveille, et la Voile 0:13. Avec `--no-tools`, il attend au plus 0:19 par âge. À la première passe, il attendait 17 fois, dont 73 min à l'âge du bronze (15 à 22 min pour la Métallurgie du cuivre, l'Alliage de bronze, la Roue et la Voile). Son âge du bronze dure 46 min au lieu de 71 (47 sans Merveille). Ses Merveilles 0 à 5 finissent en retard : le chantier attend que la récolte au repos couvre d'abord les savoirs. Sans Merveille, il finit l'arbre en 586:46, contre 590:00 pour celui qui focalise ce qui manque (critère 17).
+
+**Bilan par âge** (critère 15, `--eco`, référence) : aux âges 3 à 10, aucune ressource débloquée n'a « dépensé 0 » et « Merveille 0 » à la fois. Nourriture, argile et fibres ont une dépense de savoirs à chaque âge de 4 à 10.
+
+**Ce qui reste** (en plus de 10.8, dont la tour de fer à 580 fer) :
+
+- Les multiplicateurs de fer (10.8) ne bougent pas : hors du mandat de la 3.72.0.
+
+### 10.12 Critères d'acceptation de la 3.72.0
+
+19. `content.ts` égale `COSTS_3720` et la table de 10.10 (savoirs des âges 3 à 10, onze Merveilles) — `tests/couts-372.test.mjs`. L'Imprimerie ne coûte pas plus de savoir que la Caravelle.
+20. `tools/sim-savoirs.mjs --no-encourage --until=11 --max=200000 --wonders=v1 --wonder-from=0` : chaque Merveille, lancée à l'entrée de son âge, s'achève entre 80 et 86 % de l'âge (même test).
+21. Mêmes options, avec et sans `--wonders=v1 --wonder-from=0`, avec et sans `--focus=food` : aux âges 4 à 10, chaque intervalle tombe entre 7:30 et 15:00.
+22. Un chantier dont `paid` couvre les nouveaux coûts est achevé au chargement (critère 18), une seule fois : rien n'est retiré du stock, le trop-versé n'est pas rendu, le bonus de +4 % s'applique, un second chargement ne l'annonce pas.
+23. Une absence créditée au chargement réécrit la sauvegarde à la date du retour : un rechargement 3 s plus tard ne crédite rien.
+24. Le chantier ne prend rien d'un matériau qu'attend un savoir déjà payable en savoir. Le marchand ne propose ni ne vend un outil qui descendrait un matériau sous la part réservée aux savoirs. `--focus=food --wonders=v1 --wonder-from=0`, outils compris : au plus 2 min d'attente de matériau par âge.

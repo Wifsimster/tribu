@@ -360,7 +360,9 @@ function openWonderCard(): void {
       const when =
         l.paid >= l.total
           ? 'complet'
-          : !Number.isFinite(l.eta)
+          : l.held
+            ? 'laissé à tes savoirs'
+            : !Number.isFinite(l.eta)
             ? 'en pause'
             : l.eta > 90
               ? `${Math.round(l.eta / 60)} min`
@@ -377,11 +379,13 @@ function openWonderCard(): void {
   hud.showStory(
     'Le chantier',
     d.def.name,
-    `L'œuvre est accomplie à ${Math.round(d.progress * 100)} %. Le chantier prélève 60 % de ta production sur chaque matériau — il t'en reste toujours 40 %. Il avance aussi pendant ton absence.`,
+    `L'œuvre est accomplie à ${Math.round(d.progress * 100)} %. Le chantier prélève 60 % de ta production sur chaque matériau — il t'en reste toujours 40 %. Il laisse d'abord à tes prochaines découvertes ce qu'elles vont demander. Il avance aussi pendant ton absence.`,
     `${rows}<div class="wc-total">${
       Number.isFinite(d.eta)
         ? `Achèvement estimé dans ${eta} au débit actuel`
-        : 'Le chantier attend le retour du colon'
+        : d.lines.some((l) => l.held)
+          ? 'Le chantier attend que tes découvertes aient ce qu’il leur faut'
+          : 'Le chantier attend le retour du colon'
     }</div>`,
     'Détail du chantier',
   )

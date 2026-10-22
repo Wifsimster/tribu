@@ -254,8 +254,9 @@ test('le transfert de tribu emporte la réserve', async () => {
 })
 
 test('coûts en matériaux des âges 0 à 3 : ceux de la table 9.3 (section 9)', async () => {
-  const { PROPORTIONAL } = await import('../tools/savoirs-rule.mjs')
+  const { PROPORTIONAL, COSTS_3720 } = await import('../tools/savoirs-rule.mjs')
   const early = TECHS.filter((t) => t.age <= 3)
   assert.equal(early.length, Object.keys(PROPORTIONAL).length)
-  for (const t of early) assert.deepEqual(t.materials, PROPORTIONAL[t.id], t.id)
+  // La Charrue suit la section 10 depuis la 3.72.0 (tests/couts-372.test.mjs).
+  for (const t of early) assert.deepEqual(t.materials, COSTS_3720.techs[t.id]?.materials ?? PROPORTIONAL[t.id], t.id)
 })
