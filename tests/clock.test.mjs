@@ -169,3 +169,33 @@ test("une seule horloge : aucune copie de la formule de l'heure hors de clock.ts
   }
   assert.deepEqual(offenders, [], "dériver l'heure avec dayPhaseAt (src/game/clock.ts)")
 })
+
+test('une seule nuit : le cadran, la mer et le journal des versions disent 80 s', async () => {
+  const { NIGHT_SECONDS, DUSK_HOUR, DAWN_HOUR, isNightHour } = await import('../src/game/clock.ts')
+  const { CHANGELOG } = await import('../src/game/changelog.ts')
+  assert.ok(Math.abs(NIGHT_SECONDS - 80) < 1e-9, `nuit de ${NIGHT_SECONDS} s`)
+  // Le texte de la 3.70 : « la nuit ne dure plus que 1 min 20 s ».
+  const r370 = CHANGELOG.find((r) => r.version === '3.70.0')
+  assert.ok(r370.items.some((s) => s.includes('1 min 20 s')))
+  // Le cadran : du coucher (DUSK_HOUR) au lever (DAWN_HOUR), le compte à
+  // rebours du HUD compte 80 s, et la lune y est (isNightHour) tout du long.
+  const T = 5000
+  const dusk = T + secondsUntilDayHour(T, DUSK_HOUR)
+  assert.ok(Math.abs(secondsUntilDayHour(dusk + 1e-6, DAWN_HOUR) - NIGHT_SECONDS) < 1e-3)
+  for (let s = 0.05; s < NIGHT_SECONDS; s += 0.5) assert.ok(isNightHour(dayPhaseAt(dusk + s)), `lune à +${s} s`)
+  assert.ok(!isNightHour(dayPhaseAt(dusk - 0.05)) && !isNightHour(dayPhaseAt(dusk + NIGHT_SECONDS + 0.05)))
+  // La nuit de la simulation (mer fermée, bêtes couchées) : la même, mesurée.
+  const NOW = 1_800_000_000_000
+  const g = new Game(NOW)
+  let night = 0
+  let falls = 0
+  let was = g.isNight
+  for (let t = 0; t < DAY_SECONDS; t += 0.25) {
+    g.tick(0.25, NOW + t * 1000)
+    if (g.isNight) night += 0.25
+    if (g.isNight && !was) falls++
+    was = g.isNight
+  }
+  assert.equal(falls, 1, 'une seule tombée de la nuit par jour')
+  assert.ok(Math.abs(night - NIGHT_SECONDS) <= 0.5, `nuit de la simulation : ${night} s`)
+})

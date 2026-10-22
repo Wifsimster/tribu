@@ -10,6 +10,21 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.71.2',
+    title: "L'histoire remise à l'heure",
+    items: [
+      "La Merveille du Paléolithique n'est plus l'alignement de Carnac : ses menhirs datent du Néolithique. À sa place, le cercle de stalagmites de Bruniquel, bâti par des Néandertaliens il y a 176 500 ans au fond d'une grotte du Tarn-et-Garonne.",
+      "Le phare d'Alexandrie (−280) passe à l'âge du fer, et la colonne Trajane (113) à l'Antiquité. Une Merveille déjà achevée le reste, et un chantier en cours garde ce que tu y as versé.",
+      "Les dates des âges collent à leurs savoirs. Le Paléolithique remonte à −3,3 millions d'années, comme les plus vieux silex taillés. L'âge du bronze commence en −3 500, avec l'écriture d'Uruk et les premiers chariots. L'ère contemporaine commence en 1960, avec Saturn V et ARPANET.",
+      "L'Alphabet raconte l'alphabet phénicien (vers −1050), celui que les marchands ont répandu. Son ancêtre du Sinaï (vers −1800) passe dans l'anecdote. L'Électricité raconte les foyers américains électrifiés entre 1907 et 1930, et la centrale d'Edison de 1882 n'en est plus que le prélude.",
+      "Le Cuivre, le Bronze et l'Acier Bessemer avaient une anecdote qui redisait le fait. Chacun en reçoit une vraie : le nom de Chypre caché dans « cuivre », l'airain des cloches, la minette lorraine sauvée par Thomas et Gilchrist. Le Collier d'épaule, qui n'en avait pas, raconte ses trois siècles de route depuis la Chine.",
+      "La première monnaie lydienne porte la même date partout : vers −630.",
+      "L'aide du menu compte juste : 58 découvertes et quatorze hauts faits. Le haut fait « À mi-chemin » demande la moitié réelle de l'arbre, 29 savoirs. Qui l'a déjà obtenu le garde.",
+      "La nuit dure 80 s partout. Elle commence quand le soleil passe sous l'horizon : la lune apparaît sur le cadran, la mer se ferme et les bêtes se couchent au même moment. La récolte ne change pas.",
+      "Sur téléphone, les messages « Haut fait accompli » ne passent plus derrière une fiche ouverte. Ils attendent qu'on la ferme et sortent alors l'un après l'autre, trois à la fois au plus.",
+    ],
+  },
+  {
     version: '3.71.1',
     title: 'Le marchand demande, la Merveille avance sans toi',
     items: [
