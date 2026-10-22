@@ -182,8 +182,10 @@ export const PLOUGH_T = 12 * 60
  *  sortait de la cible (10-12 min, ±25 %). Chaque savoir y coûte INSIGHT_T au
  *  taux de savoir actif mesuré pendant son attente, chez le joueur de
  *  référence qui bâtit (10,5 min plutôt que 11 : sans Merveille, il manque
- *  jusqu'à +44 % de récolte et l'attente monte à 14:33, encore dans la cible). */
-export const INSIGHT_AGES = [5, 8, 9, 10]
+ *  jusqu'à +44 % de récolte et l'attente monte à 14:33, encore dans la cible).
+ *  Les âges 6 et 7 s'y ajoutent : avec les Merveilles, ils descendaient à
+ *  6:14 entre deux savoirs. */
+export const INSIGHT_AGES = [5, 6, 7, 8, 9, 10]
 export const INSIGHT_T = 10.5 * 60
 
 /** La Merveille d'un âge coûte, pour chacun de ses matériaux, la part que le
@@ -192,6 +194,10 @@ export const INSIGHT_T = 10.5 * 60
  *  qui la lance en entrant dans l'âge (sim-savoirs --wonders=v1). */
 export const WONDER_DRAW = 0.6
 export const WONDER_SHARE = 0.8
+/** L'achèvement visé par le facteur mesuré de couts-ages-tardifs.mjs (milieu
+ *  de la cible 80-86 %) : la règle seule laissait la Merveille de l'âge 3 à
+ *  77 %, les bonus des trois premières arrivant avant son âge. */
+export const WONDER_TARGET = 0.83
 export function wonderCost(def, made) {
   const out = {}
   for (const r of Object.keys(def.cost)) out[r] = nice3(WONDER_DRAW * (made[r] ?? 0))
@@ -284,11 +290,12 @@ export const COSTS_372 = {
 }
 
 /** La table de la 3.72.0 (section 10.10), telle que la donne
- *  `tools/couts-ages-tardifs.mjs --v=3.72.0 --rounds=9` : celle de content.ts.
- *  La Charrue et les âges 4, 6 et 7 gardent COSTS_372 ; les âges 5 et 8 à 10
- *  ont leur coût en savoir recalé (INSIGHT_T) et leurs matériaux refaits ; les
- *  onze Merveilles, rangées par âge, suivent la règle de 10.4. `--costs=3.72.0`
- *  la pose dans le simulateur (pour rejouer une version d'avant). */
+ *  `tools/couts-ages-tardifs.mjs --v=3.72.0 --rounds=17` depuis le content.ts
+ *  de 1ebe61b : celle de content.ts. La Charrue et l'âge 4 gardent COSTS_372 ;
+ *  les âges 5 à 10 ont leur coût en savoir recalé (INSIGHT_T) et leurs
+ *  matériaux refaits ; les onze Merveilles, rangées par âge, suivent la règle
+ *  de 10.4 corrigée par un facteur mesuré. `--costs=3.72.0` la pose dans le
+ *  simulateur (pour rejouer une version d'avant). */
 export const COSTS_3720 = {
   techs: {
     plough: { cost: 1600, materials: { food: 3700, iron: 15, wood: 220, fiber: 25 } },
@@ -297,49 +304,49 @@ export const COSTS_3720 = {
     glass: { materials: { wood: 890, clay: 85, copper: 25 } },
     roads: { materials: { stone: 1750, food: 11200, iron: 15 } },
     codex: { materials: { fiber: 130, food: 10800, clay: 25 } },
-    horsecollar: { cost: 16800, materials: { food: 28200, fiber: 160, iron: 25 } },
-    threefield: { cost: 23600, materials: { food: 66800, wood: 2200 } },
-    windmill: { cost: 30900, materials: { wood: 2900, stone: 1900, fiber: 55 } },
-    clock: { cost: 41100, materials: { iron: 45, clay: 80, copper: 35, wood: 660 } },
-    press: { cost: 53000, materials: { fiber: 190, food: 78000, iron: 30 } },
-    caravel: { materials: { wood: 2000, fiber: 110, food: 46600 } },
-    perspective: { materials: { clay: 110, wood: 1200, food: 56400 } },
-    observatory: { materials: { stone: 1500, copper: 70, clay: 35 } },
-    bank: { materials: { food: 89300, stone: 1450, fiber: 120, copper: 100 } },
-    anatomy: { materials: { food: 138000, fiber: 130, iron: 30 } },
-    steamengine: { materials: { wood: 2700, stone: 1450, iron: 65, copper: 50, food: 61300 } },
-    railway: { materials: { wood: 6700, food: 139000, stone: 3700, iron: 80 } },
-    gaslight: { materials: { stone: 6700, clay: 170, iron: 50 } },
-    bessemer: { materials: { iron: 200, stone: 6050, clay: 110 } },
-    telegraph: { materials: { wood: 13100, copper: 250, fiber: 350, food: 319000 } },
-    electricity: { cost: 364000, materials: { copper: 670, wood: 15500, iron: 310 } },
-    automobile: { cost: 243000, materials: { wood: 15500, iron: 410, fiber: 410 } },
-    radio: { cost: 513000, materials: { copper: 1300, wood: 32900, clay: 340 } },
-    flight: { cost: 455000, materials: { wood: 68400, fiber: 2700, iron: 2500 } },
-    penicillin: { cost: 410000, materials: { food: 1730000, clay: 540 } },
-    computer: { cost: 569000, materials: { copper: 1100, stone: 15500, food: 946000, iron: 510, wood: 9350 } },
-    satellite: { cost: 864000, materials: { iron: 1550, copper: 1150, fiber: 1250 } },
-    internet: { cost: 642000, materials: { stone: 21900, copper: 700, food: 1040000 } },
-    solar: { cost: 699000, materials: { stone: 28100, copper: 670, clay: 290 } },
-    smartphone: { cost: 803000, materials: { stone: 18900, clay: 550, copper: 710, iron: 490 } },
-    ai: { cost: 956000, materials: { copper: 1250, stone: 22500, fiber: 420, iron: 580 } },
-    storage: { cost: 1270000, materials: { copper: 1200, iron: 1100, clay: 620 } },
-    desal: { cost: 1220000, materials: { stone: 29600, food: 1500000, iron: 2250 } },
-    crispr: { cost: 2120000, materials: { food: 5200000, fiber: 1950, copper: 1400 } },
-    carbon: { cost: 4030000, materials: { stone: 77900, iron: 4400, wood: 54500, copper: 1600 } },
-    quantum: { cost: 4760000, materials: { copper: 2550, iron: 2350, fiber: 390, clay: 300 } },
+    horsecollar: { cost: 16900, materials: { food: 28400, fiber: 160, iron: 25 } },
+    threefield: { cost: 23400, materials: { food: 66200, wood: 2150 } },
+    windmill: { cost: 31600, materials: { wood: 2700, stone: 1800, fiber: 50 } },
+    clock: { cost: 41000, materials: { iron: 45, clay: 80, copper: 35, wood: 660 } },
+    press: { cost: 52200, materials: { fiber: 190, food: 76800, iron: 30 } },
+    caravel: { cost: 80600, materials: { wood: 4050, fiber: 230, food: 110000 } },
+    perspective: { cost: 63200, materials: { clay: 140, wood: 1600, food: 86500 } },
+    observatory: { cost: 74900, materials: { stone: 2050, copper: 95, clay: 45 } },
+    bank: { cost: 80100, materials: { food: 73300, stone: 1350, fiber: 120, copper: 95 } },
+    anatomy: { cost: 117000, materials: { food: 214000, fiber: 190, iron: 45 } },
+    steamengine: { cost: 168000, materials: { wood: 4650, stone: 2500, iron: 110, copper: 85, food: 110000 } },
+    railway: { cost: 164000, materials: { wood: 8800, food: 228000, stone: 4900, iron: 110 } },
+    gaslight: { cost: 261000, materials: { stone: 11700, clay: 290, iron: 85 } },
+    bessemer: { cost: 250000, materials: { iron: 310, stone: 9400, clay: 170 } },
+    telegraph: { cost: 189000, materials: { wood: 12800, copper: 250, fiber: 340, food: 297000 } },
+    electricity: { cost: 361000, materials: { copper: 580, wood: 13300, iron: 260 } },
+    automobile: { cost: 259000, materials: { wood: 14300, iron: 380, fiber: 380 } },
+    radio: { cost: 558000, materials: { copper: 1600, wood: 40000, clay: 410 } },
+    flight: { cost: 602000, materials: { wood: 41100, fiber: 1650, iron: 1500 } },
+    penicillin: { cost: 344000, materials: { food: 1390000, clay: 510 } },
+    computer: { cost: 590000, materials: { copper: 980, stone: 13700, food: 1040000, iron: 450, wood: 8200 } },
+    satellite: { cost: 899000, materials: { iron: 1350, copper: 990, fiber: 1100 } },
+    internet: { cost: 578000, materials: { stone: 20400, copper: 650, food: 922000 } },
+    solar: { cost: 647000, materials: { stone: 30000, copper: 710, clay: 310 } },
+    smartphone: { cost: 948000, materials: { stone: 20600, clay: 600, copper: 770, iron: 530 } },
+    ai: { cost: 926000, materials: { copper: 1150, stone: 20400, fiber: 380, iron: 530 } },
+    storage: { cost: 1110000, materials: { copper: 1100, iron: 990, clay: 560 } },
+    desal: { cost: 1220000, materials: { stone: 33500, food: 1360000, iron: 2550 } },
+    crispr: { cost: 2260000, materials: { food: 5040000, fiber: 2300, copper: 1700 } },
+    carbon: { cost: 4440000, materials: { stone: 82700, iron: 4700, wood: 57900, copper: 1700 } },
+    quantum: { cost: 4700000, materials: { copper: 2650, iron: 2400, fiber: 400, clay: 310 } },
   },
   wonders: {
     0: { stone: 15, wood: 25 },
-    1: { stone: 80, wood: 85 },
-    2: { stone: 550, clay: 130, wood: 1600 },
-    3: { stone: 1550, iron: 55, copper: 210 },
-    4: { stone: 2950, wood: 2250, iron: 120 },
-    5: { stone: 5300, wood: 5550, iron: 210 },
-    6: { stone: 4150, clay: 290, iron: 180 },
-    7: { iron: 470, stone: 21900, wood: 22500 },
-    8: { iron: 4300, stone: 52000, copper: 2400 },
-    9: { iron: 4050, copper: 2950, fiber: 3150 },
-    10: { iron: 9150, copper: 6600, stone: 104000 },
+    1: { stone: 95, wood: 90 },
+    2: { stone: 450, clay: 100, wood: 970 },
+    3: { stone: 1600, iron: 55, copper: 260 },
+    4: { stone: 3150, wood: 2350, iron: 130 },
+    5: { stone: 5450, wood: 5750, iron: 220 },
+    6: { stone: 6000, clay: 420, iron: 260 },
+    7: { iron: 620, stone: 26700, wood: 36200 },
+    8: { iron: 3750, stone: 53600, copper: 2500 },
+    9: { iron: 4200, copper: 3050, fiber: 3300 },
+    10: { iron: 9500, copper: 6900, stone: 109000 },
   },
 }

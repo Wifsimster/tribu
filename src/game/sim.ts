@@ -122,6 +122,14 @@ const IDLE_FRACTION = 0.3
  *  377 min contre 392). */
 const INSIGHT_PER_MATERIAL = 0.07
 
+/** La part de la récolte à venir sur laquelle le chantier compte avant de
+ *  prendre un matériau que les savoirs de l'âge demanderont (wonderKeeps).
+ *  À 100 %, la nuit et les outils du marchand faisaient encore attendre le
+ *  joueur qui ne change jamais de récolte : 5 min à l'âge du bronze, 10 à
+ *  l'ère moderne (tools/sim-savoirs.mjs --focus=food --wonders=v1
+ *  --wonder-from=0). */
+const WONDER_KEEP_HARVEST = 0.7
+
 const ENCOURAGE_SECONDS = 15
 const ENCOURAGE_MULT = 2
 const ENCOURAGE_COOLDOWN = 45
@@ -1248,20 +1256,25 @@ export class Game {
   wonderDetail(): {
     def: WonderDef
     progress: number
-    lines: { id: ResourceId; paid: number; total: number; flow: number; eta: number }[]
+    lines: { id: ResourceId; paid: number; total: number; flow: number; eta: number; held: boolean }[]
     eta: number
   } | null {
     const cur = this.save.wonder
     if (!cur) return null
     const def = WONDER_BY_AGE.get(cur.age)
     if (!def) return null
+    const kept = this.wonderKeeps()
     const lines = (Object.entries(def.cost) as [ResourceId, number][]).map(([id, total]) => {
       const paid = Math.min(total, cur.paid[id] ?? 0)
+      // Laissé aux savoirs : le chantier n'y touche pas tant que le stock ne
+      // dépasse pas ce qu'ils vont demander (voir tickWonder).
+      const held = paid < total && (kept[id] ?? 0) > 0 && this.amount(id) <= kept[id]!
       // Le débit réellement versé : 60 % de la production, et seulement ce qui
       // dépasse le plancher de réserve (voir tickWonder).
-      const flow = paid >= total ? 0 : this.wonderFlow(id)
-      // Débit nul sur un reste dû (colon parti) : pas d'échéance.
-      return { id, paid, total, flow, eta: paid >= total ? 0 : flow > 0 ? (total - paid) / flow : Infinity }
+      const flow = paid >= total || held ? 0 : this.wonderFlow(id)
+      // Débit nul sur un reste dû (colon parti, matériau laissé aux savoirs) :
+      // pas d'échéance.
+      return { id, paid, total, flow, eta: paid >= total ? 0 : flow > 0 ? (total - paid) / flow : Infinity, held }
     })
     return {
       def,
@@ -1310,13 +1323,18 @@ export class Game {
       return
     }
     const before = this.wonderProgress(def, cur.paid)
+    const kept = this.wonderKeeps()
     for (const [id, total] of Object.entries(def.cost) as [ResourceId, number][]) {
       const paid = cur.paid[id] ?? 0
       if (paid >= total) continue
       // Le plancher : 10 + 30 par âge (50 + 30 jusqu'à la 3.71). À 50, le
       // Paléolithique n'y arrivait jamais (le joueur dépense ses premières
       // pierres dès qu'elles tombent) et sa Merveille débordait sur deux âges.
-      const floor = 10 + this.save.age * 30
+      // Au-dessus, ce que les savoirs de l'âge vont demander : le chantier ne
+      // les affame jamais (sans cette part, le joueur qui ne change pas de
+      // récolte attendait 73 min son bois et sa pierre à l'âge du bronze,
+      // bus par la ziggourat).
+      const floor = Math.max(10 + this.save.age * 30, kept[id] ?? 0)
       const avail = this.amount(id) - floor
       if (avail <= 0) continue
       // Le chantier prend une PART DE LA PRODUCTION, jamais la réserve. Avant,
@@ -1328,7 +1346,9 @@ export class Game {
       const flow = this.wonderFlow(id)
       const take = Math.min(avail, flow * dt, total - paid)
       if (take <= 0) continue
-      this.save.res[id] = this.amount(id) - take
+      // Jamais sous le plancher, même d'un arrondi : un stock tenu à 129,99
+      // pour un savoir qui en demande 130 l'attendrait sans fin.
+      this.save.res[id] = Math.max(floor, this.amount(id) - take)
       cur.paid[id] = paid + take
     }
     const after = this.wonderProgress(def, cur.paid)
@@ -1346,6 +1366,36 @@ export class Game {
     } else if (stageOf(after) !== stageOf(before)) {
       this.emit({ type: 'wonderStage', def, stage: stageOf(after) })
     }
+  }
+
+  /** Ce que le chantier laisse aux savoirs, matériau par matériau. Les
+   *  savoirs qui restent à l'âge, du moins cher au plus cher en savoir :
+   *  pour chacun, les matériaux qu'ils demandent jusqu'à lui, moins ce que
+   *  l'île en récoltera d'ici à ce que le savoir suffise (WONDER_KEEP_HARVEST
+   *  de la récolte du moment : la nuit et le marchand en prennent leur part).
+   *  Un savoir déjà payable en savoir qui attend un matériau le reçoit tout
+   *  entier : le chantier n'y touche plus jusqu'à l'achat. */
+  private wonderKeeps(): Partial<Record<ResourceId, number>> {
+    const keep: Partial<Record<ResourceId, number>> = {}
+    const insight = this.amount('insight')
+    const insightRate = Math.max(1e-9, this.rates.insight)
+    const rest = TECHS.filter((t) => !this.knows(t.id) && t.age <= this.save.age).sort((x, y) => x.cost - y.cost)
+    const needed: Partial<Record<ResourceId, number>> = {}
+    let cost = 0
+    for (const t of rest) {
+      cost += t.cost
+      const wait = Math.max(0, cost - insight) / insightRate
+      for (const [id, n] of Object.entries(t.materials ?? {}) as [ResourceId, number][]) {
+        needed[id] = (needed[id] ?? 0) + n
+        keep[id] = Math.max(keep[id] ?? 0, needed[id]! - WONDER_KEEP_HARVEST * this.rates[id] * wait)
+      }
+    }
+    for (const t of this.available()) {
+      if (insight < t.cost) continue
+      for (const [id, n] of Object.entries(t.materials ?? {}) as [ResourceId, number][])
+        if (this.amount(id) < n) keep[id] = Infinity
+    }
+    return keep
   }
 
   /** Chaque Merveille achevée inspire la tribu : +4 % de récolte, cumulés. */

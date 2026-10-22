@@ -7,7 +7,8 @@
 //
 //   node --import ./tests/resolve-ts.mjs tools/couts-ages-tardifs.mjs [--rounds=6] [--out=table.json]
 //   … --v=3.72.0   la table de la 3.72.0 (section 10.10) : Merveilles 0 à 10,
-//                  coûts en savoir des âges 5 et 8 à 10 recalés (INSIGHT_AGES)
+//                  coûts en savoir des âges 5 à 10 recalés (INSIGHT_AGES),
+//                  chaque Merveille visée à WONDER_TARGET de son âge
 //
 // Chaque tour fait tourner tools/sim-savoirs.mjs --no-encourage --wonders=v1
 // --json sur la table du tour précédent. Le premier tour joue SANS Merveille :
@@ -20,7 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const { TECHS, WONDERS } = await import('../src/game/content.ts')
-const { COSTS_372, WEIGHTS_372, PLOUGH_T, WONDER_SHARE, INSIGHT_AGES, INSIGHT_T, wonderCost, proportionalCost, nice3 } = await import('./savoirs-rule.mjs')
+const { COSTS_372, WEIGHTS_372, PLOUGH_T, WONDER_SHARE, WONDER_TARGET, INSIGHT_AGES, INSIGHT_T, wonderCost, proportionalCost, nice3 } = await import('./savoirs-rule.mjs')
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')))
 const ROUNDS = Number(args.rounds ?? 6)
@@ -94,19 +95,20 @@ function nextTable(out) {
   return { techs, wonders }
 }
 
-// Âges 0 à 2 (3.72.0) : le chantier n'y prend pas 60 % de la production. Le
-// joueur dépense ses premiers matériaux dès qu'ils arrivent, et le chantier ne
-// descend jamais un stock sous son plancher (10 + 30 × âge) : il ne reçoit que
-// ce qui dépasse. La règle y est donc corrigée par un facteur mesuré, ajusté à
-// chaque tour vers un achèvement à WONDER_SHARE de l'âge.
+// 3.72.0 : la règle de 10.4 ne tombe pas juste. Aux âges 0 à 2, le chantier
+// ne prend pas 60 % de la production : le joueur dépense ses premiers
+// matériaux dès qu'ils arrivent, et le chantier ne descend jamais un stock
+// sous son plancher (10 + 30 × âge) ni sous ce que les savoirs de l'âge vont
+// demander. Plus tard, les +4 % des Merveilles précédentes arrivent avant
+// l'âge (77 % à l'âge 3). Chaque Merveille est donc corrigée par un facteur
+// mesuré, ajusté à chaque tour vers un achèvement à WONDER_TARGET de l'âge.
 const adjust = new Map()
-function retuneEarlyWonders(out) {
+function retuneWonders(out) {
   if (!V3720) return
   for (const w of out.wonders) {
-    if (w.age >= 3) continue
     const k = adjust.get(w.age) ?? 1
     const late = w.start - w.entry > 1
-    const ratio = w.share == null ? w.progress : late ? 1 : WONDER_SHARE / w.share
+    const ratio = w.share == null ? w.progress : late ? 1 : WONDER_TARGET / w.share
     adjust.set(w.age, k * Math.min(2, Math.max(0.5, ratio)) ** 0.7)
   }
 }
@@ -118,7 +120,7 @@ for (let k = 0; k <= ROUNDS; k++) {
   const shares = out.wonders.map((w) => `${w.age}:${w.share == null ? `—${Math.round(w.progress * 100)}%` : Math.round(w.share * 100) + '%'}`).join(' ')
   const ages = out.log.filter((e) => e.kind === 'age' || e.kind === 'end').map((e) => Math.round(e.t / 60)).join(' ')
   console.error(`tour ${k} : âges (min) ${ages} | Merveilles ${shares || '(aucune)'}`)
-  if (k > 0) retuneEarlyWonders(out)
+  if (k > 0) retuneWonders(out)
   const next = nextTable(out)
   const same = table && JSON.stringify(next) === JSON.stringify(table)
   table = next
