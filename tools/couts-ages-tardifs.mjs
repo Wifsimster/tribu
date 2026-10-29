@@ -1,20 +1,3 @@
-// Calcule la table de la section 10 de docs/specs/equilibrage-savoirs.md :
-// matériaux des savoirs des âges 4 à 10 (règle de la section 9, parts
-// WEIGHTS_372), coût en savoir et matériaux de la Charrue, coûts des
-// Merveilles 3 à 10 (wonderCost). Les taux dépendent des coûts (le joueur
-// focalise ce qui manque, les Merveilles finies donnent +4 %) : on itère
-// jusqu'à ce que la table ne bouge plus.
-//
-//   node --import ./tests/resolve-ts.mjs tools/couts-ages-tardifs.mjs [--rounds=6] [--out=table.json]
-//   … --v=3.72.0   la table de la 3.72.0 (section 10.10) : Merveilles 0 à 10,
-//                  coûts en savoir des âges 4 à 10 recalés (INSIGHT_AGES),
-//                  chaque Merveille visée à WONDER_TARGET de son âge
-//
-// Chaque tour fait tourner tools/sim-savoirs.mjs --no-encourage --wonders=v1
-// --json sur la table du tour précédent. Le premier tour joue SANS Merveille :
-// avec les coûts d'aujourd'hui, la première Merveille bloque toutes les
-// suivantes (voir 10.1). Converge en 5 tours.
-
 import { execFileSync } from 'node:child_process'
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,7 +8,6 @@ const { COSTS_372, WEIGHTS_372, PLOUGH_T, WONDER_SHARE, WONDER_TARGET, INSIGHT_A
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')))
 const ROUNDS = Number(args.rounds ?? 6)
-// 3.72.0 : toutes les Merveilles, et le savoir des âges hors rythme.
 const V3720 = args.v === '3.72.0'
 const WONDER_FROM = V3720 ? 0 : 3
 const RETUNE = V3720 ? INSIGHT_AGES : []
@@ -38,7 +20,6 @@ function run(tablePath, wonders) {
   return JSON.parse(execFileSync(process.execPath, argv, { maxBuffer: 1 << 28, encoding: 'utf8' }))
 }
 
-/** Production cumulée (jeu actif) à l'instant `at`. */
 function madeAt(timeline, at) {
   let best = { made: {} }
   for (const p of timeline) {
@@ -48,11 +29,6 @@ function madeAt(timeline, at) {
   return best.made
 }
 
-/** Coût en savoir recalé (section 10.10) : INSIGHT_T × le taux de savoir
- *  ACTIF mesuré pendant l'attente de ce savoir, de l'achat du précédent à
- *  l'instant où le savoir suffit (nuit comprise, récolte du joueur). Le taux
- *  relevé juste après l'achat précédent dépend de la récolte du moment (le
- *  fer focalisé nourrit peu le savoir) : il donnait des coûts en dents de scie. */
 function retunedCost(out, id) {
   const bought = out.log.filter((e) => e.kind === 'tech')
   const i = bought.findIndex((e) => e.id === id)
@@ -70,7 +46,6 @@ function nextTable(out) {
   for (const t of TECHS) {
     const retune = RETUNE.includes(t.age)
     if (!WEIGHTS_372[t.id]) continue
-    // 3.72.0 : la Charrue (seule hors INSIGHT_AGES) garde la table 10.5 telle quelle.
     if (V3720 && !retune) {
       techs[t.id] = COSTS_372.techs[t.id]
       continue
@@ -95,13 +70,6 @@ function nextTable(out) {
   return { techs, wonders }
 }
 
-// 3.72.0 : la règle de 10.4 ne tombe pas juste. Aux âges 0 à 2, le chantier
-// ne prend pas 60 % de la production : le joueur dépense ses premiers
-// matériaux dès qu'ils arrivent, et le chantier ne descend jamais un stock
-// sous son plancher (10 + 30 × âge) ni sous ce que les savoirs de l'âge vont
-// demander. Plus tard, les +4 % des Merveilles précédentes arrivent avant
-// l'âge (77 % à l'âge 3). Chaque Merveille est donc corrigée par un facteur
-// mesuré, ajusté à chaque tour vers un achèvement à WONDER_TARGET de l'âge.
 const adjust = new Map()
 function retuneWonders(out) {
   if (!V3720) return

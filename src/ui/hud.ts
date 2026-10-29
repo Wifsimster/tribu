@@ -8,8 +8,6 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T
 }
 
-// Les emojis se rendent différemment sur chaque plateforme (et rarement bien) :
-// on dessine nos propres glyphes, dans les teintes de la scène.
 const GLYPHS: Record<ResourceId, string> = {
   food:
     '<path d="M13.6 4.2c1.9-.6 3.6-.3 4.6.8-2.1 1.5-3.9 1.9-5.4 1.3z" fill="#7ba24f"/>' +
@@ -46,8 +44,7 @@ const GLYPHS: Record<ResourceId, string> = {
     '<path d="M18.6 15.4c.4 2 1.5 3.1 3.4 3.5-1.9.4-3 1.5-3.4 3.4-.4-1.9-1.4-3-3.4-3.4 2-.4 3-1.5 3.4-3.5z" fill="#eac272"/>',
 }
 
-export /** Le moyen du voyage, en un pictogramme : à sept destinations, on choisit
- *  d'abord « par quoi » et ensuite « où ». */
+export
 const DEST_GLYPH: Record<string, string> = {
   sea:
     '<path d="M4 15h16l-2.4 5H6.4z" fill="#8fc3e0"/>' +
@@ -74,14 +71,12 @@ export function icon(id: ResourceId, size = 15): string {
   return `<svg class="glyph" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">${GLYPHS[id]}</svg>`
 }
 
-/** Les messages venant du jeu portent encore les emojis de content.ts. */
 const EMOJI: Array<[string, ResourceId]> = (Object.keys(RESOURCES) as ResourceId[]).map((id) => [
   RESOURCES[id].icon,
   id,
 ])
 const EMOJI_RE = new RegExp(EMOJI.map(([char]) => char).join('|'), 'g')
 
-/** Texte d'ailleurs (pseudo d'un voisin, par exemple) : jamais injecté brut. */
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
@@ -97,7 +92,6 @@ function withGlyphs(s: string): string {
 
 const comma = (s: string): string => s.replace('.', ',')
 
-/** Idle games live or die on legible big numbers. */
 export function fmt(n: number): string {
   if (n < 10) return Number.isInteger(n) ? n.toString() : comma(n.toFixed(1))
   if (n < 1000) return Math.floor(n).toString()
@@ -116,7 +110,6 @@ function fmtDuration(seconds: number): string {
 }
 
 export class Hud {
-  /** Ouvre la carte détaillée du chantier — fournie par main.ts. */
   onWonderTap: (() => void) | null = null
 
   private resNodes = new Map<ResourceId, { root: HTMLElement; val: HTMLElement; rate: HTMLElement }>()
@@ -124,14 +117,10 @@ export class Hud {
   private sheetOpen = false
   private factOpen = false
   private landOpen = false
-  /** Une carte arrivée pendant qu'une fiche était lue : elle s'ouvre après. */
   private landAfterFact = false
-  /** Le joueur retient une terre — main.ts choisit l'endroit et la pose. */
   onLandChoose: ((kind: string) => void) | null = null
-  /** Pendant le choix de l'emplacement : le jeu pose à sa place, ou on renonce. */
   onPlaceAuto: (() => void) | null = null
   onPlaceCancel: (() => void) | null = null
-  /** Une étiquette d'ancre touchée : même effet qu'un tap sur l'ancre. */
   onAnchorTag: ((i: number) => void) | null = null
   private placingOpen = false
 
@@ -141,8 +130,6 @@ export class Hud {
     this.refreshTechList()
   }
 
-  /** Un tap sur une ressource du bandeau explique ce qu'elle est, d'où elle
-   *  vient et à quoi elle sert. */
   private static readonly RES_HELP: Record<ResourceId, string> = {
     food: 'Nourriture — buissons, chasse, champs. Paie les expéditions et les provisions des découvertes.',
     wood: 'Bois — tape un arbre pour y envoyer le colon. Sert aux découvertes et aux bâtiments.',
@@ -154,7 +141,6 @@ export class Hud {
     insight: "Savoir — l'étincelle : il coule du travail de la tribu et paie chaque découverte.",
   }
 
-  /** Le savoir expliqué au tap, réserve comprise quand elle coule. */
   private insightHelp(): string {
     const R = this.game.save.insightReserve
     if (R <= 0.5) return Hud.RES_HELP.insight
@@ -178,15 +164,11 @@ export class Hud {
         rate: root.querySelector('.rate') as HTMLElement,
       })
     }
-    // La réserve de savoir, collée au savoir : sans elle, le joueur qui
-    // revient d'une absence croirait son stock perdu.
     const reserve = document.createElement('span')
     reserve.className = 'reserve'
     reserve.id = 'res-reserve'
     reserve.hidden = true
     this.resNodes.get('insight')!.root.appendChild(reserve)
-    // La pastille qui replie le bandeau : l'essentiel de l'époque d'abord,
-    // tout le grenier au tap.
     const more = document.createElement('div')
     more.className = 'res more'
     more.id = 'res-more'
@@ -229,7 +211,6 @@ export class Hud {
       }
       this.toggleDest(!this.destOpen)
     })
-    // Le choix se referme si l'on touche ailleurs : c'est un menu, pas un modal.
     document.addEventListener('pointerdown', (e) => {
       if (!this.destOpen) return
       const t = e.target as HTMLElement
@@ -252,7 +233,6 @@ export class Hud {
     this.syncScrim()
     if (open) {
       this.refreshTechList()
-      // Ouvrir sur le prochain savoir à débloquer, pas sur le Paléolithique.
       requestAnimationFrame(() => {
         const body = el('sheet-body')
         const next = body.querySelector<HTMLElement>('.tech.next')
@@ -261,24 +241,18 @@ export class Hud {
     }
   }
 
-  /** Un seul voile pour la feuille et la carte : la scène reste le sujet. */
   private syncScrim(): void {
     el('scrim').classList.toggle('on', this.sheetOpen || this.factOpen || this.landOpen)
     if (this.modalOpen) this.holdToasts()
     else this.pumpToasts()
   }
 
-  /** Une fiche (découverte, Merveille, grand tracé) ou les cartes de la mer
-   *  couvrent le milieu de l'écran, là où montent les toasts sur téléphone. */
   private get modalOpen(): boolean {
     return this.factOpen || this.landOpen
   }
 
-  /** L'arbre complet, âge par âge : l'acquis, l'atteignable, et la route qui
-   *  reste. Un idle vit de montrer au joueur où il va. */
   private nextMarked = false
 
-  /** La carte de la Merveille, en tête de la feuille de savoir. */
   private wonderCard(body: HTMLElement): void {
     const ws = this.game.wonderState()
     if (!ws) return
@@ -288,8 +262,6 @@ export class Hud {
       card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Achevée — elle inspire la tribu (+4 % de récolte).</span>`
     } else if (ws.status === 'building') {
       card.innerHTML = `<b>${ws.def.name}</b><span class="wonder-note">Chantier en cours — touche pour le détail.</span><div class="wonder-bar"><i style="width:${Math.round(ws.progress * 100)}%"></i></div><span class="wonder-note">${Math.round(ws.progress * 100)} %</span>`
-      // Le détail du chantier s'ouvrait seulement en tapant l'ouvrage dans la
-      // scène : la feuille est l'endroit où on vient VOIR où on en est.
       card.style.cursor = 'pointer'
       card.addEventListener('click', () => this.onWonderTap?.())
     } else {
@@ -336,20 +308,15 @@ export class Hud {
 
         const btn = document.createElement('button')
         btn.type = 'button'
-        // Le premier savoir atteignable est LE prochain objectif : marqué, et
-        // la feuille s'ouvre dessus.
         const isNext = !known && reachable && !this.nextMarked
         if (isNext) this.nextMarked = true
         btn.className = `tech${known ? ' done' : ''}${!known && !reachable ? ' locked' : ''}${isNext ? ' next' : ''}`
-        // Une techno acquise reste tapable : elle rejoue son fait historique.
         btn.disabled = !known && !affordable
 
         let right: string
         if (known) right = `<span class="cost done-mark">✓</span>`
         else if (future) right = `<span class="cost">🔒</span>`
         else {
-          // Chaque composant du prix est marqué séparément : le joueur voit d'un
-          // coup d'œil CE QUI manque, pas seulement qu'il manque quelque chose.
           const parts = [
             `<span class="${g.amount('insight') >= t.cost ? 'have' : 'lack'}">${icon('insight', 13)}${fmt(t.cost)}</span>`,
           ]
@@ -380,8 +347,6 @@ export class Hud {
     }
   }
 
-  /** Le choix de la destination : trois tempéraments, pas des tableaux de
-   *  chiffres — durée estimée et niveau de risque en toutes lettres. */
   private destOpen = false
 
   private toggleDest(open: boolean): void {
@@ -389,8 +354,6 @@ export class Hud {
     const host = el('dest-chooser')
     host.hidden = !open
     if (!open) {
-      // Ceinture et bretelles : vidé, le panneau ne peut rien montrer même si
-      // une règle CSS lui rendait un jour son display.
       host.textContent = ''
       return
     }
@@ -418,8 +381,6 @@ export class Hud {
       })
       host.appendChild(row)
     }
-    // Les îles du voisinage : de vraies tribus, à visiter comme on visite une
-    // côte — mais elles, elles le sauront.
     for (const v of this.game.visitable.slice(0, 2)) {
       const reachable = this.game.canReach('visite')
       const sec = this.game.expeditionDuration('visite')
@@ -445,7 +406,6 @@ export class Hud {
       host.appendChild(row)
     }
 
-    // L'ambassade : fonder le comptoir de l'îlot, une seule fois, avec la voile.
     if (this.game.knows('sail') && !this.game.save.outpost) {
       const row = document.createElement('button')
       row.type = 'button'
@@ -461,7 +421,6 @@ export class Hud {
     }
   }
 
-  /** Les vitrines du musée : chaque relique et son histoire vraie. */
   showMuseum(relics: RelicDef[]): void {
     el('fact-kicker').textContent = 'Le musée de la tribu'
     el('fact-title').textContent =
@@ -480,10 +439,6 @@ export class Hud {
     el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
-  /** Une histoire hors savoir : épave, événement — même écrin que les faits.
-   *  `asidePlain` retire la lettrine du cartouche : elle habille un paragraphe
-   *  qu'on LIT, pas une ligne de chiffres — un « +20 % » coiffé d'une capitale
-   *  de 42 px ne se lit plus du tout. */
   showStory(
     kicker: string,
     title: string,
@@ -499,8 +454,6 @@ export class Hud {
     el('fact-kicker').textContent = kicker
     el('fact-title').textContent = title
     el('fact-text').textContent = text
-    // Le cartouche appartient aux fiches de SAVOIR : sans ce masquage, la
-    // carte du chantier affichait l'anecdote du dernier savoir consulté.
     const aside = el('fact-aside')
     aside.hidden = !html
     if (html) {
@@ -522,9 +475,6 @@ export class Hud {
     el('fact-kicker').textContent = `Découverte · ${this.game.age.name}`
     el('fact-title').textContent = tech.name
     el('fact-text').textContent = tech.fact
-    // Le « Le saviez-vous ? » : une seconde anecdote, plus inattendue que le
-    // fait principal. Absente sur les fiches qui n'en ont pas — on ne montre
-    // pas un cartouche vide.
     const aside = el('fact-aside')
     aside.hidden = !tech.funFact
     if (tech.funFact) {
@@ -538,17 +488,11 @@ export class Hud {
     el<HTMLButtonElement>('fact-close').focus({ preventScroll: true })
   }
 
-  /** L'offre du marchand à l'écran : la réponse attendue. Fermer la fiche,
-   *  d'une façon ou d'une autre, vaut refus. */
   private offerAnswer: ((accepted: boolean) => void) | null = null
-  /** Une offre arrivée pendant qu'une autre fiche était lue : elle attend. */
   private offerQueued: (() => void) | null = null
-  /** Les fiches arrivées pendant l'offre : elles passent après la réponse. */
   private factQueue: (() => void)[] = []
   private acceptBtn: HTMLButtonElement | null = null
 
-  /** La fiche d'un outil que le marchand tend, avec « Acheter » et « Pas
-   *  cette fois ». `answer` reçoit la réponse du joueur, une seule fois. */
   showOffer(
     kicker: string,
     title: string,
@@ -581,7 +525,6 @@ export class Hud {
     this.acceptBtn.focus({ preventScroll: true })
   }
 
-  /** La barque est repartie sans réponse : l'offre se retire d'elle-même. */
   withdrawOffer(): boolean {
     this.offerQueued = null
     if (!this.offerAnswer) return false
@@ -624,8 +567,6 @@ export class Hud {
     }
   }
 
-  /** La pastille des terres en attente : visible tant que la file n'est pas
-   *  vide, jamais un rappel insistant — attendre ne coûte rien. */
   refreshLand(): void {
     const n = this.game.save.landPending.length
     el('land-pill').hidden = n === 0
@@ -633,8 +574,6 @@ export class Hud {
     if (n === 0 && this.landOpen) this.closeLand()
   }
 
-  /** Ouvre les trois cartes du plus ancien jalon. Si une fiche de découverte
-   *  est à l'écran, la mer attend qu'on l'ait lue. */
   openLand(): void {
     const offer = this.game.landOffer
     if (!offer || this.placingOpen) return
@@ -672,8 +611,6 @@ export class Hud {
     this.syncScrim()
   }
 
-  /** Le choix de l'emplacement : la consigne en bas, une étiquette par ancre.
-   *  Le reste du bas d'écran s'efface le temps du choix. */
   startPlacing(text: string, tags: { bond: boolean; label: string; sub: string }[]): void {
     this.placingOpen = true
     document.body.classList.add('placing')
@@ -704,12 +641,8 @@ export class Hud {
     return this.placingOpen
   }
 
-  /** Recolle chaque étiquette au-dessus de son ancre (coordonnées écran, `null`
-   *  quand l'ancre passe derrière la caméra). */
   moveAnchorTags(points: ({ x: number; y: number } | null)[]): void {
     const tags = el('anchor-tags').children
-    // Deux ancres proches à l'écran : l'étiquette du fond monte au-dessus de
-    // l'autre au lieu de la recouvrir.
     const order = points
       .map((p, i) => ({ p, i }))
       .filter((o): o is { p: { x: number; y: number }; i: number } => o.p !== null)
@@ -721,7 +654,6 @@ export class Hud {
       const w = t.offsetWidth || 60
       const h = t.offsetHeight || 30
       let y = p.y
-      // Chaque étiquette occupe [y − h, y] (accrochée par le bas).
       for (const o of placed)
         if (Math.abs(o.x - p.x) < (o.w + w) / 2 + 4 && y - h < o.y + 4 && y > o.y - o.h - 4) y = o.y - o.h - 4
       placed.push({ x: p.x, y, w, h })
@@ -738,17 +670,12 @@ export class Hud {
     el('banner-small').textContent = small
     el('banner-big').textContent = big
     banner.classList.remove('show')
-    void banner.offsetWidth // restart the animation
+    void banner.offsetWidth
     banner.classList.add('show')
   }
 
-  /** Les toasts passent en file : trois à l'écran au plus, et aucun pendant
-   *  qu'une fiche est ouverte — ils glissaient derrière elle sur téléphone, à
-   *  moitié lus. Ils sortent à la fermeture, chacun en entier. */
   private toastQueue: string[] = []
   private static readonly TOASTS_SHOWN = 3
-  /** Au-delà, les plus anciens en attente sont oubliés : une file de plusieurs
-   *  minutes raconterait un passé que le joueur a déjà sous les yeux. */
   private static readonly TOASTS_WAITING = 9
 
   toast(message: string): void {
@@ -763,8 +690,6 @@ export class Hud {
     while (this.toastQueue.length > 0 && host.childElementCount < Hud.TOASTS_SHOWN) this.showToast(this.toastQueue.shift()!)
   }
 
-  /** Une fiche s'ouvre : les toasts à l'écran repartent dans la file, sauf
-   *  ceux qui finissaient de toute façon. */
   private holdToasts(): void {
     const host = el('toasts')
     const back: string[] = []
@@ -780,7 +705,6 @@ export class Hud {
     const node = document.createElement('div')
     node.className = 'toast'
     node.innerHTML = withGlyphs(message)
-    // Une anecdote de deux lignes mérite plus que 3,4 s ; un « De retour » non.
     const seconds = Math.min(9, 2.6 + message.length * 0.045)
     node.style.animationDuration = `${seconds}s`
     node.dataset.msg = message
@@ -793,7 +717,6 @@ export class Hud {
     }, seconds * 1000 + 200)
   }
 
-  /** L'heure du monde, en tour de cadran (0 = lever, 0,5 = coucher). */
   private dayU(): number {
     return dayPhaseAt(this.game.save.totalPlaySeconds)
   }
@@ -801,7 +724,6 @@ export class Hud {
   private dayDialHint(): string {
     const u = this.dayU()
     const dur = (s: number): string => (s < 75 ? `${Math.max(5, Math.round(s / 5) * 5)} s` : `${Math.round(s / 60)} min`)
-    // La nuit du cadran est celle du jeu (clock.ts) : soleil sous l'horizon.
     if (!isNightHour(u)) {
       const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, DUSK_HOUR)
       return u < 0.06
@@ -809,8 +731,6 @@ export class Hud {
         : `Le soleil suit sa course — la nuit tombe dans ${dur(s)}`
     }
     const s = secondsUntilDayHour(this.game.save.totalPlaySeconds, DAWN_HOUR)
-    // Tant que la veillée dure, on le dit ; ensuite la tribu dort, à toutes les
-    // époques — aucun savoir n'abolit le cœur de la nuit.
     const veille = !this.game.sleepTime
       ? this.game.knows('electricity')
         ? 'Sous le lampadaire, la tribu veille encore'
@@ -824,11 +744,6 @@ export class Hud {
     return `${veille}${mer} — le jour se lève dans ${dur(s)}`
   }
 
-  /** Le cadran de l'ANNÉE : quatre arcs, une saison chacun, et le repère qui
-   *  en fait le tour en douze jours de jeu. Le cadran du jour disait l'heure ;
-   *  rien ne disait la saison, alors qu'elle pèse sur la récolte — et que
-   *  l'île change de couleur sous les yeux du joueur sans qu'il sache
-   *  pourquoi. */
   private lastSeasonKey = ''
   private updateSeasonDial(): void {
     const yearSeconds = DAY_SECONDS * SEASON_DAYS * 4
@@ -842,16 +757,12 @@ export class Hud {
       arc.setAttribute('opacity', i === id ? '1' : '0.28')
       arc.setAttribute('stroke-width', i === id ? '3.4' : '2.2')
     }
-    // Le repère part du haut et tourne dans le sens des aiguilles : l'arc du
-    // printemps commence en haut, comme l'année.
     const a = u * Math.PI * 2 - Math.PI / 2
     const mark = el('season-mark')
     mark.setAttribute('cx', (16 + Math.cos(a) * 12).toFixed(1))
     mark.setAttribute('cy', (16 + Math.sin(a) * 12).toFixed(1))
   }
 
-  /** Ce que dit le cadran de l'année quand on le touche : la saison, ce
-   *  qu'elle fait à la récolte, et quand elle passe la main. */
   private seasonHint(): string {
     const s = this.game.season
     const seasonSeconds = DAY_SECONDS * SEASON_DAYS
@@ -886,7 +797,6 @@ export class Hud {
     if (day) {
       const p = Math.min(1, u / 0.5)
       place(sun, p)
-      // Deux teintes, façon toon : doré en journée, cuivré aux heures basses.
       const low = Math.sin(p * Math.PI) < 0.35
       sun.querySelector('circle')?.setAttribute('fill', low ? '#ff9a4e' : '#ffd76a')
     } else {
@@ -894,13 +804,10 @@ export class Hud {
     }
   }
 
-  /** Bandeau replié : montrer toutes les ressources, ou l'essentiel du moment. */
   private allRes = false
   private lastEssKey = ''
   private essCache = new Set<ResourceId>()
 
-  /** Les ressources qui comptent MAINTENANT : le savoir (paie tout), le focus
-   *  du colon, et les matériaux des découvertes à portée dans l'époque. */
   private essential(): Set<ResourceId> {
     const g = this.game
     const key = `${g.age.id}|${g.save.focus}|${g.save.techs.length}`
@@ -932,8 +839,6 @@ export class Hud {
       if (!visible) continue
       const shown = fmt(amount)
       if (node.val.textContent !== shown) node.val.textContent = shown
-      // Un débit par ressource, c'est huit chiffres qui bougent : on ne montre
-      // que celui sur lequel le colon travaille, plus le savoir qui coule seul.
       const lead = id === g.save.focus
       node.root.classList.toggle('lead', lead || id === 'insight')
       const rate = g.rates[id]
@@ -983,8 +888,6 @@ export class Hud {
     const label = el('expedition-label')
     if (exp) {
       expBtn.disabled = true
-      // Voyage terminé mais la passe est noire : la barque attend l'aube au
-      // large. Le compte est bloqué à zéro par la sim, il ne dirait rien.
       const text =
         exp.remaining <= 0 && !g.seaOpen ? "Au large… attend l'aube" : `En route… ${fmtDuration(exp.remaining)}`
       if (this.lastExpLabel !== text) {
@@ -994,8 +897,6 @@ export class Hud {
       el('expedition-fill').style.transform = `scaleX(${1 - exp.remaining / exp.total})`
     } else {
       expBtn.disabled = !g.canExpedition()
-      // Le SVG coûte un reparse : on ne le réécrit qu'au changement d'état
-      // (le coût varie avec l'âge, il fait donc partie de la clé).
       const key = g.seaOpen ? `idle-${g.expeditionCost()}` : 'idle-dark'
       if (this.lastExpLabel !== key) {
         label.innerHTML = g.seaOpen

@@ -1,7 +1,3 @@
-// La rame du chemin de fer (v3.57.0) : elle s'allonge avec les âges et charge
-// les ressources que la tribu produit le plus. Demande du joueur : « Train
-// should have more wagon with progress or resources ».
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -36,8 +32,6 @@ async function load(name) {
   return geo
 }
 
-// ── La règle de composition ─────────────────────────────────────────────────
-
 test('le chemin de fer est bien un savoir de l’âge 7, et le dernier âge est le 10', () => {
   assert.equal(TECHS.find((t) => t.id === 'railway').age, C.TRAIN_AGE)
   assert.equal(AGES.length - 1, 10)
@@ -54,7 +48,6 @@ test('âge 7 : loco + 2 wagons ; un wagon de plus par âge ; voiture dès l’â
   assert.deepEqual(C.consistFor(8, rank), ['loco', 'coach', 'iron', 'wood', 'stone'])
   assert.deepEqual(C.consistFor(9, rank), ['loco', 'coach', 'iron', 'wood', 'stone', 'copper'])
   assert.deepEqual(C.consistFor(10, rank), ['loco', 'coach', 'iron', 'wood', 'stone', 'copper', 'food'])
-  // Longueurs annoncées par l'artiste : 5,11 à l'âge 7, 10,85 à l'âge 10.
   assert.ok(Math.abs(C.consistLength(C.consistFor(7, rank)) - 5.11) < 1e-9)
   assert.ok(Math.abs(C.consistLength(C.consistFor(10, rank)) - 10.85) < 1e-9)
 })
@@ -63,7 +56,6 @@ test('les wagons suivent la production, du plus produit au moins produit', () =>
   const rates = { food: 3, wood: 9, stone: 1, fiber: 0, clay: 2, copper: 0, iron: 5, insight: 99 }
   assert.deepEqual(C.rankCargo(rates), ['wood', 'iron', 'food', 'clay', 'stone'])
   assert.deepEqual(C.consistFor(9, C.rankCargo(rates)), ['loco', 'coach', 'wood', 'iron', 'food', 'clay'])
-  // Égalité : l'ordre du catalogue départage, la rame ne change pas au hasard.
   assert.deepEqual(C.rankCargo({ stone: 2, wood: 2 }), ['wood', 'stone'])
 })
 
@@ -77,8 +69,6 @@ test('une voie trop courte dételle par la queue, jamais la loco', () => {
   assert.deepEqual(C.consistFor(10, r, 6), ['loco', 'coach', 'wood'])
   assert.deepEqual(C.consistFor(10, r, 1), ['loco'])
 })
-
-// ── Les fichiers ────────────────────────────────────────────────────────────
 
 for (const [kind, model] of Object.entries(C.CAR_MODEL)) {
   test(`${model}.glb : attelages à ±longueur/2, roues sur le rail, fusionnable`, async () => {
@@ -95,9 +85,6 @@ for (const [kind, model] of Object.entries(C.CAR_MODEL)) {
   })
 }
 
-// ── La pose sur la voie ─────────────────────────────────────────────────────
-
-/** Une voie en S serrée (rayon ≈ 3 u), échantillonnée comme celle du jeu. */
 function sTrack() {
   const pts = []
   for (let i = 0; i <= 12; i++) pts.push({ x: 0, z: i * 1.6 })
@@ -112,7 +99,6 @@ function sTrack() {
   return { pts, cum }
 }
 
-/** Distance d'un point à la polyligne de la voie. */
 function offTrack(t, p) {
   let best = Infinity
   for (let i = 1; i < t.pts.length; i++) {
@@ -126,7 +112,6 @@ function offTrack(t, p) {
   return best
 }
 
-/** Les bouts réels d'un véhicule rigide posé (centre, cap, longueur). */
 function ends(c) {
   const h = C.CAR_LENGTH[c.kind] / 2
   return {
@@ -150,7 +135,6 @@ test('en courbe serrée, les attelages se touchent et chaque véhicule garde sa 
         gap = Math.max(gap, Math.hypot(prev.b.x - e.f.x, prev.b.z - e.f.z))
       }
     }
-    // Dans l'autre sens (la rame refoulée au retour), même exigence.
     const back = C.layConsist(t, t.cum.at(-1) - s, -1, cars)
     for (let i = 1; i < back.length; i++) {
       const a = ends(back[i - 1])
@@ -175,9 +159,6 @@ test('chordFrom tombe à la bonne distance, y compris au-delà du bout de voie',
   }
 })
 
-// ── Dans le village : la boucle (incrément 2) ───────────────────────────────
-
-/** Les bâtiments des savoirs d'un âge et des précédents : un bourg qui existe. */
 const atAge = (age) =>
   new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
 const K = C.TRAIN_SCALE
@@ -195,8 +176,6 @@ function village(seed, age, rates) {
   return v
 }
 
-/** Un tour complet et l'arrêt en gare, image par image (60 i/s), et un peu
- *  plus : la rame repart de la gare et y revient. */
 function* lap(v) {
   const period = v.beltLength / 2.2 + 5 + 12
   for (let t = 0; t < period; t += 1 / 60) {
@@ -205,7 +184,6 @@ function* lap(v) {
   }
 }
 
-/** Les bouts réels d'un véhicule posé (centre, cap, longueur posée). */
 function endsOf(c) {
   const h = c.len / 2
   return {
@@ -221,7 +199,6 @@ test('la voie est une boucle fermée, sans bout ni heurtoir', () => {
   const a = t.pts[0]
   const b = t.pts.at(-1)
   assert.ok(Math.hypot(a.x - b.x, a.z - b.z) < 1e-9)
-  // L'abscisse se lit modulo la longueur, et la pose ne connaît plus de bout.
   const L = t.cum.at(-1)
   const p = C.pointAt(t, 3.3)
   const q = C.pointAt(t, 3.3 + 2 * L)
@@ -261,13 +238,9 @@ test('dans le jeu, sur un tour complet : attelages, essieux, cap, roues, arrêt 
             const prev = endsOf(poses[i - 1])
             gap = Math.max(gap, Math.hypot(prev.b.x - e.f.x, prev.b.z - e.f.z))
           }
-          // Les essieux extrêmes (loco ±0,6/−0,7, voiture ±0,52, wagon ±0,4
-          // au modèle), à l'échelle de la rame : à combien de l'axe de la
-          // voie ? Le rail fait 8 cm, la roue 6.
           const ax = c.kind === 'loco' ? [0.6, -0.7] : c.kind === 'coach' ? [0.52, -0.52] : [0.4, -0.4]
           for (const k of ax)
             off = Math.max(off, offTrack(t, { x: c.x + Math.sin(c.yaw) * k * K, z: c.z + Math.cos(c.yaw) * k * K }))
-          // Le cap comparé à la tangente de la voie au centre du véhicule.
           const sc = (c.sFront + c.sBack) / 2
           const a = C.pointAt(t, sc - 0.05)
           const b = C.pointAt(t, sc + 0.05)
@@ -275,8 +248,6 @@ test('dans le jeu, sur un tour complet : attelages, essieux, cap, roues, arrêt 
         }
         const y = v.train.geometry.attributes.position.array
         for (let i = 1; i < y.length; i += 3 * 37) yMin = Math.min(yMin, y[i])
-        // Arrêt = la tête n'avance plus d'une image à l'autre. Il n'a lieu
-        // qu'à l'abscisse de la gare.
         const head = poses[0].sFront
         if (prevHead !== null) {
           const d = (((head - prevHead) % L) + L) % L
@@ -323,7 +294,6 @@ test('la composition ne change qu’en gare, et seulement les cargaisons', async
   let before = v.trainCars.join()
   for (const _ of lap(v)) {
     if (v.trainCars.join() !== before) {
-      // Changement : la rame est à l'arrêt en gare (sa tête au point d'arrêt).
       changedAt = v.trainHead
       before = v.trainCars.join()
     }

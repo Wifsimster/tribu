@@ -1,8 +1,3 @@
-// La ceinture (incrément 2, « la boucle ferrée ») : le tracé qui fait le tour
-// de l'île, sentier côtier puis voie ferrée à l'âge 7. Critères de la
-// conception du 2026-10-13 : rayon de courbure ≥ 9 u partout, garde axe-eau
-// ≥ 1,2 u avant croissance et ≥ 0,9 u après, et la ceinture ne recule jamais.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -12,17 +7,14 @@ const B = await import('../src/render/belt.ts')
 const SEEDS = [1_337_042, 7, 42, 99, 2024, 5, 11, 123, 777, 31_337]
 const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
 
-/** Le relevé des cellules seulement : la ceinture ne lit que `isLand`. */
 const cells = (seed, age, land) => new Island(seed, age, land, islandGrowth(age), true)
 
 test('l’île grandit d’un seul palier, à l’âge du chemin de fer', () => {
   assert.equal(RAIL_AGE, 7)
   for (let age = 0; age <= 10; age++) assert.equal(islandGrowth(age), age >= 7 ? GROWN_GROWTH : BASE_GROWTH)
-  // ≈ +20 % de rayon (décision du 2026-10-13 : 1,45 → ~1,75).
   assert.ok(Math.abs(GROWN_GROWTH / BASE_GROWTH - 1.2) < 0.01)
   const small = cells(42, 6, [])
   const big = cells(42, 7, [])
-  // Toute la terre d'avant reste de la terre : la mer recule, elle ne mord pas.
   for (const c of small.cells) assert.ok(big.isLand(c.x, c.z))
   assert.ok(big.cells.length > small.cells.length * 1.3)
 })
@@ -37,7 +29,6 @@ test('growBelt : la ceinture ne recule jamais, et un tracé égal ne la fait pas
   const prev = Array.from({ length: 72 }, (_, j) => 14 + (j % 7) * 0.1)
   const lower = prev.map((v) => v - 0.5)
   assert.deepEqual(B.growBelt(prev, lower), prev)
-  // Chargements successifs : le même tracé, mille fois, ne bouge pas d'un iota.
   let b = prev
   for (let k = 0; k < 1000; k++) b = B.growBelt(b, prev)
   assert.deepEqual(b, prev)
@@ -59,8 +50,6 @@ test('dix graines, de l’âge 4 à l’âge 7, douze parcelles : courbure, gard
   for (const seed of SEEDS) {
     const land = []
     let belt = null
-    // Six terres sur l'île de base, la mer qui recule à l'âge 7, six terres
-    // encore : le parcours d'une partie.
     for (let k = 0; k <= 12; k++) {
       const age = k < 6 ? 4 : 7
       const isl = cells(seed, age, [...land])
@@ -73,12 +62,8 @@ test('dix graines, de l’âge 4 à l’âge 7, douze parcelles : courbure, gard
       const guard = B.beltGuard(isLand, path.pts)
       report.push({ seed, k, age, R, guard, L: path.cum.at(-1) })
       assert.ok(R >= 9, `graine ${seed}, ${k} parcelles : rayon de courbure ${R.toFixed(2)} u`)
-      // Avant toute croissance (île de base sans parcelle, île agrandie au
-      // palier) : une case au tracé, 1,2 u exigé. Après des terres : 0,9.
       const fresh = k === 0 || k === 6
       assert.ok(guard >= (fresh ? 1.2 : 0.9) - 1e-9, `graine ${seed}, ${k} parcelles : garde ${guard.toFixed(2)} u`)
-      // 12 u étaient visés sur l'île agrandie ; le tracé retenu (σ 28°)
-      // tient 11 u au moins, pour déplacer moins de bâtiments (belt.ts).
       if (age >= RAIL_AGE) assert.ok(R >= 11, `graine ${seed}, ${k} parcelles : ${R.toFixed(2)} u sur l’île agrandie`)
       if (k < 12) {
         const at = isl.defaultAnchor()

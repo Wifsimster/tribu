@@ -1,8 +1,3 @@
-// Les outils de sons (fetch-cc-sfx, fetch-sfx, gen-sfx) ne traitent qu'une
-// partie des fichiers à chaque passe. Ils réécrivaient CREDITS.md avec la
-// seule passe en cours : 14 attributions sur 15 avaient disparu. La fusion
-// remplace la ligne de chaque son traité et garde tout le reste.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 

@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// La console du jeu, propre : aucune erreur et aucun avertissement hors de la
-// liste blanche (`CONSOLE_ALLOW`, tools/headless.mjs). Deux parcours, une
-// partie neuve (écran d'accueil compris) et l'île figée de l'âge 10
-// (tools/saves/age10.json), qui charge modèles, rame, faune et Merveille.
-//
-//   corepack pnpm build && corepack pnpm check:console
-//   … check:console -- https://tribu.battistella.ovh/   (une autre adresse)
 
 import { readFile } from 'node:fs/promises'
 import { blockAudience, launch, serveDist, watchConsole } from './headless.mjs'
@@ -35,8 +28,6 @@ try {
     const watch = watchConsole(page)
     await page.goto(`${base}${run.query}`, { waitUntil: 'domcontentloaded', timeout: 120000 })
     await page.waitForFunction(() => window.__tribu?.ready === true, null, { timeout: 120000 })
-    // Les modèles et les premiers rendus d'ombre : c'est au premier rendu que
-    // three écrit ses avertissements de dépréciation.
     await page.waitForTimeout(8000)
     const r = watch.report()
     unexpected += r.unexpected.length

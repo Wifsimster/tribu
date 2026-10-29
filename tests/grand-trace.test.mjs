@@ -1,9 +1,3 @@
-// Le grand tracé (incrément 2) : une sauvegarde d'avant la ceinture (plan
-// v3) passe à la v4 en reposant ailleurs les seuls bâtiments qui sont sur le
-// tracé de la voie. Leçons du correctif B refusé (re-QA PR #14) : aucun
-// bâtiment perdu, chargements successifs stables, voie gardée dans la
-// sauvegarde. Et la route du ponton coupe la voie une fois, une seule.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -22,8 +16,6 @@ const atAge = (age) =>
   new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
 const tools = (age) => TOOLS.filter((t) => t.age <= age).map((t) => t.id)
 
-/** Un plan v3, posé comme le posait la 3.61 : l'île de base (1,45), sans
- *  ceinture, la voie en corde par le foyer. */
 function v3(seed, age) {
   const island = new Island(seed, age, [], BASE_GROWTH)
   const v = new Village(island, age, age >= 8, false, { legacy: true })
@@ -37,7 +29,6 @@ function v3(seed, age) {
   }
 }
 
-/** Un chargement, comme `buildWorld` (main.ts). */
 function load(save, ageChanged = false) {
   const r = raiseWorld(save, {
     electric: save.age >= 8, yule: false, rates: { wood: 2, stone: 1 }, ageChanged,
@@ -65,13 +56,9 @@ test('plan v3 à l’âge 7 et 10 : peu de bâtiments reposés, aucun perdu, sta
       assert.ok(l1.r.grand, `${label} : le grand tracé a sa carte`)
       const before = at(s0.layout)
       const after = at(l1.save.layout)
-      // Aucun bâtiment perdu.
       for (const id of before.keys()) assert.ok(after.has(id), `${label} : ${id} a disparu`)
-      // Seuls les délogés ont bougé, et chacun est compté.
       const changed = [...before.keys()].filter((id) => before.get(id) !== after.get(id))
       assert.deepEqual(changed.sort(), l1.v.moved.map((m) => m.id).sort(), label)
-      // Ce qui a été reposé tient la règle : hors de la voie, et le bourg
-      // ne se touche nulle part.
       for (const m of l1.v.moved) {
         const r = l1.v.reach(m.id)
         assert.ok(l1.v.beltDist(m.to.x, m.to.z) >= r + Village.BELT_CLEAR - 1e-6, `${label} : ${m.id} reposé sur la voie`)
@@ -84,7 +71,6 @@ test('plan v3 à l’âge 7 et 10 : peu de bâtiments reposés, aucun perdu, sta
         }
       total += s0.layout.filter((p) => p.id !== 'lighthouse').length
       moved += l1.v.moved.filter((m) => m.id !== 'lighthouse').length
-      // Deux chargements de plus : plus rien ne bouge, ni le plan, ni la voie.
       const l2 = load(l1.save)
       const l3 = load(l2.save)
       assert.equal(l2.r.migrate, false, `${label} : nouveau délogement au 2e chargement`)
@@ -92,7 +78,6 @@ test('plan v3 à l’âge 7 et 10 : peu de bâtiments reposés, aucun perdu, sta
       assert.deepEqual(l3.save, l1.save, `${label} : le 3e chargement change la sauvegarde`)
     }
   }
-  // La conception : ~1 bâtiment sur 6 (16 %), phare à part ; garde-fou 20 %.
   assert.ok(moved / total <= 0.2, `${moved} bâtiments reposés sur ${total} (${((100 * moved) / total).toFixed(1)} %)`)
 })
 
@@ -102,7 +87,6 @@ test('plan v3 avant l’âge 7 : rien ne bouge, le grand tracé attend l’âge 
   assert.equal(l1.r.layoutV, 3)
   assert.equal(l1.v.moved.length, 0)
   assert.deepEqual(at(l1.save.layout), at(s0.layout))
-  // Les rues d'avant sont gardées : à l'âge 7, ce sont elles qui restent.
   assert.ok(l1.save.streets.length === 3)
   const l7 = load({ ...l1.save, age: 7 }, true)
   assert.equal(l7.r.layoutV, 4)
@@ -121,8 +105,6 @@ test('une partie neuve : à l’âge 7, la voie trouve la place libre', () => {
       n = l.save.layout.length
       save = l.save
     }
-    // Au plus un gros ouvrage de l'île de base posé, faute de mieux, sur le
-    // tracé de la future voie.
     assert.ok(movedAt7 <= 2, `graine ${seed} : ${movedAt7} bâtiments reposés à l’âge 7 sur ${n}`)
   }
 })
@@ -136,7 +118,6 @@ test('la route du ponton coupe la voie une fois, une seule ; la gare est côté 
       if (age < 7) continue
       const g = v.stationPoint
       assert.ok(g, `graine ${seed}, âge ${age} : pas de gare`)
-      // Quai côté intérieur (dans la ceinture), à côté de la voie.
       assert.ok(insideBelt(v.belt, g.x, g.z), `graine ${seed}, âge ${age} : quai côté mer`)
       const d = v.beltDist(g.x, g.z)
       assert.ok(d > 1 && d < 2.5, `graine ${seed}, âge ${age} : quai à ${d.toFixed(2)} u de l’axe`)

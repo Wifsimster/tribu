@@ -1,8 +1,3 @@
-// Les véhicules à la taille du colon, et nulle part où ils ne passent pas.
-// Demande du joueur (2026-10-20) : « que les véhicules aient tous des tailles
-// réelles ». Étalon : le colon debout, 1,70 m. Le train n'est pas ici (il se
-// refait avec la boucle ferrée).
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -37,7 +32,6 @@ for (const id of IDS) {
   assert.ok(adoptModel(id, geo), `${id}.glb adopté`)
 }
 
-/** Boîte monde de ce qui est visible sous `root`. */
 function worldBox(root) {
   root.updateWorldMatrix(true, true)
   const box = new Box3()
@@ -47,10 +41,8 @@ function worldBox(root) {
   return box
 }
 const size = (b) => b.getSize(new Vector3())
-/** La plus grande cote en plan (longueur, ou envergure). */
 const span = (b) => Math.max(size(b).x, size(b).z)
 
-/** La cible appliquée, en mètres : le facteur du code sur la taille 3.61.0. */
 const applied = (id) => (FILE_SIZE[id] * VEHICLE_SCALE[id]) / UNITS_PER_METRE
 
 function seeded(seed) {
@@ -68,8 +60,6 @@ const random = Math.random
 const builtFor = (age) =>
   livingBuildings(new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building))), age)
 
-/** Le village monté comme main.ts : plan, Merveille, ateliers, musée, faune,
- *  cadastre, puis l'auto calée sur le cadastre. */
 function town(seed, age) {
   seeded(seed * 7 + age)
   const island = new Island(seed, age, [])
@@ -82,17 +72,12 @@ function town(seed, age) {
   village.setTools(TOOLS.filter((t) => t.age <= age).map((t) => t.id))
   fauna.setKnown(true, true, true, true)
   const ground = new Ground(island, [village, fauna])
-  // Comme la boucle du jeu : l'auto se cale, le décor de la chaussée s'écarte,
-  // le cadastre se refait à l'image suivante et l'auto se recale.
   village.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
   for (let i = 0; i < 3 && ground.refresh(); i++) village.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
   Math.random = random
   return { island, village, fauna, ground }
 }
 
-/** Les pleins posés, triangle par triangle en plan, avec leur hauteur haute.
- *  Une dalle au ras du sol (route, voie, tarmac et ses marques peintes :
- *  moins de 0,2 u) se roule. Rend la distance en plan aux pleins plus hauts que `y`. */
 function solids(sources) {
   const tris = []
   for (const s of sources)
@@ -116,8 +101,6 @@ function solids(sources) {
     const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L))
     return Math.hypot(px - ax - u * dx, pz - az - u * dz)
   }
-  // Une grille d'un mètre : chaque case connaît les triangles qui l'approchent
-  // à moins de 3 u (la borne de la distance rendue).
   const C = 1, R = 3
   const grid = new Map()
   for (const t of tris)
@@ -144,8 +127,6 @@ function solids(sources) {
   }
 }
 
-/** Les sapins encore debout : axe, rayon de cime et sommet, mesurés sur
- *  l'instance. */
 function trees(island) {
   const out = []
   const m = new Matrix4(), p = new Vector3(), q = new Quaternion(), s = new Vector3()
@@ -164,8 +145,6 @@ function trees(island) {
   return out
 }
 
-/** Des points sur la surface du véhicule, en monde : les sommets et le milieu
- *  de chaque triangle — une aile fine n'a que ses coins comme sommets. */
 function samples(root) {
   root.updateWorldMatrix(true, true)
   const out = []
@@ -183,7 +162,6 @@ function samples(root) {
   return out
 }
 
-/** La coque en plan, quadrillée tous les 0,25 u (repère monde). */
 function hullGrid(root, margin) {
   const b = worldBox(root)
   const out = []
@@ -192,7 +170,6 @@ function hullGrid(root, margin) {
   return out
 }
 
-/** Le colon : la hauteur du gabarit debout, pieds au sommet du crâne. */
 function settlerHeight() {
   const s = new Settler(new Island(42, 0, []))
   return size(worldBox(s.rig)).y
@@ -223,10 +200,6 @@ test('chaque véhicule est, à 10 % près, à la taille appliquée par rapport a
   const { village } = town(42, 8)
   village.car.rotation.set(0, 0, 0)
   got.car = span(worldBox(village.car))
-  // Graine 42, âge 10 : l'aérodrome a la place, l'avion y est à sa taille
-  // pleine. (Graine 555 l'était avant la boucle ferrée : sur l'île agrandie,
-  // l'avion ne s'y gare plus sur la voie, et il y est à ×2 — voir le test de
-  // l'avion.)
   const roomy = town(42, 10).village
   assert.equal(roomy.planeK, VEHICLE_SCALE.plane)
   roomy.plane.rotation.set(0, 0, 0)
@@ -239,7 +212,6 @@ test('chaque véhicule est, à 10 % près, à la taille appliquée par rapport a
 })
 
 test('le réel partout où il tient ; sinon au plafond, jamais plus grand que le réel', () => {
-  // Les quatre plafonnés et pourquoi : voir VEHICLE_SCALE.
   const CAPPED = new Set(['caravel', 'steamer', 'merchant', 'plane'])
   for (const id of IDS) {
     const real = REAL_SIZE_M[id]
@@ -248,9 +220,7 @@ test('le réel partout où il tient ; sinon au plafond, jamais plus grand que le
     else assert.ok(Math.abs(r - 1) <= 0.1, `${id} : ${(r * 100).toFixed(0)} % du réel`)
     assert.ok(r <= 1.1, `${id} plus grand que nature`)
   }
-  // Le plafond de lisibilité des navires : 12,5 u de long (≈ 9,7 m).
   for (const id of ['caravel', 'steamer', 'merchant']) assert.ok(FILE_SIZE[id] * VEHICLE_SCALE[id] <= 12.5 + 1e-6, id)
-  // Et la flotte grandit toujours avec les savoirs, sauf le hors-bord.
   const len = BOAT_MODELS.map((id) => FILE_SIZE[id] * VEHICLE_SCALE[id])
   for (let t = 1; t < 4; t++) assert.ok(len[t] > len[t - 1], `${BOAT_MODELS[t]} plus court que ${BOAT_MODELS[t - 1]}`)
 })
@@ -264,9 +234,7 @@ test('le passager reste assis sur le pont, à la taille du colon', () => {
     const rider = worldBox(boat.rider)
     const c = rider.getCenter(new Vector3())
     assert.ok(c.x > deck.min.x && c.x < deck.max.x && Math.abs(c.z) < deck.max.z, `${id} : passager hors de la coque`)
-    // Le buste et la tête : 0,67 u ×2,4, contre 1,63 u au colon debout.
     assert.ok(Math.abs(size(rider).y - 1.63) < 0.2, `${id} : passager de ${size(rider).y.toFixed(2)} u`)
-    // Assis : le bas du buste au-dessus de la quille, sous le haut de la coque.
     assert.ok(rider.min.y > deck.min.y && rider.min.y < deck.max.y, `${id} : assise à ${rider.min.y.toFixed(2)}`)
   })
 })
@@ -282,8 +250,6 @@ test('à quai, chaque palier de la barque flotte, poupe au bout du ponton, sans 
       boat.adopt(t)
       boat.update(0, 0)
       for (const p of hullGrid(boat.tiers[t], 0.3)) {
-        // La boîte d'une coque tournée déborde de la coque : on ne garde que
-        // ce qui est dans son emprise réelle (repère local).
         boat.group.updateWorldMatrix(true, false)
         const local = boat.group.worldToLocal(new Vector3(p.x, 0, p.z))
         const b = boat.tiers[t].geometry.boundingBox
@@ -308,7 +274,6 @@ test('la barque appareille là où sa coque entière flotte', () => {
       for (const out of [true, false]) {
         if (out) boat.launchOut(settler.shorePoint, isLand)
         else boat.sailIn(settler.shorePoint, isLand)
-        // Le point près de la plage : départ de l'aller, arrivée du retour.
         const k = boat.tiers[t].scale.x
         const b = boat.tiers[t].geometry.boundingBox
         const dir = new Vector3(settler.shorePoint.x, 0, settler.shorePoint.z).normalize()
@@ -323,8 +288,6 @@ test('la barque appareille là où sa coque entière flotte', () => {
 })
 
 test('la barque marchande mouille en eau libre, et sa route reste au large', () => {
-  // Graines 20, 41 et 777 : une langue de terre dans l'axe d'arrivée mordait
-  // la coque, à l'approche et à quai, tant que le mouillage était fixe.
   for (const [seed, age] of [...CASES, [20, 8], [41, 10], [777, 8]]) {
     const island = new Island(seed, age, [])
     const caravan = new Caravan()
@@ -356,10 +319,6 @@ test('la barque marchande mouille en eau libre, et sa route reste au large', () 
   }
 })
 
-/** Les bourgs de l'avion : les seize de la recette de la PR #26 (graines
- *  jamais vues au réglage), âges 8 à 10. Sur la tête 9c50a28, l'avion se
- *  disait « à l'aise » et touchait l'enclos (graines 2, 3) ou un bâtiment
- *  (graines 5, 10, 1). Graine 1 : l'aérodrome le plus serré. */
 const PLANE_CASES = [
   [1, 9], [2, 10], [3, 9], [5, 10], [10, 10], [11, 9], [123, 8], [777, 8],
   [31337, 10], [4242, 9], [900, 8], [65, 9], [8, 9], [314, 10], [2718, 8], [555, 10],
@@ -370,8 +329,6 @@ test('l’auto ne roule que là où sa caisse passe : ni bâtiment, ni réverbè
   for (const [seed, age] of CASES) {
     const w = town(seed, age)
     const v = w.village
-    // Elle roule sur une portion mesurée, ou elle est garée sur une place
-    // mesurée près du garage : jamais elle ne disparaît.
     assert.ok(v.carSpan || v.carPark, `graine ${seed} âge ${age} : ni route ni place pour l'auto`)
     if (v.carSpan) {
       rolling++
@@ -394,10 +351,6 @@ test('l’auto ne roule que là où sa caisse passe : ni bâtiment, ni réverbè
     }
     assert.ok(worst >= 0.1, `graine ${seed} âge ${age} : l'auto à ${worst.toFixed(2)} u d'un bâtiment`)
   }
-  // Elle roule vraiment dans plus de la moitié des bourgs. Compté sur les
-  // vingt et un bourgs (ceux-ci et ceux de l'avion) : la boucle ferrée coupe
-  // la route au passage à niveau, et cinq bourgs ne disent plus grand-chose
-  // (2 sur 5 ici). Mesuré : 8 sur 21 sur la 3.67.0, 12 sur 21 avec la boucle.
   for (const [seed, age] of PLANE_CASES) if (town(seed, age).village.carSpan) rolling++
   const n = CASES.length + PLANE_CASES.length
   assert.ok(rolling >= 11, `l'auto ne roule que dans ${rolling} bourgs sur ${n}`)
@@ -410,15 +363,12 @@ test('l’avion, au repos, au roulage, au décollage et au retour : « clear » 
     const w = town(seed, age)
     const v = w.village
     assert.ok(v.plane, 'un avion')
-    // Tous les pleins posés : ceux du village ET ceux de la faune (palissade
-    // de l'enclos, poulailler).
     const sd = solids([v, w.fauna])
     const tr = trees(w.island)
     let worst = Infinity
     let worstTree = Infinity
     const probe = () => {
       for (const p of samples(v.plane)) {
-        // En plan, la distance à tout ce qui monte plus haut que ce point.
         worst = Math.min(worst, sd(p.x, p.z, p.y))
         for (const t of tr) if (p.y < t.top + 0.5) worstTree = Math.min(worstTree, Math.hypot(p.x - t.x, p.z - t.z) - t.r)
       }
@@ -429,16 +379,12 @@ test('l’avion, au repos, au roulage, au décollage et au retour : « clear » 
     for (const dir of [1, -1]) {
       if (dir === 1) v.planeDepart()
       else v.planeArrive()
-      // 200 poses par vol : au retour, le demi-tour sur place (π en 0,1 du
-      // vol) avance de 9° par pose. La rame roule pendant ce temps : l'avion
-      // l'attend avant de passer au ras de la voie.
       for (let i = 0; i < 200 * 50 && v.flight >= 0; i++) {
         v.tickTrain(5.5 / 200)
         v.tickPlane(5.5 / 200)
         if (!v.plane.visible) continue
         if (v.plane.position.y - GROUND_Y > Village.PLANE_LOW + 2) continue
         probe()
-        // Sous le toit de la loco, jamais dans la caisse d'un véhicule de la rame.
         for (const p of samples(v.plane)) {
           if (p.y > GROUND_Y + 0.215 + 1.45) continue
           for (const c of v.trainPoses) {
@@ -453,23 +399,16 @@ test('l’avion, au repos, au roulage, au décollage et au retour : « clear » 
       assert.ok(v.flight < 0, `graine ${seed} âge ${age} : le vol ne finit pas`)
     }
     assert.equal(onTrain, 0, `graine ${seed} âge ${age} : l'avion traverse la rame`)
-    // Garé, l'avion est hors du gabarit de la rame (0,72 u de l'axe).
     v.planeRest()
     for (const p of samples(v.plane))
       if (p.y < GROUND_Y + 0.215 + 1.45) assert.ok(v.beltDist(p.x, p.z) >= 0.72, `graine ${seed} âge ${age} : l'avion garé sur la voie`)
     if (v.planeFit === 'clear') assert.ok(worst >= 0.5, `graine ${seed} âge ${age} : « clear », et l'avion à ${worst.toFixed(2)} u d'un plein`)
     else {
-      // Rien ne laisse la marge : il reprend sa taille 3.62.0, le jeu le sait
-      // (« tight »), et il ne touche toujours rien.
       assert.equal(v.planeK, 1, `graine ${seed} : serré, l'avion devait reprendre sa taille 3.62.0`)
       assert.ok(worst > 0, `graine ${seed} âge ${age} : serré, l'avion dans un plein`)
     }
-    // La place que le jeu a mesurée sur le vol n'est pas plus belle que la vraie.
-    // (La mesure du test s'arrête à 3 u : au-delà, rien ne gêne.)
     assert.ok(!(Math.min(v.planeClearance, 3) > worst + 0.05), `graine ${seed} : le jeu voit ${v.planeClearance?.toFixed(2)} u, il y en a ${worst.toFixed(2)}`)
     assert.ok(worstTree >= 0.5, `graine ${seed} âge ${age} : l'avion à ${worstTree.toFixed(2)} u d'un sapin`)
-    // Au repos, les roues sur l'aire, pas dessous, et le fuselage sur la
-    // terre : avancé vers le large sans ce contrôle, il se garait sur l'eau.
     v.planeRest()
     const b = worldBox(v.plane)
     assert.ok(Math.abs(b.min.y - (GROUND_Y + 0.06)) < 0.08, `roues à ${b.min.y.toFixed(2)}`)

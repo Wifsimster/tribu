@@ -1,21 +1,3 @@
-# Export des clips et des outils du colon vers le jeu.
-#
-# settler-clips.glb : les nœuds body head armL armR legL legR toolR toolL prop
-#   cast, sans maillage, dans la hiérarchie DU JEU (membres à plat sous le
-#   rig, outils dans la main, accessoire dans le torse), translation = pivot
-#   de settler-rig.json. Une animation glTF par clip : translation et
-#   rotation de chaque nœud, échantillonnées à 30 i/s sur ce que Blender
-#   évalue, puis décimées (LINEAR, 0,002 rad / 0,0005 u d'erreur au plus).
-#   Restent toujours en clé : les marqueurs et les 12 instants de contrôle.
-#   extras : tool, carry, loops, events [{name, t}], et `check` — les
-#   positions de la main droite, du bout d'outil et des deux pieds, calculées
-#   par Blender sur ses propres os, en espace du colon (rig × échelle) : la
-#   référence du test de parité du jeu (tests/settler-clip-parity.test.mjs).
-#
-# settler-tools.glb : un nœud par outil ou accessoire, origine = point de
-#   prise, POSITION/NORMAL/COLOR_0 float32, indices uint16 ; extras : node
-#   (toolR, toolL), tip (bout de l'outil), edge (couleur du tranchant).
-
 import json
 import math
 
@@ -107,7 +89,6 @@ def sample_clip(scene, arm, act, rig, tips):
             tip = b2g(arm_eval.pose.bones['toolR'].matrix @ g2b(tip_local)) * scale
             probes.append([r6(f / FPS)] + [round(v, 3) for v in tip])
         if f in checks:
-            # Référence indépendante de l'export : les os de Blender eux-mêmes.
             row = {'t': r6(f / FPS)}
             for key, (bone, local) in pts.items():
                 p = arm_eval.pose.bones[bone].matrix @ g2b(local)
@@ -152,7 +133,7 @@ def clips_glb(rig, clips):
         for n in NODES:
             for path, keys in c['tracks'][n].items():
                 if path == 'translation' and all((p - Vector(rig['nodes'][n]['pivot'])).length < 1e-6 for _, p in keys):
-                    continue  # immobile au pivot : le nœud garde sa translation de repos
+                    continue
                 inp = g.add([k[0] for k in keys], FLOAT, 'SCALAR', minmax=True)
                 if path == 'rotation':
                     flat = [v for _, q in keys for v in (q.x, q.y, q.z, q.w)]

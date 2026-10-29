@@ -1,14 +1,3 @@
-/** Le voisinage : les silhouettes de l'horizon sont d'autres joueurs.
- *
- *  Règle absolue de ce module : le réseau est un ORNEMENT. Toute erreur est
- *  avalée en silence, tout appel a un délai de garde, et le jeu doit se jouer
- *  exactement pareil serveur éteint, avion activé, ou API inconnue. Rien ici
- *  ne doit jamais faire échouer une frame.
- *
- *  Ce qui sort d'ici : un pseudo et une poignée de compteurs. Jamais la
- *  sauvegarde, jamais l'île, jamais la Chronique. Et rien ne part tant que le
- *  joueur n'a pas rejoint le voisinage de lui-même. */
-
 export interface Neighbor {
   id: string
   name: string
@@ -20,7 +9,6 @@ export interface Neighbor {
   relics: number
   legacy: number
   seed: number
-  /** Horodatage serveur du dernier signe de vie. */
   seen: number
 }
 
@@ -42,7 +30,6 @@ const API = '/api'
 const CACHE_KEY = 'tribu.neighbors.v1'
 const TIMEOUT_MS = 6000
 
-/** Noms proposés au premier voisinage — le joueur peut en mettre un autre. */
 const DEFAULT_NAMES = [
   'Les Enfants du Feu',
   'Ceux du Rivage',
@@ -58,9 +45,6 @@ export function suggestName(seed: number): string {
   return DEFAULT_NAMES[Math.abs(seed) % DEFAULT_NAMES.length]!
 }
 
-/** Identité tirée une fois pour toutes, côté client : ni compte, ni mot de
- *  passe, ni adresse — un identifiant et un secret qui ne quittent la
- *  sauvegarde que pour prouver « c'est bien moi » au moment de publier. */
 export function makeIdentity(seed: number): { id: string; secret: string; name: string } {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
@@ -73,7 +57,6 @@ export function makeIdentity(seed: number): { id: string; secret: string; name: 
 }
 
 async function call(path: string, init?: RequestInit): Promise<unknown | null> {
-  // Hors ligne : inutile de réveiller la pile réseau pour rien.
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
@@ -88,8 +71,6 @@ async function call(path: string, init?: RequestInit): Promise<unknown | null> {
   }
 }
 
-/** Publie l'instantané public. Renvoie false si le serveur refuse (identité
- *  déjà prise par un autre appareil) ou s'il est injoignable. */
 export async function publish(snap: Snapshot): Promise<boolean> {
   const out = await call('/tribe', {
     method: 'POST',
@@ -99,7 +80,6 @@ export async function publish(snap: Snapshot): Promise<boolean> {
   return !!(out as { ok?: boolean } | null)?.ok
 }
 
-/** Quitter le voisinage : le serveur efface la ligne pour de bon. */
 export async function leave(id: string, secret: string): Promise<boolean> {
   const out = await call('/leave', {
     method: 'POST',
@@ -109,9 +89,6 @@ export async function leave(id: string, secret: string): Promise<boolean> {
   return !!(out as { ok?: boolean } | null)?.ok
 }
 
-/** Prévenir un voisin qu'on a accosté chez lui. Le texte du message est écrit
- *  par le SERVEUR : un client ne doit pas pouvoir dicter ce qui s'inscrira
- *  dans la Chronique de quelqu'un d'autre. */
 export async function announceVisit(id: string, secret: string, to: string): Promise<void> {
   await call('/visit', {
     method: 'POST',
@@ -132,7 +109,6 @@ export interface Offer {
   created: number
 }
 
-/** Déposer une offre au comptoir. La marchandise a déjà quitté le camp. */
 export async function postOffer(
   id: string,
   secret: string,
@@ -149,7 +125,6 @@ export async function postOffer(
   return { ok: !!out?.ok, error: out?.error }
 }
 
-/** Le comptoir : nos dépôts, et ceux des tribus d'une époque voisine. */
 export async function fetchOffers(
   id: string,
 ): Promise<{ mine: Offer[]; offers: Offer[] } | null> {
@@ -181,7 +156,6 @@ export async function withdrawOffer(id: string, secret: string, offer: number): 
   })
 }
 
-/** Offrir une relique à une autre tribu. */
 export async function sendGift(
   id: string,
   secret: string,
@@ -196,7 +170,6 @@ export async function sendGift(
   return !!(out as { ok?: boolean } | null)?.ok
 }
 
-/** Relève du courrier : lit ET vide la boîte côté serveur. */
 export async function drainInbox(
   id: string,
   secret: string,
@@ -211,8 +184,6 @@ export async function drainInbox(
     : []
 }
 
-/** Publication de dernière seconde, au moment où l'onglet part : `keepalive`
- *  laisse la requête vivre après la page. Aucune réponse n'est attendue. */
 export function publishBeacon(snap: Snapshot): void {
   try {
     const body = JSON.stringify(snap)
@@ -227,12 +198,9 @@ export function publishBeacon(snap: Snapshot): void {
       keepalive: true,
     }).catch(() => {})
   } catch {
-    /* le voisinage n'est jamais une urgence */
   }
 }
 
-/** Lit le voisinage. Se consulte SANS avoir rejoint : on peut regarder
- *  l'horizon sans y paraître soi-même. */
 export async function fetchNeighbors(selfId: string, n = 8): Promise<Neighbor[] | null> {
   const q = `/neighbors?id=${encodeURIComponent(selfId)}&n=${n}`
   const out = await call(q) as { neighbors?: Neighbor[] } | null
@@ -240,14 +208,10 @@ export async function fetchNeighbors(selfId: string, n = 8): Promise<Neighbor[] 
   return out.neighbors.filter((t) => t && typeof t.id === 'string' && typeof t.age === 'number')
 }
 
-/** Le dernier voisinage connu est gardé sur l'appareil : au prochain
- *  lancement, l'horizon est peuplé AVANT même la première réponse — et le
- *  reste entièrement hors ligne. */
 export function cacheNeighbors(list: Neighbor[]): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(list.slice(0, 12)))
   } catch {
-    /* stockage plein : l'horizon sera juste vide au prochain lancement */
   }
 }
 

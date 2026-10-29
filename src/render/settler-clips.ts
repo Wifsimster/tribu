@@ -4,18 +4,6 @@ import { readGlb } from './fauna-glb'
 import clipsUrl from '../assets/models/settler-clips.glb?url'
 import toolsUrl from '../assets/models/settler-tools.glb?url'
 
-// ── Les gestes du colon, animés dans Blender (v3.69.0) ─────────────────────
-// settler-clips.glb : les nœuds du squelette du colon (body head armL armR
-// legL legR toolR toolL prop cast, pivots de settler-rig.json) et une
-// animation glTF par geste — translation et rotation de chaque nœud, clés
-// LINEAR. settler-tools.glb : les outils et accessoires, au format compact de
-// la faune. Les deux viennent de tools/blender/ (build_settler.py), sont lus
-// à la main comme fauna-glb.ts — ni GLTFLoader, ni AnimationMixer : rien de
-// plus à télécharger, et les tests les lisent sous Node.
-//
-// Un clip se joue : intro, puis la boucle [loop_in, loop_out] `loops` fois,
-// puis la sortie. Ses événements (strike, fill) se déplient sur cette durée.
-
 export const NODES = ['body', 'head', 'armL', 'armR', 'legL', 'legR', 'toolR', 'toolL', 'prop', 'cast'] as const
 export type NodeName = (typeof NODES)[number]
 export const CLIP_NAMES = ['gather_hand', 'gather_sickle', 'gather_scythe'] as const
@@ -25,7 +13,6 @@ export interface ClipEvent {
   name: string
   t: number
 }
-/** Positions mesurées par Blender (espace du colon) : référence de parité. */
 export interface CheckRow {
   t: number
   hand: number[]
@@ -43,15 +30,12 @@ export interface Carry {
 }
 export interface Clip {
   name: string
-  /** Durée du clip dans Blender (intro + une boucle + sortie). */
   duration: number
   loopIn: number
   loopOut: number
   loops: number
-  /** Durée jouée : intro + `loops` boucles + sortie. */
   length: number
   events: ClipEvent[]
-  /** Les événements de jeu (ni loop_in ni loop_out) dépliés sur `length`. */
   timeline: ClipEvent[]
   tool: string
   carry: Carry
@@ -116,9 +100,6 @@ function reader(glb: ArrayBuffer) {
   return { json, read }
 }
 
-/** Les clips d'un settler-clips.glb. Lève une erreur sur tout ce qui sort du
- *  format (nœud manquant, interpolation autre que LINEAR, événements absents)
- *  plutôt que de jouer un geste de travers. */
 export function readClips(glb: ArrayBuffer): Map<string, Clip> {
   const { json, read } = reader(glb)
   const index = new Map<string, number>()
@@ -184,7 +165,6 @@ export function readClips(glb: ArrayBuffer): Map<string, Clip> {
   return out
 }
 
-/** Temps du clip pour `e` secondes de jeu depuis son début, boucles dépliées. */
 export function clipTime(clip: Clip, e: number): number {
   if (e <= clip.loopIn) return Math.max(0, e)
   const span = clip.loopOut - clip.loopIn
@@ -193,7 +173,6 @@ export function clipTime(clip: Clip, e: number): number {
   return Math.min(clip.duration, clip.loopOut + inside - span * clip.loops)
 }
 
-/** Les événements franchis entre e0 (exclu) et e1 (inclus), en temps de jeu. */
 export function eventsBetween(clip: Clip, e0: number, e1: number): ClipEvent[] {
   return clip.timeline.filter((ev) => ev.t > e0 && ev.t <= e1)
 }
@@ -215,9 +194,6 @@ function key(times: Float32Array, t: number): [number, number, number] {
   return [lo, hi, (t - times[lo]!) / (times[hi]! - times[lo]!)]
 }
 
-/** La pose du clip au temps `t` (temps du clip, pas de jeu) : interpolation
- *  linéaire des translations, slerp des rotations ; un nœud sans canal garde
- *  sa pose de repos. */
 export function sampleClip(clip: Clip, t: number, out: Pose): Pose {
   for (const n of NODES) {
     const tr = clip.translation[n]
@@ -241,14 +217,10 @@ export function sampleClip(clip: Clip, t: number, out: Pose): Pose {
   return out
 }
 
-// ── Les outils ─────────────────────────────────────────────────────────────
-
 export interface SettlerTool {
   geometry: BufferGeometry
   node: string
-  /** Bout de l'outil, repère du nœud : là où partent les brins coupés. */
   tip: Vector3 | null
-  /** Couleur (linéaire) des sommets du tranchant, reteintés selon l'âge. */
   edge: Color | null
 }
 
@@ -278,7 +250,6 @@ export function readTools(glb: ArrayBuffer): Map<string, SettlerTool> {
   return out
 }
 
-/** Une copie de l'outil, le tranchant reteinté (silex, cuivre, fer, acier). */
 export function tintedTool(tool: SettlerTool, edge: Color): BufferGeometry {
   const geo = tool.geometry.clone()
   if (!tool.edge) return geo
@@ -290,19 +261,11 @@ export function tintedTool(tool: SettlerTool, edge: Color): BufferGeometry {
   return geo
 }
 
-// ── Chargement ─────────────────────────────────────────────────────────────
-// Comme la faune : le colon naît avec ses gestes procéduraux, et passe aux
-// clips dès qu'ils sont là. Un fichier absent ou abîmé ne coûte qu'un
-// avertissement ; animateWork reste le repli.
-
 let clips: Map<string, Clip> | null = null
 let tools: Map<string, SettlerTool> | null = null
 const carries = new Map<string, BufferGeometry | null>()
 let loading: Promise<boolean> | null = null
 
-/** Range les deux fichiers déjà lus (le chargement passe par ici ; les tests,
- *  sous Node, lisent les fichiers eux-mêmes). Lève une erreur si l'un n'est
- *  pas lisible, ou s'il manque un clip ou un outil promis. */
 export function adoptSettlerModels(clipsGlb: ArrayBuffer, toolsGlb: ArrayBuffer): void {
   const c = readClips(clipsGlb)
   const t = readTools(toolsGlb)
@@ -318,7 +281,6 @@ export function adoptSettlerModels(clipsGlb: ArrayBuffer, toolsGlb: ArrayBuffer)
   carries.clear()
 }
 
-/** Pour les tests : revenir au colon sans modèles (le repli). */
 export function forgetSettlerModels(): void {
   clips = null
   tools = null
@@ -333,8 +295,6 @@ export function settlerTool(name: string): SettlerTool | null {
   return tools?.get(name) ?? null
 }
 
-/** Le panier ou la gerbe à un cran (0 à 3), soudé une fois puis partagé ;
- *  null pour la gerbe vide. */
 export function carryGeometry(kind: Carry['kind'], level: number): BufferGeometry | null {
   if (!tools) return null
   const key = kind + level
@@ -348,7 +308,6 @@ export function carryGeometry(kind: Carry['kind'], level: number): BufferGeometr
   return geo
 }
 
-/** Charge les deux fichiers en tâche de fond, une seule fois. */
 export function loadSettlerModels(): Promise<boolean> {
   loading ??= (async () => {
     try {

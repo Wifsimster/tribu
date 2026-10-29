@@ -1,21 +1,3 @@
-# Les outils et accessoires de la cueillette, modelés dans Blender : faucille,
-# faux, panier (4 crans : vide, un tiers, deux tiers, plein ; le contenu est un
-# maillage à part, soudé au panier par le jeu) et gerbe (3 crans, le cran vide
-# n'a pas de maillage).
-#
-# Chaque objet est décrit dans le repère de SON nœud du jeu (y en haut, le
-# colon regarde +z), origine = point de prise :
-#   - faucille et faux dans `toolR` (main droite, bras pendant au repos) ;
-#   - panier dans `toolL` (main gauche), gerbe dans `toolL` (faucille) ou
-#     dans `prop` (sur le dos, faux).
-# Propriétés d'objet lues par l'export :
-#   tribu_tip  = bout de l'outil (repère du nœud), mesuré par la parité ;
-#   tribu_edge = couleur (linéaire) du tranchant, que le jeu reteinte selon
-#                l'âge des métaux comme l'outil procédural (silex, cuivre…).
-#
-# Une géométrie par objet, soudée, couleur par sommet : le jeu la dessine
-# avec le matériau toon du colon, sans un appel de dessin de plus.
-
 import math
 
 from mathutils import Vector
@@ -24,9 +6,9 @@ from settler_rig import bind, mesh_object, vertex_material
 from tribu_io import g2b, rig_world_pivot, srgb
 
 COL = {
-    'shaft': srgb('#7d5d41'),     # PALETTE.trunk, la hampe des outils du jeu
+    'shaft': srgb('#7d5d41'),
     'bone': srgb('#efe6d2'),
-    'flint': srgb('#cdd2d6'),     # tranchant de silex : marqueur de reteinte
+    'flint': srgb('#cdd2d6'),
     'wicker': srgb('#d0a060'),
     'wickerDark': srgb('#7a5232'),
     'leaf': srgb('#4a7340'),
@@ -118,8 +100,6 @@ class Geo:
         return sum(len(f) - 2 for f in self.f)
 
 
-# ── Les outils ─────────────────────────────────────────────────────────────
-
 def sickle():
     """Faucille : manche dans le prolongement de l'avant-bras, lame en
     croissant qui s'ouvre vers l'avant (+z) ; bras pendant, elle pointe au sol."""
@@ -157,8 +137,6 @@ def scythe():
     g.tube([nib, nib + side * 0.13], 0.022, 5, COL['shaft'])
     g.tube([s * 1.24, s * 1.33], 0.036, 6, COL['bone'], smooth=False)
     end = s * 1.3
-    # La lame se couche à plat quand le manche descend de ~25° vers le sol :
-    # son plan contient la direction de la lame (u) et l'avant du fauchage (w).
     u = Vector((-1, 0, 0))
     lie = math.radians(25)
     w = s * math.cos(lie) + side * math.sin(lie)
@@ -267,8 +245,6 @@ def build(arm, coll, rig):
         bind(ob, arm, node)
         ob.hide_viewport = ob.hide_render = True
         objs[name] = ob
-    # La gerbe portée sur le dos (faux) : même géométrie, attachée à `prop`.
-    # Pour la vue dans Blender seulement ; l'export ne lit que la première.
     for lv in range(1, 4):
         g = made['sheaf_%d' % lv][0]
         pivot = rig_world_pivot(rig, 'prop')

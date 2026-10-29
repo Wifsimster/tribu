@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1
-# tribu-api : aucune dépendance à installer — node:http et node:sqlite suffisent.
 FROM node:24-alpine
 WORKDIR /app
 COPY server ./server

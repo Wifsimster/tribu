@@ -1,16 +1,3 @@
-# Outils communs aux scripts Blender du colon (Blender 5.2).
-#
-# Deux repères : le JEU (y en haut, le colon regarde +z) et BLENDER (z en
-# haut). Passage jeu → Blender : (x, y, z) → (x, -z, y) ; le colon regarde donc
-# -Y dans Blender, face à la vue de face. Tout ce que les scripts décrivent
-# (pivots, outils, poses) est écrit dans le repère du jeu et converti au
-# moment de toucher Blender ; l'export reconvertit vers le repère du jeu
-# (c'est aussi celui de glTF).
-#
-# Le glb est écrit à la main, au format compact que lit le jeu (fauna-glb.ts,
-# settler-clips.ts) : float32 serrés, indices uint16, COLOR_0 en VEC3 linéaire,
-# ni matériau, ni texture, ni échelle.
-
 import json
 import math
 import struct
@@ -36,7 +23,6 @@ def qb2g(q):
     return Quaternion((q.w, q.x, q.z, -q.y))
 
 
-# Matrice de passage Blender → jeu (pour les matrices 4×4 : M_jeu = C · M_b · C⁻¹).
 C_B2G = Matrix(((1, 0, 0, 0), (0, 0, 1, 0), (0, -1, 0, 0), (0, 0, 0, 1)))
 C_G2B = C_B2G.inverted()
 
@@ -72,8 +58,6 @@ def rig_world_pivot(rig, name):
     return p
 
 
-# ── glb ────────────────────────────────────────────────────────────────────
-
 FLOAT = 5126
 USHORT = 5123
 
@@ -104,7 +88,6 @@ class Glb:
             acc = {'bufferView': len(self.json['bufferViews']) - 1}
         acc.update({'componentType': ctype, 'count': len(values) // width, 'type': atype})
         if minmax:
-            # Les bornes sont celles des float32 écrits, pas des doubles Python.
             packed = struct.unpack(fmt, struct.pack(fmt, *values))
             acc['min'] = [min(packed[i::width]) for i in range(width)]
             acc['max'] = [max(packed[i::width]) for i in range(width)]

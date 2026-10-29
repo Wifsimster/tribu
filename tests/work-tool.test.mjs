@@ -1,13 +1,9 @@
-// Le bon outil pour la nourriture : les trois tables du §2 de la spec
-// (docs/specs/actions-peche-chasse-cueillette.md), ligne par ligne.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 const { TOOL_TECHS, actionFor, clipFor, toolFor, visualTool } = await import('../src/game/work-tool.ts')
 const { TECHS } = await import('../src/game/content.ts')
 
-/** Un jeu de savoirs, et la liste de ceux que la fonction a interrogés. */
 function knower(...ids) {
   const asked = new Set()
   const knows = (id) => {
@@ -17,8 +13,6 @@ function knower(...ids) {
   return { knows, asked }
 }
 
-// Chaque ligne : savoirs connus → outil. La première ligne vraie de la table
-// gagne : un savoir plus avancé prend le pas sur les plus simples.
 const ROWS = {
   fish: [
     [['bessemer', 'weaving', 'cordage', 'spear'], 'reel'],
@@ -53,7 +47,6 @@ test('pêche sans épieu : main nue (le colon ne tient plus un épieu inconnu)',
 test('aucun savoir inconnu n’est interrogé', () => {
   const ids = new Set(TECHS.map((t) => t.id))
   for (const id of TOOL_TECHS) assert.ok(ids.has(id), `${id} n'existe pas dans TECHS`)
-  // Et la fonction n'en demande pas d'autres, quel que soit le cas.
   const all = knower()
   for (const action of Object.keys(ROWS)) toolFor(action, all.knows)
   for (const id of all.asked) assert.ok(TOOL_TECHS.includes(id), `${id} interrogé hors table`)

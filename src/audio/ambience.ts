@@ -1,10 +1,3 @@
-/** L'ambiance sonore de l'île, entièrement synthétisée : pas un échantillon,
- *  pas un téléchargement. Ressac filtré, crépitement du feu (puis bourdon du
- *  lampadaire), oiseaux le jour, grillons la nuit, rideau de pluie, cloche du
- *  campanile. Tout est doux par construction — c'est une ambiance, pas une
- *  bande-son. Coupée par défaut ; l'activation (un geste utilisateur) crée le
- *  contexte, la préférence persiste. */
-
 const PREF_KEY = 'tribu.sound.v1'
 
 export type FireMode = 'open' | 'brazier' | 'lamp'
@@ -24,11 +17,7 @@ export class Ambience {
   private birdTimer = 4
   private cricketTimer = 2
   private crackleTimer = 0.3
-  /** Échantillons réels chargés depuis public/audio/, s'ils existent. Le jeu
-   *  doit tourner exactement pareil sans eux : chaque couche a son repli
-   *  synthétisé, et un fichier manquant n'est PAS une erreur. */
   private samples = new Map<string, AudioBuffer>()
-  /** Nappes échantillonnées en cours de lecture, avec leur gain propre. */
   private beds = new Map<string, GainNode>()
 
   constructor() {
@@ -36,7 +25,6 @@ export class Ambience {
     try {
       pref = localStorage.getItem(PREF_KEY)
     } catch {
-      /* stockage indisponible : préférence en mémoire seulement */
     }
     this.enabled = pref === 'on'
   }
@@ -45,39 +33,29 @@ export class Ambience {
     return this.enabled
   }
 
-  /** Au premier geste d'une session : reprendre si la préférence est « on ». */
   resumeIfOn(): void {
     if (this.enabled) this.start()
   }
 
-  /** L'onglet part en arrière-plan : on SUSPEND le contexte audio. Sans ça,
-   *  le ressac et le feu continuaient de jouer navigateur réduit — la boucle
-   *  de rendu, elle, s'arrête toute seule (requestAnimationFrame), mais un
-   *  graphe WebAudio qui tourne n'a besoin de personne pour continuer. */
   pauseForBackground(): void {
     if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend()
   }
 
-  /** Retour au premier plan : on ne reprend QUE si le son est activé. */
   resumeFromBackground(): void {
     if (this.enabled && this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
   }
 
-  /** Bascule depuis le menu — le clic est le geste qui autorise l'audio. */
   toggle(): boolean {
     this.enabled = !this.enabled
     try {
       localStorage.setItem(PREF_KEY, this.enabled ? 'on' : 'off')
     } catch {
-      /* tant pis, la préférence vivra le temps de la session */
     }
     if (this.enabled) this.start()
     else this.stop()
     return this.enabled
   }
 
-  /** Chargé SEULEMENT à la première activation du son : le son est coupé par
-   *  défaut, l'installation de la PWA ne doit pas payer ces kilo-octets. */
   private async loadSamples(ctx: AudioContext): Promise<void> {
     const ids = ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon', 'toc', 'carillon', 'piece', 'plouf', 'cloche', 'bois', 'pierre', 'cueillette', 'chasse']
     await Promise.all(
@@ -87,18 +65,12 @@ export class Ambience {
           if (!res.ok) return
           this.samples.set(id, await ctx.decodeAudioData(await res.arrayBuffer()))
         } catch {
-          // Fichier absent, hors ligne, format refusé : le synthé prend le relais.
         }
       }),
     )
     for (const id of ['mer', 'feu', 'pluie', 'nuit', 'oiseaux', 'bourdon']) this.startBed(id)
   }
 
-  /** Le coup de travail du colon : hache dans le bois, pic sur la pierre,
-   *  cueillette, épieu. Appelé à CHAQUE impact de l'animation — jamais en
-   *  boucle. La hauteur varie d'un coup à l'autre : dix fois le même
-   *  échantillon à l'identique s'entend comme une machine, pas comme un bras.
-   *  Muet si le colon n'a rien à frapper (savoir non acquis, fichier absent). */
   work(kind: 'bois' | 'pierre' | 'cueillette' | 'chasse'): void {
     const buf = this.samples.get(kind)
     if (!buf || !this.ctx || !this.master) return
@@ -111,8 +83,6 @@ export class Ambience {
     src.start()
   }
 
-  /** Joue un coup échantillonné. Renvoie faux si l'échantillon n'est pas là :
-   *  l'appelant enchaîne alors sur sa version synthétisée. */
   private shot(id: string, gain: number): boolean {
     const buf = this.samples.get(id)
     if (!buf || !this.ctx || !this.master) return false
@@ -125,8 +95,6 @@ export class Ambience {
     return true
   }
 
-  /** Une nappe échantillonnée tourne en boucle, gain à zéro : c'est `update`
-   *  qui la fait entrer et sortir, comme les couches synthétisées. */
   private startBed(id: string): void {
     const buf = this.samples.get(id)
     if (!buf || !this.ctx || !this.master || this.beds.has(id)) return
@@ -152,13 +120,10 @@ export class Ambience {
     this.master.gain.value = 0.55
     this.master.connect(ctx.destination)
 
-    // Un buffer de bruit partagé : la matière première de la mer, du feu et
-    // de la pluie — seuls les filtres diffèrent.
     const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate)
     const data = noiseBuf.getChannelData(0)
     let last = 0
     for (let i = 0; i < data.length; i++) {
-      // Bruit rosé approximatif : le blanc pur siffle, la mer ne siffle pas.
       const white = Math.random() * 2 - 1
       last = last * 0.94 + white * 0.06
       data[i] = last * 3.2
@@ -171,8 +136,6 @@ export class Ambience {
       return src
     }
 
-    // Ressac : bruit très grave, gonflé par deux respirations désaccordées —
-    // leur battement fait qu'aucune vague ne ressemble à la précédente.
     const surf = ctx.createGain()
     surf.gain.value = 0
     const surfLp = ctx.createBiquadFilter()
@@ -194,7 +157,6 @@ export class Ambience {
       lfo.start()
     }
 
-    // Feu : un souffle grave continu ; les claquements sont ajoutés par tick.
     const fire = ctx.createGain()
     fire.gain.value = 0
     const fireLp = ctx.createBiquadFilter()
@@ -202,7 +164,6 @@ export class Ambience {
     fireLp.frequency.value = 240
     noiseSrc().connect(fireLp).connect(fire).connect(this.master)
 
-    // Lampadaire : un bourdon de secteur, à peine audible.
     const hum = ctx.createGain()
     hum.gain.value = 0
     const humOsc = ctx.createOscillator()
@@ -217,7 +178,6 @@ export class Ambience {
     humOsc.start()
     humOsc2.start()
 
-    // Pluie : bruit clair, dosé par la météo.
     const rain = ctx.createGain()
     rain.gain.value = 0
     const rainHp = ctx.createBiquadFilter()
@@ -226,8 +186,6 @@ export class Ambience {
     noiseSrc().connect(rainHp).connect(rain).connect(this.master)
 
     this.layers = { surf, fire, hum, rain }
-    // Les prises réelles arrivent après coup : le graphe synthétisé joue déjà,
-    // elles s'y ajoutent quand elles sont décodées.
     void this.loadSamples(ctx)
     void swell
   }
@@ -238,7 +196,6 @@ export class Ambience {
     void this.ctx.suspend()
   }
 
-  /** Un claquement de braise : une bouffée de bruit très courte. */
   private crackle(loud: number): void {
     if (!this.ctx || !this.master) return
     const ctx = this.ctx
@@ -257,7 +214,6 @@ export class Ambience {
     src.start()
   }
 
-  /** Un pépiement : deux glissandos sinus très brefs. */
   private chirp(): void {
     if (!this.ctx || !this.master) return
     const ctx = this.ctx
@@ -278,7 +234,6 @@ export class Ambience {
     }
   }
 
-  /** Une strideur de grillon : un train de pulsations aiguës. */
   private cricket(): void {
     if (!this.ctx || !this.master) return
     const ctx = this.ctx
@@ -298,7 +253,6 @@ export class Ambience {
     }
   }
 
-  /** Toc de bois : le retour du doigt quand on désigne un arbre, un rocher. */
   knock(): void {
     if (this.shot('toc', 0.5)) return
     if (!this.enabled || !this.ctx || !this.master) return
@@ -316,7 +270,6 @@ export class Ambience {
     osc.stop(t0 + 0.1)
   }
 
-  /** Carillon de découverte : deux notes claires, une tierce au-dessus. */
   chime(): void {
     if (this.shot('carillon', 0.4)) return
     if (!this.enabled || !this.ctx || !this.master) return
@@ -338,15 +291,10 @@ export class Ambience {
     }
   }
 
-  /** Les grelots du traîneau : une volée de clochettes hautes, irrégulière —
-   *  un harnais secoué n'a pas de tempo. Entièrement synthétisée, comme le
-   *  reste : pas de fichier à télécharger pour un événement d'une nuit. */
   sleighBells(): void {
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
     const t0 = ctx.currentTime
-    // Douze secousses sur trois secondes, chacune un petit accord de trois
-    // partiels non harmoniques : c'est ce qui fait « métal » et non « note ».
     for (let i = 0; i < 12; i++) {
       const at = i * 0.24 + (i % 3) * 0.03
       const gain = 0.05 * (0.7 + 0.3 * Math.sin(i * 1.7))
@@ -365,7 +313,6 @@ export class Ambience {
     }
   }
 
-  /** Tintement de pièces : le marchand est passé par là. */
   coin(): void {
     if (this.shot('piece', 0.45)) return
     if (!this.enabled || !this.ctx || !this.master) return
@@ -385,7 +332,6 @@ export class Ambience {
     }
   }
 
-  /** Plop d'un poisson qui retombe : un thump grave très bref. */
   plop(): void {
     if (this.shot('plouf', 0.4)) return
     if (!this.enabled || !this.ctx || !this.master) return
@@ -402,10 +348,7 @@ export class Ambience {
     osc.stop(t0 + 0.16)
   }
 
-  /** La cloche du campanile : une fondamentale et deux partiels inharmoniques. */
   bell(): void {
-    // Une vraie cloche enregistrée bat n'importe quelle synthèse additive :
-    // si l'échantillon est là, il gagne. Sinon, le carillon synthétisé reste.
     if (this.shot('cloche', 0.5)) return
     if (!this.enabled || !this.ctx || !this.master) return
     const ctx = this.ctx
@@ -426,7 +369,6 @@ export class Ambience {
     }
   }
 
-  /** Mixage continu, appelé chaque frame par la boucle de rendu. */
   update(dt: number, daylight: number, rainLevel: number, fireMode: FireMode, settlerAway: boolean): void {
     if (!this.enabled || !this.ctx || !this.layers) return
     const L = this.layers
@@ -435,11 +377,6 @@ export class Ambience {
       g.gain.value += (v - g.gain.value) * ease
     }
 
-    // Chaque couche a deux incarnations possibles : la prise réelle si elle est
-    // chargée, le synthé sinon. Le PILOTAGE est le même dans les deux cas —
-    // c'est lui qui fait vivre l'ambiance (le ressac enfle la nuit, le feu
-    // s'éteint quand le lampadaire s'allume), et un échantillon seul ne le
-    // ferait pas.
     const bedOr = (id: string, synth: GainNode, sample: number, synthGain: number): void => {
       const bed = this.beds.get(id)
       if (bed) {
@@ -457,7 +394,6 @@ export class Ambience {
     const humLevel = fireMode === 'lamp' ? 0.008 + 0.012 * (1 - daylight) : 0
     bedOr('bourdon', L.hum, humLevel * 4, humLevel)
     bedOr('pluie', L.rain, rainLevel * 0.5, rainLevel * 0.16)
-    // Oiseaux et grillons : une nappe continue au lieu de notes égrenées.
     const birdBed = this.beds.get('oiseaux')
     if (birdBed) to(birdBed, daylight > 0.5 && !settlerAway ? 0.14 : 0)
     const nightBed = this.beds.get('nuit')
@@ -470,8 +406,6 @@ export class Ambience {
         this.crackle(fireMode === 'brazier' ? 0.7 : 1)
       }
     }
-    // Les égrenages synthétisés ne servent que de repli : muets dès que la
-    // prise réelle correspondante est là.
     if (daylight > 0.5 && !settlerAway && !this.beds.has('oiseaux')) {
       this.birdTimer -= dt
       if (this.birdTimer <= 0) {

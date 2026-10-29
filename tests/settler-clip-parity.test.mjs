@@ -1,10 +1,3 @@
-// Parité du squelette du colon : ce que Blender a calculé sur ses propres os
-// (extras.check de settler-clips.glb : main droite, bout d'outil, pieds, à 12
-// instants de chaque clip) contre la cinématique du jeu — l'échantillonneur de
-// settler-clips.ts appliqué à la vraie hiérarchie du Settler (membres à plat
-// sous le rig ×1,32, outil dans la main). Une erreur de repère (Blender z en
-// haut, jeu y en haut), de pivot ou de parent se voit ici au millième.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -50,7 +43,6 @@ test('parité : le jeu pose main, bout d’outil et pieds là où Blender les a 
         moved[k] = Math.max(moved[k], want.distanceTo(new Vector3().fromArray(clip.check[0][k])))
       }
     }
-    // Une comparaison triviale (rien ne bouge) ne prouverait rien.
     const most = Math.max(...Object.values(moved))
     assert.ok(most >= 0.2, `${name} : déplacement maximal ${most.toFixed(3)} u, comparaison triviale`)
     assert.ok(worst <= TOL)

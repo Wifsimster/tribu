@@ -1,8 +1,3 @@
-// La réserve de savoir (docs/specs/equilibrage-savoirs.md, sections 5 et 6) :
-// une absence verse r·τ·(1 − e^(−s/τ)) de savoir tout de suite, le reste va
-// en réserve (plafonnée à 2 h de savoir) et rentre en jouant, au double du
-// rythme. Les parties d'avant la règle passent une fois par la migration.
-//   corepack pnpm test
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -24,8 +19,6 @@ const MATERIALS = ['food', 'wood', 'stone', 'fiber', 'clay', 'copper', 'iron']
 
 beforeEach(() => store.clear())
 
-/** Une partie au Néolithique, lampe et cordage connus, chargée depuis sa
- *  sauvegarde (même instant : aucune absence créditée au chargement). */
 function neolithic(res = { food: 400, wood: 30, stone: 30, insight: 50 }) {
   const s = emptySave(NOW)
   s.seed = 7
@@ -40,16 +33,12 @@ function neolithic(res = { food: 400, wood: 30, stone: 30, insight: 50 }) {
   return g
 }
 
-/** Le taux de savoir moyen d'un tour, celui de la règle (lu sur un double).
- *  Depuis la 3.71.1, une absence compte la nourriture à la moyenne des quatre
- *  saisons (tests/absence-economie.test.mjs) : le double fait de même. */
 function meanRate(g) {
   const twin = Object.create(Object.getPrototypeOf(g))
   Object.assign(twin, g, { rates: { ...g.rates }, seasonMean: true })
   return twin.meanInsightRate()
 }
 
-/** Ce que l'absence créditait avant la règle : tout au facteur moyen d'un tour. */
 function oldCredit(g, seconds) {
   const twin = Object.create(Object.getPrototypeOf(g))
   Object.assign(twin, g, { rates: { ...g.rates }, seasonMean: true })
@@ -80,7 +69,6 @@ test('8 h d’absence au Néolithique : ~10 min de savoir tout de suite, réserv
   assert.ok(Math.abs(got.reserve - r * INSIGHT_RESERVE_HOURS * 3600) < 1, `réserve ${got.reserve}`)
   for (const m of MATERIALS)
     assert.ok(Math.abs(got.mat[m] - old[m]) < 1e-6 * Math.max(1, old[m]), `${m} : ${got.mat[m]} au lieu de ${old[m]}`)
-  // Avant la règle, la même nuit versait ~37 fois plus de savoir.
   assert.ok(old.insight > 30 * got.paid, `avant ${old.insight}, maintenant ${got.paid}`)
 })
 
@@ -133,22 +121,18 @@ test('la réserve se vide en jouant : savoir ×2, la réserve baisse d’autant'
   assert.ok(Math.abs(g.amount('insight') - before - 2 * rate * 0.5) < 1e-9, 'savoir gagné = 2 · taux · dt')
   assert.ok(Math.abs(500 - g.save.insightReserve - rate * 0.5) < 1e-9, 'réserve baissée de taux · dt')
 
-  // Une réserve plus petite que le pas passe en entier, sans devenir négative.
   g.save.insightReserve = 0.01
   const b2 = g.amount('insight')
   g.tick(0.5, NOW)
   assert.equal(g.save.insightReserve, 0)
   assert.ok(Math.abs(g.amount('insight') - b2 - (g.rates.insight * 0.5 + 0.01)) < 1e-9)
 
-  // En expédition, le camp ne produit rien : la réserve attend.
   g.save.insightReserve = 300
   g.save.expedition = { remaining: 100, total: 100 }
   g.tick(0.5, NOW)
   assert.equal(g.save.insightReserve, 300)
 })
 
-/** La partie de l'humain (prod, 3.69.0) : Néolithique 0/4, 6 savoirs, 6 710
- *  de savoir. Sauvegarde d'avant la règle : pas de champ `insightReserve`. */
 function humanSave() {
   const s = emptySave(NOW)
   s.seed = 7
@@ -161,8 +145,6 @@ function humanSave() {
   return s
 }
 
-// 3.71.0 : 191 + 6 519. La 3.71.1 tire 0,07 de savoir par matériau au lieu
-// de 0,05 (voir INSIGHT_PER_MATERIAL) : dix minutes de savoir pèsent 217.
 test('migration de la partie de l’humain : 6 710 → 217 en stock + 6 493 en réserve, une seule fois', () => {
   store.set(SAVE_KEY, JSON.stringify(humanSave()))
   const g = new Game(NOW)
@@ -176,12 +158,10 @@ test('migration de la partie de l’humain : 6 710 → 217 en stock + 6 493 en r
   assert.equal(g.save.techs.length, 6)
   assert.equal(g.save.age, 1)
   for (const r of ['food', 'wood', 'stone', 'fiber']) assert.equal(g.amount(r), humanSave().res[r], `${r} intact`)
-  // Le stock paie l'Agriculture (110), pas l'Agriculture ET la Poterie (150).
   assert.ok(stock >= 110 && stock < 110 + 150, `stock ${stock}`)
   const mig = events.find((e) => e.type === 'reserveMigrated')
   assert.ok(mig && Math.abs(mig.reserve - reserve) < 1e-9, 'le joueur est prévenu')
 
-  // Recharger ne remigre pas : stock et réserve restent ce qu'ils sont.
   g.flush(NOW)
   const g2 = new Game(NOW)
   const again = []
@@ -205,9 +185,7 @@ test('migration avant le crédit de l’absence : le savoir de la nuit suit la n
   s.t = NOW - 8 * 3600 * 1000
   store.set(SAVE_KEY, JSON.stringify(s))
   const g = new Game(NOW)
-  // Stock migré (~217) + ~10 min de savoir, pas 6 710 + 8 h.
   assert.ok(g.amount('insight') < 217 + 300, `stock ${g.amount('insight')}`)
-  // La réserve migrée n'a pas de plafond, la nuit n'y ajoute rien.
   assert.ok(Math.abs(g.save.insightReserve - 6493) <= 1, `réserve ${g.save.insightReserve}`)
 })
 
@@ -257,6 +235,5 @@ test('coûts en matériaux des âges 0 à 3 : ceux de la table 9.3 (section 9)',
   const { PROPORTIONAL, COSTS_3720 } = await import('../tools/savoirs-rule.mjs')
   const early = TECHS.filter((t) => t.age <= 3)
   assert.equal(early.length, Object.keys(PROPORTIONAL).length)
-  // La Charrue suit la section 10 depuis la 3.72.0 (tests/couts-372.test.mjs).
   for (const t of early) assert.deepEqual(t.materials, COSTS_3720.techs[t.id]?.materials ?? PROPORTIONAL[t.id], t.id)
 })

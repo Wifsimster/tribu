@@ -7,46 +7,22 @@ import {
   SRGBColorSpace,
 } from 'three'
 
-/** Palette « maquette peinte » : teintes franches, valeurs tenues.
- *
- *  HISTORIQUE — jusqu'à la v3.3 elle était volontairement pastel et cassée vers
- *  l'olive (un vert pur virait au fluo à côté d'une eau turquoise sourde).
- *  Retour joueur 2026-08-21, référence à l'appui (hex builder saturé) : on va
- *  vers des teintes plus vives. La leçon des rounds pastel reste vraie et
- *  s'applique autrement : ce n'est pas la SATURATION qui faisait « programmer
- *  art », c'est l'absence d'écart de VALEUR. Ici les verts montent en
- *  saturation mais gardent leur hiérarchie clair/moyen/sombre, et l'eau garde
- *  une valeur nettement plus basse que la terre — c'est elle qui détache la
- *  silhouette de l'île. */
 export const PALETTE = {
-  /** Couleur de l'eau *proche* : la brume se charge d'éclaircir le lointain.
-   *  L'eau est franchement bleue et d'une valeur basse : c'est l'écart de
-   *  luminosité avec la terre, plus que la teinte, qui détache la silhouette. */
   water: new Color('#1f98cf'),
   waterDeep: new Color('#1572ae'),
   waterShallow: new Color('#4fdccd'),
-  /** Brume et fond de ciel — même teinte, pour que l'horizon disparaisse. */
   haze: new Color('#b4dcf2'),
   sky: new Color('#5db3ee'),
-  /** La 2e ride, au large : un souffle à peine plus clair que l'eau. */
   foam: new Color('#bff3f0'),
-  /** Le trait de flottaison. Clair, oui — mais c'est sa FINESSE qui le
-   *  distingue des halos des rounds passés : un trait dessiné de 2 px collé à
-   *  la découpe, jamais un dégradé. La référence a les deux : ce trait ET un
-   *  soubassement sombre juste dessous. */
   foamLine: new Color('#f2f9f3'),
-  /** Sable et verts poussés vers le chaud et le clair : posés sur une eau
-   *  froide, ils lisent comme un objet éclairé, pas comme un morceau de fond. */
   sand: new Color('#efd98e'),
   grass: new Color('#5cbb2e'),
   grassLight: new Color('#8cd83e'),
   grassDark: new Color('#34952e'),
-  /** Terre du socle : ce qui affleure sous l'herbe dans les contre-marches. */
   earth: new Color('#a4906b'),
   earthDark: new Color('#6f6047'),
   rock: new Color('#a49c8e'),
   rockDark: new Color('#807870'),
-  /** Terre battue de la clairière, et sa version tassée près du feu. */
   dirt: new Color('#ab8352'),
   dirtDark: new Color('#8a6740'),
   trunk: new Color('#7d5d41'),
@@ -59,46 +35,26 @@ export const PALETTE = {
   cloth: new Color('#c26b4d'),
   wheat: new Color('#dcbc65'),
   stoneWall: new Color('#c7bfaf'),
-  /** L'ardoise bleue des toits tardifs : c'est ELLE la signature de la
-   *  référence — un froid saturé posé sur des murs chauds. */
   roof: new Color('#4260c4'),
   roofDark: new Color('#31489b'),
   roofLight: new Color('#6d87dd'),
 } as const
 
-/** Lumière de jour, réglée avec la palette (v3.60.0, « variante A » validée
- *  sur planche d'ambiance). Rangée ici plutôt que dans `scene.ts` pour qu'un
- *  test sans navigateur puisse la figer : la scène a besoin du DOM.
- *  - Soleil plus chaud et un peu plus fort : les faces éclairées dorent.
- *  - Sol hémisphérique chaud (#7d7d5c) au lieu de bleu-gris : les ombres
- *    tirent vers le vert doré au lieu de ternir l'herbe.
- *  - Ambiante un peu plus basse : le contraste soleil/ombre reste franc.
- *  - Exposition 1,10 : le tout gagne en clarté sans brûler le sable. */
 export const LIGHT = {
   sunDay: new Color('#ffe2b0'),
   sunIntensity: 2.55,
   hemiSky: new Color('#d2e9ff'),
   hemiGround: new Color('#7d7d5c'),
   hemiIntensity: 0.62,
-  /** Part de l'ambiante qui suit le jour (le reste, 0,16, tient la nuit). */
   hemiDay: 0.56,
   exposure: 1.1,
 } as const
 
-/** Part de la teinte d'âge (`AGES.sky` / `AGES.fog`) mêlée au ciel et à la
- *  brume. Elle valait 0,35 et 0,18 : chaque âge tardif tire vers le gris-vert
- *  pâle, et le ciel finissait délavé. À zéro, le ciel reste bleu franc d'un
- *  bout à l'autre de la partie ; l'âge se lit dans le village, pas dans un
- *  ciel sale. */
 export const AGE_SKY_MIX = 0
 export const AGE_HAZE_MIX = 0
 
-/** Direction du soleil, en dur à un seul endroit. `scene.ts` la donne à la
- *  lumière, `island.ts` en déduit de quel côté l'île pose son ombre sur l'eau :
- *  recopiée des deux côtés, elle finissait par diverger. */
 export const SUN_DIR = { x: -34, y: 46, z: 24 } as const
 
-/** Deterministic jitter so a field of instanced trees does not look stamped. */
 export function tint(base: Color, seed: number, spread = 0.06): Color {
   const c = base.clone()
   const n = (Math.sin(seed * 12.9898) * 43758.5453) % 1
@@ -107,10 +63,6 @@ export function tint(base: Color, seed: number, spread = 0.06): Color {
   return c
 }
 
-/** Encodage sRGB tabulé. `Color.getRGB` fait trois `Math.pow` par pixel : sur la
- *  nappe d'eau, qui se peint en 150 000 pixels, c'est le poste le plus lourd du
- *  chargement. L'index est en racine du linéaire, là où la courbe est presque
- *  droite, donc mille entrées suffisent à rester sous le LSB. */
 const ENCODE_N = 1024
 const encodeLut = new Float32Array(ENCODE_N + 1)
 for (let i = 0; i <= ENCODE_N; i++) {
@@ -127,8 +79,6 @@ function encodeSrgb(lin: number): number {
   return (encodeLut[i]! * (1 - f) + encodeLut[i + 1]! * f) * 255
 }
 
-/** Dégradés fabriqués en mémoire plutôt qu'avec un canvas 2D : le navigateur
- *  prémultiplie l'alpha d'un canvas, ce qui salit les bords d'un halo. */
 export function rampTexture(
   width: number,
   height: number,
@@ -156,7 +106,6 @@ export function rampTexture(
   return tex
 }
 
-/** Interpolation sur une rampe de paliers, en travaillant en linéaire. */
 export function ramp(stops: readonly (readonly [number, Color])[], t: number, out: Color): void {
   const first = stops[0]
   if (!first) return
@@ -176,8 +125,6 @@ export function ramp(stops: readonly (readonly [number, Color])[], t: number, ou
   out.copy(stops[stops.length - 1]![1])
 }
 
-/** Bornes inversées acceptées : c'est la façon la plus lisible d'écrire une
- *  rampe décroissante. */
 export function smoothstep(edge0: number, edge1: number, x: number): number {
   const span = edge1 - edge0
   if (Math.abs(span) < 1e-6) return x < edge0 ? 0 : 1

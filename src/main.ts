@@ -61,35 +61,21 @@ import { AnchorMarks, type Anchor } from './render/anchors'
 import { Hud, escapeHtml, fmt, icon } from './ui/hud'
 import { AGES, DESTINATION_BY_ID, RELIC_BY_ID, RESOURCES, TECHS, YULE_STORY, livingBuildings, yuleState } from './game/content'
 
-/** Par quoi part le voyage EN COURS : la mer sort la barque, le rail et l'air
- *  ne la sortent pas. Retenu au DÉPART : `finishExpedition` efface la
- *  destination avant d'émettre la fin, on ne peut plus la lire à ce
- *  moment-là. */
 let tripKind: 'sea' | 'rail' | 'air' = 'sea'
-/** Compte à rebours avant de redonner la production au train. */
 let cargoClock = 0
 
-/** Le seul endroit du jeu où le calendrier RÉEL entre : la semaine de Noël.
- *  Lu une fois au chargement — une partie ne dure pas d'un jour à l'autre. */
 const yule = yuleState()
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement
 const stage = new Stage(canvas)
 
-// Le jeu d'abord : l'île de chaque joueur pousse sur le seed de sa sauvegarde,
-// et GRANDIT avec les âges — la tribu gagne du terrain sur la mer.
 const game = new Game(Date.now())
 const caravan = new Caravan()
 const boat = new ExpeditionBoat()
-/** La terre de l'île du moment : la barque n'appareille que là où sa coque
- *  entière flotte. `island` est refaite à chaque buildWorld, d'où la flèche. */
 const isLand = (x: number, z: number): boolean => island.isLand(x, z)
-/** Séquence d'embarquement : marche → embarque → large → (voyage) → accoste → marche. */
 let expPhase: 'none' | 'walking' | 'sailed' = 'none'
 
 let island!: Island
-/** Le cadastre au sol : la seule carte de ce qui est plein, lue par le colon,
- *  les villageois et la faune. Refait avec le monde. */
 let ground!: Ground
 let village!: Village
 let settler!: Settler
@@ -97,9 +83,6 @@ let fauna!: Fauna
 let villagers!: Villagers
 const nodeSpots = new Map<string, Vector3[]>()
 
-/** Un matériau ne libère pas ses textures : sans ce balayage, chaque
- *  reconstruction du monde laissait les siennes (eau, halos) en mémoire GPU —
- *  quatre de plus par terre posée, vingt et une poses par partie. */
 function disposeMaterial(m: unknown): void {
   for (const mat of Array.isArray(m) ? m : [m]) {
     if (!mat) continue
@@ -129,38 +112,18 @@ function disposeWorld(): void {
   }
 }
 
-// Le voisinage, connu dès le lancement grâce au cache local : l'horizon est
-// peuplé avant même la première réponse du serveur — et le reste hors ligne.
-// Déclaré AVANT buildWorld, qui le repose sur chaque île reconstruite.
 let neighbors: Neighbor[] = cachedNeighbors()
-// Déclaré ICI, et pas près de la boucle de synchro : le bloc du menu s'exécute
-// AVANT elle et s'y abonne — un `let` plus bas serait dans sa zone morte.
 let onNeighborsChange: (() => void) | null = null
-// Le choix de destination doit connaître les voisins DÈS le premier menu,
-// même hors ligne : le cache d'hier fait l'affaire.
 game.visitable = neighbors.map((n) => ({ id: n.id, name: n.name, age: n.age, relics: n.relics }))
 
-// La pêche : un état de surface — le colon récolte SA nourriture, mais au
-// rivage, avec la baie qui vit autour de lui. Déclarée AVANT buildWorld qui
-// la remet à zéro à chaque reconstruction du monde.
 let fishing = false
-/** Le joueur a touché un buisson : c'est la cueillette, même quand la tribu
- *  sait chasser, le temps d'un travail (jusqu'au dépôt au feu). Un état de
- *  surface, comme la pêche : rien dans la sauvegarde. */
 let gatherTap = false
 let catchTimer = 12
-/** Vrai le temps du buildWorld qui suit un passage d'âge. */
 let ageChanged = false
 let firstCatch = true
 
-/** (Re)construit l'île à la taille de l'âge courant. Appelé au chargement et à
- *  chaque passage d'âge : le monde s'agrandit sous la bannière. */
 function buildWorld(): void {
   disposeWorld()
-  // L'île grandit une fois, d'un palier, à l'âge 7 (la mer recule pour la
-  // voie ferrée) ; le reste vient des terres gagnées sur la mer.
-  // L'île, puis le plan du village : gardé, retracé ou passé au grand tracé
-  // (plan.ts, partagé avec les tests).
   const raised = raiseWorld(game.save, {
     electric: game.knows('electricity'),
     yule: yule !== 'none',
@@ -174,21 +137,10 @@ function buildWorld(): void {
   village = raised.village
   game.save.layoutV = raised.layoutV
   settler = new Settler(island)
-  // La faune se reconstruit avec l'île : ses habitats dépendent des arbres et
-  // du rivage de CETTE île-là. Le quai n'y entre pas ici : qu'il vienne de la
-  // sauvegarde ou d'un achat en cours de partie, il passe par `placeGoods`,
-  // qui le donne à la faune (`setBlockers`) — un seul chemin pour les deux.
   fauna = new Fauna(island, village.faunaObstacles)
   fauna.onFishJump = () => ambience.plop()
-  // Les bêtes modelées dans Blender : la faune d'ALORS (celle de l'île en
-  // cours, pas forcément celle qui a lancé le chargement) passe à ses modèles.
   void loadFaunaModels().then(() => fauna.useModels())
-  // Les gestes du colon animés dans Blender, et ses outils : même principe,
-  // le geste procédural sert jusqu'à leur arrivée.
   void loadSettlerModels().then(() => settler.useModels())
-  // Le son du travail suit le GESTE : un coup porté, un son. À la pêche,
-  // c'est la ligne qui tombe ; la chasse remplace la cueillette tant que la
-  // tribu n'a pas l'agriculture.
   settler.onStrike = () => {
     if (fishing) return ambience.plop()
     const res = game.save.focus
@@ -196,76 +148,48 @@ function buildWorld(): void {
     if (res === 'food') return ambience.work(game.knows('agriculture') ? 'cueillette' : 'chasse')
     return ambience.work('pierre')
   }
-  // Le buisson touché vaut pour un travail : panier vidé au feu, le colon
-  // reprend l'action que disent ses savoirs (la chasse, s'il la connaît).
-  // Retomber plus tôt viderait le panier en chemin (QA PR #29).
   settler.onDeposit = () => {
     gatherTap = false
   }
   fishing = false
   gatherTap = false
-  // Le quai n'y entre pas ici : `placeGoods` le donne aux villageois comme à
-  // la faune, qu'il vienne de la sauvegarde ou d'un achat en cours de partie.
   villagers = new Villagers(island, village.obstaclePoints)
-  // La tribu s'étoffe avec les âges : une cueilleuse au Néolithique, un
-  // enfant à l'Antiquité. Le colon n'est plus seul.
   villagers.setPopulation(game.save.age >= 4 ? 2 : game.save.age >= 1 ? 1 : 0)
   stage.scene.add(island.group, village.group, settler.group, fauna.group, villagers.group)
   stage.islandRadius = island.radius
   island.setSeason(game.season.id, game.seasonU)
   stage.winter = game.season.id === 3
   {
-    // La Merveille d'abord : elle réserve sa place au cœur de la clairière
-    // AVANT que les ateliers ne prennent les meilleurs emplacements.
     const w = shownWonder()
     if (w) village.setWonder(w.age, w.stage)
   }
   village.sync(livingBuildings(game.buildings, game.save.age))
   village.setRelics(game.save.relics)
-  // …et le plan repart dans la sauvegarde, complété des nouveaux venus.
   persistPlan()
   island.setOutpost(game.save.outpost)
   island.setNeighbors(neighbors)
-  // Le marchand mouille là où toute sa coque flotte, sur la côte de CETTE île.
   caravan.fitShore((x, z) => island.isLand(x, z))
-  // La barque mouille au bout du ponton : la flotte se voit sans partir.
   boat.setTier(game.boatTier)
   boat.moorAt(village.jettyEnd)
   if (game.save.expedition) settler.departExpedition(game.knows('cordage'))
 
-  // Ce que le marchand a laissé se voit dès le chargement.
   placeGoods()
   if (raised.migrate) {
-    // Le grand tracé, c'est la migration d'un plan v3 ou la mer qui recule à
-    // l'âge 7 ; une terre gagnée qui pousse la voie n'a droit qu'à un mot.
-    // Après coup : au premier chargement, le HUD n'existe pas encore.
     const moved = village.moved.map((m) => m.id)
     const goods = village.goodsMoved && game.save.goods !== null
     const stuck = village.stuck.length
     village.markMoved()
     setTimeout(() => announceTracing(raised.grand, moved, goods, stuck), 400)
   }
-  // Le cadastre au sol, une fois TOUT posé : bâtiments, Merveille, musée,
-  // gare, quai, campement, enclos, troncs, rochers et l'eau. Il ne déplace
-  // aucun bâtiment — il lit. Il retire seulement le décor qui chevauche une
-  // emprise. Ce qui se pose ensuite (atelier, quai, chantier) change la
-  // révision du village ou de la faune, et la boucle le refait.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   ground = new Ground(island, [village, fauna])
-  // L'auto ne roule que là où sa caisse passe, l'avion se gare où ses ailes
-  // tiennent : le cadastre le dit.
   village.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
   settler.setGround(ground)
   fauna.setGround(ground)
   villagers.setGround(ground)
-  // Le relevé des nœuds APRÈS le cadastre : il vient de retirer le décor
-  // pris sous les bâtiments, et le colon n'irait pas cueillir un buisson
-  // effacé.
   surveyNodes()
 }
 
-/** La Merveille montrée au village : le chantier en cours (et son stade),
- *  sinon la dernière achevée. */
 function shownWonder(): { age: number; stage: number } | null {
   const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
   const cur = game.save.wonder
@@ -277,15 +201,10 @@ function shownWonder(): { age: number; stage: number } | null {
   return null
 }
 
-/** Le plan dans la sauvegarde : bâtiments, ceinture, rues, Merveille, musée. */
 function persistPlan(): void {
   Object.assign(game.save, planOf(village))
 }
 
-/** La carte « Le grand tracé », et sa ligne de Chronique : combien de
- *  bâtiments ont été reposés ailleurs sur l'île, lesquels. Pas de carte si
- *  rien n'a bougé ; la Chronique, elle, le note quand c'est le tracé de
- *  l'âge 7. */
 function announceTracing(grand: boolean, moved: string[], goods: boolean, stuck: number): void {
   const names = moved.map((id) => techOfBuilding.get(id)?.name ?? id)
   if (goods) names.push('le quai du marchand')
@@ -294,7 +213,6 @@ function announceTracing(grand: boolean, moved: string[], goods: boolean, stuck:
     if (grand) game.note('age', 'Le grand tracé : la voie fait désormais le tour de l’île, sans rien déplacer')
     return
   }
-  // Le quai du marchand n'est pas un bâtiment : il est nommé à part.
   const nb = moved.length
   const built = nb > 1 ? `${nb} bâtiments` : 'un bâtiment'
   const what =
@@ -321,10 +239,6 @@ function announceTracing(grand: boolean, moved: string[], goods: boolean, stuck:
   )
 }
 
-/** Les nœuds de récolte : chaque arbre, rocher et buisson encore debout.
- *  Les arbres abattus par la voie romaine, et le décor retiré sous une
- *  emprise, n'en sont plus : le colon irait travailler une souche
- *  invisible. Le quai écrème le reste. */
 function surveyNodes(): void {
   nodeSpots.clear()
   for (const mesh of island.pickables) {
@@ -344,12 +258,8 @@ buildWorld()
 stage.scene.add(caravan.group, boat.group)
 stage.sun.target.position.set(0, 0, 0)
 stage.applyAge(game.save.age)
-// Barque déjà à quai dans la sauvegarde : elle reprend sa place sans naviguer.
 if (game.save.caravan.visiting) caravan.arrive()
 
-/** La carte DÉTAILLÉE du chantier : ce qui est versé, ce qui reste, à quel
- *  débit et pour combien de temps, matériau par matériau. « 62 % » ne disait
- *  ni ce qui manque, ni combien de temps attendre. */
 function openWonderCard(): void {
   const d = game.wonderDetail()
   if (!d) return
@@ -396,26 +306,18 @@ function openWonderCard(): void {
 }
 
 
-/** Pose ce que le marchand a laissé, garde le quai dans la sauvegarde et le
- *  fait contourner par le colon. Les nœuds de ressource qui tomberaient sur
- *  le quai (une île d'un autre âge a d'autres buissons) sont retirés : le
- *  colon n'a jamais à y aller. */
 function placeGoods(): void {
-  // Un quai tiré en cours de partie évite l'enclos déjà dressé.
   const pen = fauna?.pen
   village.goodsAvoid = pen ? [pen] : []
   village.setTools(game.save.tools)
   game.save.goods = village.goodsAt
   const zones = village.blockers
   settler.setBlockers(zones)
-  // Les bêtes aussi : la faune a relevé ses habitats avant le quai, et
-  // garderait sinon un cheval à brouter entre les caisses.
   fauna.setBlockers(zones)
   villagers.setBlockers(zones)
   skimGoods(zones)
 }
 
-/** Aucun nœud de récolte sur le quai du marchand. */
 function skimGoods(zones: { x: number; z: number; r: number }[]): void {
   for (const [kind, spots] of nodeSpots)
     nodeSpots.set(
@@ -434,7 +336,6 @@ function spotFor(resource: ResourceId): Vector3 {
   const key = resource === 'food' ? 'food' : resource === 'wood' ? 'wood' : 'stone'
   const spots = nodeSpots.get(key)
   if (!spots || spots.length === 0) return new Vector3(4, 0, 4)
-  // Prefer somewhere close to the fire so the walk cycle stays readable.
   return spots.reduce((best, s) =>
     s.lengthSq() < best.lengthSq() * 1.6 && Math.random() < 0.4 ? s : best,
   )
@@ -442,10 +343,6 @@ function spotFor(resource: ResourceId): Vector3 {
 
 const hud = new Hud(game)
 hud.onWonderTap = () => openWonderCard()
-// Le joueur retient une terre, puis choisit OÙ la poser : trois ancres
-// s'allument sur la côte, un tap en pose la terre. Rien ne part tout seul —
-// ni minuterie ni pose d'office : on peut toujours annuler, la carte retourne
-// alors dans la file.
 const anchorMarks = new AnchorMarks()
 stage.scene.add(anchorMarks.group)
 const anchorAt = new Vector3()
@@ -464,8 +361,6 @@ function beginPlacing(kind: string): void {
     `${def.name} (${def.gain}) : touche l'un des emplacements qui brillent sur la côte`,
     anchors.map((a) => ({ bond: a.bond, label: 'Ici', sub: a.bond ? 'voisinage : +50 %' : '' })),
   )
-  // Le cadrage s'élargit le temps du choix : une ancre au large ne doit pas
-  // tomber hors de l'écran du téléphone.
   stage.islandRadius = Math.max(island.radius, anchorMarks.reach())
 }
 
@@ -477,8 +372,6 @@ function endPlacing(): void {
 
 function placeAt(a: Anchor | undefined): void {
   if (!a) return
-  // La pose reconstruit le monde (événement landPlaced, synchrone) : le
-  // cadrage revient ensuite sur la nouvelle île.
   if (game.placeLand(a.q, a.r)) endPlacing()
   else hud.toast('La mer ne recule pas ici : choisis un autre emplacement')
 }
@@ -493,50 +386,35 @@ hud.onPlaceCancel = () => {
   hud.toast('La carte retourne dans la file : elle t’attendra')
 }
 hud.refreshLand()
-// La file héritée d'une session précédente (ou d'un rattrapage) se signale
-// une fois, après le chargement et le menu d'accueil — sans rien ouvrir.
 if (game.save.landPending.length > 0) {
   const n = game.save.landPending.length
   setTimeout(() => toastAfterMenu(n > 1 ? `${n} terres attendent ton choix` : 'Une terre attend ton choix'), 1500)
 }
 
-// L'ambiance sonore : coupée par défaut, activée au menu, reprise au premier
-// geste si la préférence est déjà « on » (l'audio exige un geste utilisateur).
 const ambience = new Ambience()
 
-// PWA : le service worker rend le jeu installable et jouable hors-ligne.
 if (import.meta.env.PROD && 'serviceWorker' in navigator)
   window.addEventListener('load', () => void navigator.serviceWorker.register('/sw.js'))
 
-// Notifications locales, strictement opt-in : prévenir du retour d'expédition
-// quand l'application est en arrière-plan. Pas de serveur, pas de push.
 const NOTIF_KEY = 'tribu.notif.v1'
 let notifOn = false
 try {
   notifOn = localStorage.getItem(NOTIF_KEY) === 'on' && Notification.permission === 'granted'
 } catch {
-  /* stockage ou API absents : les notifications resteront coupées */
 }
 function notify(body: string): void {
   if (!notifOn || !document.hidden || Notification.permission !== 'granted') return
   try {
     new Notification('Tribu', { body, icon: '/icon-192.png' })
   } catch {
-    /* certains navigateurs exigent un service worker : tant pis, le toast suffira */
   }
 }
 document.addEventListener('pointerdown', () => ambience.resumeIfOn(), { once: true })
 
-// Chaque objet posé remonte à sa découverte : taper un bâtiment rouvre son
-// fait historique.
 const techOfBuilding = new Map<string, (typeof TECHS)[number]>()
 for (const t of TECHS)
   for (const e of t.effects) if (e.kind === 'building') techOfBuilding.set(e.building, t)
 
-// Les nouvelles du chargement (absence, réserve de savoir, terres en attente)
-// tombent pendant que le menu d'accueil couvre l'écran : affichées là, elles
-// s'effaceraient sans être lues. Elles attendent qu'il se ferme. Déclaré AVANT
-// l'abonnement, qui rejoue dès maintenant les événements du constructeur.
 let menuOpen = true
 const heldToasts: string[] = []
 function toastAfterMenu(message: string): void {
@@ -555,14 +433,9 @@ game.on((e) => {
       hud.showFact(e.tech)
       if (game.treeComplete)
         hud.toast(`Les ${TECHS.length} savoirs sont réunis — l'Exode attend dans le menu`)
-      // L'électricité transforme le cœur du village (lampadaire à la place du
-      // feu) : on reconstruit le monde comme à un passage d'âge.
       if (e.tech.id === 'electricity') buildWorld()
       else {
         village.sync(livingBuildings(game.buildings, game.save.age))
-        // Le nouvel atelier prend sa place DÉFINITIVE : elle part dans la
-        // sauvegarde tout de suite, sinon elle serait retirée au sort au
-        // prochain chargement.
         persistPlan()
       }
       hud.refreshTechList()
@@ -572,8 +445,6 @@ game.on((e) => {
       stage.applyAge(e.age.id)
       hud.showBanner('Nouvel âge', e.age.name)
       hud.refreshTechList()
-      // La tribu gagne du terrain : l'île est reconstruite plus grande, les
-      // bâtiments repoussent avec leur animation de pose.
       ageChanged = true
       buildWorld()
       break
@@ -581,8 +452,6 @@ game.on((e) => {
       tripKind = DESTINATION_BY_ID.get(game.save.expedition?.dest ?? 'cote')?.mode ?? 'sea'
       fishing = false
       fauna.setFishing(null)
-      // Le colon se rend d'abord au point d'embarquement : ponton, gare ou
-      // aérodrome. Le véhicule ne part qu'une fois qu'il y est.
       settler.departExpedition(
         game.knows('cordage'),
         tripKind === 'rail'
@@ -612,8 +481,6 @@ game.on((e) => {
         .filter(([, n]) => (n as number) > 0)
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon}\u202F${fmt(n as number)}`)
         .join('  ')
-      // La barque ne revient que si l'on est parti par la mer ; du rail ou de
-      // l'avion, le colon rentre par ses propres moyens.
       if (tripKind === 'sea') boat.sailIn(settler.shorePoint, isLand)
       else {
         if (tripKind === 'air') village.planeArrive()
@@ -623,12 +490,9 @@ game.on((e) => {
       hud.toast(`De retour · ${parts}`)
       hud.toast(`Journal de bord · ${e.journal}`)
       if (e.relic) {
-        // La relique passe du sac du colon aux vitrines : le musée pousse (ou
-        // s'agrandit) sous les yeux du joueur.
         village.setRelics(game.save.relics)
         persistPlan()
   {
-    // La Merveille : le chantier en cours, sinon la dernière achevée.
     const stageOf = (v: number): number => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
     const cur = game.save.wonder
     if (cur) {
@@ -675,8 +539,6 @@ game.on((e) => {
       break
     }
     case 'caravanOffer': {
-      // Le marchand tend l'objet : rien n'est payé tant que le joueur n'a
-      // pas dit oui.
       ambience.chime()
       const price = Object.entries(e.def.price)
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
@@ -707,7 +569,6 @@ game.on((e) => {
         .map(([id, n]) => `${RESOURCES[id as ResourceId].icon} ${fmt(n as number)}`)
         .join('  ')
       hud.toast(`Marché conclu : ${e.def.icon} ${e.def.name.toLowerCase()} · ${price}`)
-      // L'objet débarque au campement — ou sur le quai — sous les yeux du joueur.
       placeGoods()
       break
     }
@@ -716,17 +577,12 @@ game.on((e) => {
       break
     case 'landOffer':
       hud.refreshLand()
-      // Au chargement, la file se signale sans rien ouvrir (toast plus haut) :
-      // un rattrapage de treize jalons ne doit pas tomber sur le joueur à la
-      // première image.
       if (!e.catchUp) hud.openLand()
       break
     case 'landPlaced':
       ambience.chime()
       hud.toast(`La mer recule : ${e.def.name.toLowerCase()} — ${e.def.gain}`)
       hud.refreshLand()
-      // La terre se pose : l'île est reconstruite avec elle, le plan du
-      // village (persisté) ne bouge pas.
       buildWorld()
       break
     case 'exodus':
@@ -777,14 +633,11 @@ game.on((e) => {
       island.setOutpost(true)
       ambience.chime()
       break
-    // Le colon a débarqué chez un voisin : on le leur fait savoir. Si le
-    // réseau est absent, tant pis — la visite a quand même eu lieu chez nous.
     case 'visitDone': {
       const t = game.save.tribe
       if (t) void announceVisit(t.id, t.secret, e.neighborId)
       break
     }
-    // Le courrier des autres tribus, relevé à la synchro.
     case 'mail': {
       hud.toast(e.text)
       notify(e.text)
@@ -832,7 +685,6 @@ game.on((e) => {
       break
     case 'nightfall':
       if (game.knows('clock')) ambience.bell()
-      // Le même crépuscule ne se raconte pas pareil selon les siècles.
       hud.toast(
         game.knows('electricity')
           ? 'La nuit tombe — le lampadaire s’allume, le village ne s’arrête plus'
@@ -860,12 +712,7 @@ game.on((e) => {
   }
 })
 
-// ── Événements du monde : épave et éclipse ─────────────────────────────────
 const ECLIPSE_DUR = 38
-// Le traîneau : il repasse toutes les deux minutes environ, mais seulement la
-// nuit et seulement les 24 et 25 décembre. La carte d'explication, elle, ne
-// s'ouvre qu'une fois par session — un événement s'explique, il ne se répète
-// pas.
 let sleighIn = 7
 let sleighTold = false
 let lastDaylight = 1
@@ -874,8 +721,6 @@ let wreck: Group | null = null
 let wreckFact = ''
 let wreckTimer = 0
 
-/** Une coque brisée échouée près du point d'accostage : trois membrures, des
- *  bordés éclatés, un bout de mât. Un seul mesh, retiré au bout de 4 minutes. */
 function spawnWreck(fact: string): void {
   despawnWreck()
   wreckFact = fact
@@ -925,31 +770,19 @@ function despawnWreck(): void {
   wreck = null
 }
 
-// ── Clavier ────────────────────────────────────────────────────────────────
-// Flèches (ou ZQSD / WASD) : tourner autour de l'île et la survoler plus haut
-// ou plus bas ; + et - pour le zoom. Aussi en mode photo, où le doigt cadre
-// déjà. Le clavier se tait quand une fenêtre modale est ouverte (menu, fiche
-// de découverte, choix d'une terre) ou que le focus est dans un panneau
-// ouvert : il y sert à lire et à défiler. Un panneau FERMÉ ne compte pas — le
-// bouton « Continuer » du menu garde le focus après le clic.
 attachKeyboard(stage, (target) => {
   if (document.querySelector('[aria-modal="true"].open')) return true
   return target instanceof Element && target.closest('[role="dialog"].open') !== null
 })
 
-// ── Tapping ────────────────────────────────────────────────────────────────
 const raycaster = new Raycaster()
 const pointer = new Vector2()
 
 attachControls(stage, canvas, (x, y) => {
-  // En mode photo, le doigt cadre : un tap ne doit pas envoyer le colon
-  // ailleurs ni ouvrir une fiche par-dessus la photo.
   if (stage.photo) return
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1)
   raycaster.setFromCamera(pointer, stage.camera)
 
-  // Pendant le choix de l'emplacement, le tap ne sert qu'à ça : on vise le
-  // plan d'eau, l'ancre la plus proche du point touché est posée.
   if (hud.placing) {
     const t = -raycaster.ray.origin.y / raycaster.ray.direction.y
     const hit =
@@ -1032,9 +865,6 @@ attachControls(stage, canvas, (x, y) => {
   const hits = raycaster.intersectObjects(island.pickables, false)
   const hit = hits[0]
   if (!hit || hit.instanceId === undefined) {
-    // Tap sur l'eau proche du rivage : le colon part pêcher. La nourriture
-    // continue de couler (c'est sa récolte, en bord de mer) et la baie
-    // s'anime — poissons qui sautent, prises bonus.
     const t = -raycaster.ray.origin.y / raycaster.ray.direction.y
     if (t > 0 && !game.save.expedition) {
       const px = raycaster.ray.origin.x + raycaster.ray.direction.x * t
@@ -1081,25 +911,16 @@ attachControls(stage, canvas, (x, y) => {
 })
 
 
-// ── Loop ───────────────────────────────────────────────────────────────────
-// ?act=gather:sickle force l'action et l'outil du colon, quels que soient le
-// focus et les savoirs (captures et mesures de tools/shoot-actions.mjs).
-// Ignoré sans lui, et sans effet sur la sauvegarde.
 const forcedAct = ((): { action: WorkAction; tool: WorkTool } | null => {
   const m = /^(gather):(hand|sickle|scythe)$/.exec(new URLSearchParams(location.search).get('act') ?? '')
   return m ? { action: m[1] as WorkAction, tool: m[2] as WorkTool } : null
 })()
 settler.sendTo(spotFor(forcedAct ? 'food' : game.save.focus))
 
-// ?h=0.75 fige l'heure (0 = lever, 0,25 = zénith, 0,5 = coucher, 0,75 = nuit) —
-// pour le debug et pour juger l'ambiance à heure fixe.
 const hParam = new URLSearchParams(location.search).get('h')
 const forcedHour = hParam !== null && !Number.isNaN(Number(hParam)) ? Number(hParam) % 1 : null
 let hudNight = false
 
-// ── Menu d'accueil et reset ────────────────────────────────────────────────
-// Le monde tourne derrière le menu, mais la simulation est en pause : le temps
-// de jeu n'avance pas tant que le joueur n'a pas choisi.
 let paused = true
 
 function menuEl<T extends HTMLElement>(id: string): T {
@@ -1122,10 +943,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
 
   const tuto = menuEl('menu-tuto')
 
-  // ── Le nom du village ────────────────────────────────────────────────────
-  // Il vit dans `save.village`, PAS dans l'identité de voisinage : nommer son
-  // village ne doit pas publier la tribu sur le serveur. Quand la tribu est
-  // publiée, les deux noms sont tenus égaux.
   const villageBtn = menuEl('village-name')
   const villageEdit = menuEl('village-edit')
   const villageInput = menuEl<HTMLInputElement>('village-input')
@@ -1142,7 +959,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
     villageBtn.hidden = false
     if (!name) return
     game.save.village = name
-    // Publié dans le voisinage : les autres voient le même nom.
     const t = game.save.tribe
     if (t) {
       t.name = name
@@ -1188,7 +1004,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
     ;(newBtn.querySelector('.label') as HTMLElement).textContent = hasProgress
       ? 'Nouvelle partie'
       : 'Commencer'
-    // L'Exode n'apparaît que l'arbre complet ; la constellation, dès la première étoile.
     exodeBtn.hidden = !game.treeComplete
     const cons = menuEl('menu-constellation')
     cons.hidden = game.save.legacy === 0
@@ -1215,7 +1030,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
       close()
       return
     }
-    // Première confirmation.
     confirmMode = 'erase'
     confirmStep = 1
     home.hidden = true
@@ -1251,8 +1065,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
       list.appendChild(li)
     }
   }
-  // La Chronique : la saga de la tribu, du plus récent au plus ancien, avec
-  // un bandeau par monde traversé.
   const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
   menuEl('menu-chronicle-open').addEventListener('click', () => {
     const list = menuEl('chronicle-list')
@@ -1300,9 +1112,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
   })
   menuEl('menu-feats-close').addEventListener('click', showHome)
 
-  // L'atelier : ce que le marchand a posé sur le sable, et ce qu'il reste à
-  // lui acheter. Les outils encore absents sont montrés, avec leur prix : le
-  // joueur doit pouvoir VISER une cale — sinon le troc reste une loterie.
   menuEl('menu-tools-open').addEventListener('click', () => {
     const owned = game.save.tools
     menuEl('tools-intro').textContent =
@@ -1337,8 +1146,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
   })
   menuEl('menu-news-close').addEventListener('click', showHome)
 
-  // Le voisinage : qui d'autre allume un feu à l'horizon. On peut regarder
-  // sans y paraître — publier reste un choix explicite.
   {
     const panel = menuEl('menu-neighbors')
     const list = menuEl('neighbors-list')
@@ -1378,8 +1185,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
           `${n.techs} savoir${n.techs > 1 ? 's' : ''}${wonder}<br><span class="chron-day">vue ${ago(n.seen)}</span>`
         list.appendChild(li)
       }
-      // Le coin des présents : il faut une identité, des voisins, et quelque
-      // chose à donner.
       const canGift = !!game.save.tribe && neighbors.length > 0 && game.save.relics.length > 0
       giftRow.hidden = !canGift
       if (canGift) {
@@ -1415,7 +1220,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
         leaveBtn.hidden = true
       }
     }
-    // Le rafraîchissement de fond redessine le panneau s'il est ouvert.
     onNeighborsChange = () => {
       if (!panel.hidden) render()
     }
@@ -1430,7 +1234,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
 
     joinBtn.addEventListener('click', () => {
       game.save.tribe = makeIdentity(game.save.seed)
-      // Le village a déjà un nom : la tribu le porte, plutôt qu'un nom tiré au sort.
       if (game.save.village) game.save.tribe.name = game.save.village
       else game.save.village = game.save.tribe.name
       game.flush(Date.now())
@@ -1466,7 +1269,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
     leaveBtn.addEventListener('click', () => {
       const t = game.save.tribe
       if (!t) return
-      // On efface d'abord côté serveur, tant qu'on a encore le secret.
       void leave(t.id, t.secret)
       game.save.tribe = null
       game.flush(Date.now())
@@ -1474,9 +1276,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
     })
   }
 
-  // Le comptoir : des offres déposées par d'autres tribus, et les nôtres. La
-  // marchandise quitte le camp au dépôt et revient au retrait — rien ne se
-  // crée ici, tout se déplace.
   {
     const panel = menuEl('menu-market')
     const list = menuEl('market-list')
@@ -1543,8 +1342,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
         list.appendChild(li)
       }
       for (const o of others) {
-        // On n'affiche que ce que la tribu sait manipuler : recevoir du fer
-        // avant de savoir ce qu'est le fer n'aurait aucun sens.
         if (!game.unlocked.has(o.give_res as ResourceId) || !game.unlocked.has(o.want_res as ResourceId))
           continue
         const li = document.createElement('li')
@@ -1560,7 +1357,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
           if (!game.tradeSpend(o.want_res as ResourceId, o.want_qty)) return
           void acceptOffer(t.id, t.secret, o.id).then((r) => {
             if (!r?.ok || !r.giveRes) {
-              // Offre déjà prise (ou serveur muet) : on rend son dû au joueur.
               game.tradeCredit(
                 o.want_res as ResourceId,
                 o.want_qty,
@@ -1634,8 +1430,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
     })
   }
 
-  // Transfert de tribu : la partie s'emporte en fichier ou en code, et se
-  // rouvre ailleurs. Sans ça, vider les données du navigateur efface tout.
   {
     const panel = menuEl('menu-transfer')
     const status = menuEl('transfer-status')
@@ -1649,7 +1443,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
       status.hidden = false
     }
 
-    /** Le code décrit l'état À CET INSTANT : on écrit la sauvegarde d'abord. */
     const currentCode = async () => {
       game.flush(Date.now())
       return encodeSave(game.save)
@@ -1684,8 +1477,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
           await navigator.clipboard.writeText(code)
           say('Code copié — colle-le où tu veux le garder.', 'ok')
         } catch {
-          // Presse-papiers refusé (http, permission) : on montre le code, le
-          // joueur le sélectionne lui-même.
           codeBox.value = code
           codeBox.select()
           say('Copie impossible depuis la page : le code est ci-dessous, sélectionne-le.', 'bad')
@@ -1731,11 +1522,8 @@ function menuEl<T extends HTMLElement>(id: string): T {
           return
         }
         try {
-          // Filet de sécurité : la partie remplacée reste récupérable une fois.
           const previous = localStorage.getItem(SAVE_KEY)
           if (previous) localStorage.setItem(`${SAVE_KEY}.bak`, previous)
-          // Horodatée à maintenant : un transfert ne doit pas créditer
-          // l'absence entre l'export et l'import.
           localStorage.setItem(SAVE_KEY, JSON.stringify({ ...res.save, t: Date.now() }))
         } catch {
           say('Le stockage du navigateur refuse d’écrire — restauration impossible.', 'bad')
@@ -1760,7 +1548,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
       return
     }
     if (confirmStep === 1) {
-      // Seconde confirmation : le libellé change, il faut re-taper en conscience.
       confirmStep = 2
       warn.textContent = 'Dernière confirmation. Il ne restera rien : ni savoir, ni bâtiments, ni île.'
       eraseLabel.textContent = 'Tout effacer définitivement'
@@ -1769,7 +1556,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
     try {
       localStorage.removeItem(SAVE_KEY)
     } catch {
-      /* stockage indisponible : la partie était déjà en mémoire seulement */
     }
     location.reload()
   })
@@ -1789,7 +1575,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
         notifOn = false
         try {
           localStorage.setItem(NOTIF_KEY, 'off')
-        } catch { /* préférence en mémoire */ }
+        } catch { }
         notifLabel.textContent = 'Notifications : coupées'
         return
       }
@@ -1797,7 +1583,7 @@ function menuEl<T extends HTMLElement>(id: string): T {
         notifOn = perm === 'granted'
         try {
           localStorage.setItem(NOTIF_KEY, notifOn ? 'on' : 'off')
-        } catch { /* préférence en mémoire */ }
+        } catch { }
         notifLabel.textContent = notifOn ? 'Notifications : activées' : 'Notifications : refusées'
       })
     })
@@ -1811,7 +1597,6 @@ function menuEl<T extends HTMLElement>(id: string): T {
 
   menuEl('menu-version').textContent = `v${__APP_VERSION__}`
 
-  // ?nomenu=1 : le harnais de capture juge le jeu, pas l'écran d'accueil.
   if (new URLSearchParams(location.search).has('nomenu')) {
     paused = false
     setMenuOpen(false)
@@ -1825,16 +1610,6 @@ let last = performance.now()
 let lastWall = Date.now()
 let elapsed = 0
 
-/** Compteur d'images, sur demande : `?fps=1`.
- *
- *  Il existe parce que le harnais de capture ne PEUT PAS mesurer la fluidité —
- *  Chromium sans écran rend en logiciel (SwiftShader / llvmpipe) et plafonne à
- *  deux ou trois images par seconde quoi qu'on fasse. La seule mesure qui vaut
- *  est celle prise sur un vrai appareil, donc elle doit être à portée de main.
- *
- *  Il montre la MÉDIANE et les 5 % de pires images : une moyenne cache
- *  précisément les à-coups qu'on cherche. `js` est le temps passé dans notre
- *  propre boucle, hors rendu — c'est celui-là qu'on maîtrise. */
 const fpsPanel = new URLSearchParams(location.search).get('fps') ? document.createElement('div') : null
 if (fpsPanel) {
   fpsPanel.style.cssText =
@@ -1850,14 +1625,8 @@ let fpsLast = 0
 function frame(now: number): void {
   requestAnimationFrame(frame)
   const t0 = fpsPanel ? performance.now() : 0
-  // A backgrounded tab can hand back a huge delta; the sim would jump, the
-  // animation would teleport. Clamp here and let the save handle real absence.
   const dt = Math.min((now - last) / 1000, 0.1)
   last = now
-  // Détection de suspension à l'horloge murale : verrouillage d'écran, gel
-  // d'onglet, throttling — tout écart réel est crédité au premier frame du
-  // retour, sans dépendre d'un événement de visibilité. Menu ouvert aussi :
-  // le jeu en pause n'empêche pas l'île de vivre pendant que l'onglet dort.
   const wall = Date.now()
   const gap = (wall - lastWall) / 1000
   lastWall = wall
@@ -1865,17 +1634,11 @@ function frame(now: number): void {
   elapsed += dt
 
   if (!paused) game.tick(dt, Date.now())
-  // La nuit, TOUT LE MONDE dort. La lumière découverte ne fait qu'allonger la
-  // veillée sur le crépuscule et l'aube (game.sleepTime) : même électrifiée,
-  // l'île doit être vue endormie une partie de la nuit.
   settler.setNight(game.sleepTime)
   const boost = game.encourageLeft > 0 ? 1.7 : 1
-  // L'outil suit la ressource travaillée et la matière suit les savoirs.
   const metal = game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('bronze') ? 1 : 0
   if (game.save.focus !== 'food') gatherTap = false
   if (game.save.focus === 'food' || forcedAct) {
-    // La table du §2 de la spec (game/work-tool.ts) : pêche, chasse ou
-    // cueillette, et l'outil que les savoirs permettent.
     const knows = (id: string) => game.knows(id)
     const action = forcedAct?.action ?? actionFor(fishing, gatherTap, knows)
     const tool = forcedAct?.tool ?? toolFor(action, knows)
@@ -1886,17 +1649,11 @@ function frame(now: number): void {
     settler.setTool(game.knows('flint') ? 'axe' : 'hand', metal)
   } else {
     settler.setClip(null)
-    // Galet percuteur, puis pic de cuivre, puis pic de fer.
     settler.setTool('pick', game.knows('bessemer') ? 3 : game.knows('ironworking') ? 2 : game.knows('copper') ? 1 : 0)
   }
-  // Une pose depuis la dernière image : la carte se refait avant que
-  // quiconque ne marche.
   fauna.setKnown(game.knows('agriculture'), game.knows('granary'), game.knows('horsecollar'), game.knows('sail'))
   if (ground.refresh()) {
     village.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
-    // La carte refaite a pu effacer du décor sous la nouvelle pose : les
-    // nœuds de récolte se relèvent, et si le colon marchait vers un buisson
-    // ou un rocher qui n'existe plus, il repart vers un nœud debout.
     const was = nodeCount()
     surveyNodes()
     if (nodeCount() !== was && !fishing && !game.save.expedition && settler.goalGone(nodeSpots))
@@ -1906,7 +1663,6 @@ function frame(now: number): void {
   caravan.update(dt, elapsed, game.knows('sail'))
   boat.update(dt, elapsed)
   if (expPhase === 'walking' && settler.isAway) {
-    // Il est arrivé à l'embarquement : le véhicule s'ébranle.
     if (tripKind === 'sea') boat.launchOut(settler.shorePoint, isLand)
     else if (tripKind === 'air') village.planeDepart()
     expPhase = 'sailed'
@@ -1915,8 +1671,6 @@ function frame(now: number): void {
     settler.returnFromExpedition()
     expPhase = 'none'
   }
-  // La production bouge (focus, saison, nuit) : la rame l'apprend une fois par
-  // seconde et ne recompose ses wagons qu'à son prochain arrêt en gare.
   cargoClock -= dt
   if (cargoClock <= 0) {
     cargoClock = 1
@@ -1924,13 +1678,8 @@ function frame(now: number): void {
   }
   village.update(dt, elapsed, lastDaylight)
   fauna.update(dt, elapsed, settler.group.position, game.isNight)
-  // Les adultes veillent tant que la lumière le permet ; l'enfant est couché
-  // dès la tombée de la nuit.
   villagers.update(dt, elapsed, game.sleepTime, game.isNight)
-  // Le jour avance avec le temps de jeu cumulé : la partie reprend à l'heure
-  // où elle s'était arrêtée, pas toujours au même matin.
   stage.tickSleigh(dt)
-  // Nuit de Noël : les grelots, puis la silhouette qui traverse le ciel.
   if (yule === 'flight' && !paused) {
     if (game.isNight) {
       sleighIn -= dt
@@ -1945,7 +1694,6 @@ function frame(now: number): void {
         }
       }
     } else {
-      // Au jour, on réarme court : la première nuit venue, il passe.
       sleighIn = Math.min(sleighIn, 10)
     }
   }
@@ -1957,26 +1705,17 @@ function frame(now: number): void {
   if (eclipseLeft > 0) {
     eclipseLeft -= dt
     const p = 1 - Math.max(0, eclipseLeft) / ECLIPSE_DUR
-    // Une cloche d'ombre : la lumière fond, s'éteint aux trois quarts, revient.
     stage.eclipseK = 1 - 0.78 * Math.sin(Math.PI * Math.min(1, p))
     if (eclipseLeft <= 0) stage.eclipseK = 1
   }
   const hour = forcedHour ?? dayPhaseAt(game.save.totalPlaySeconds)
   const daylight = stage.setDaylight(hour)
-  // Retenue pour la frame SUIVANTE : le village s'anime avant que la lumière
-  // du jour ne soit calculée, et l'éclairage public a besoin de la connaître.
   lastDaylight = daylight
   island.setDaylight(daylight)
-  // Caustiques du lagon : elles ondulent avec le temps réel, même en pause.
   island.tickWater(elapsed)
-  // L'enneigement progresse DANS la saison : l'appel est gardé côté île (il ne
-  // repeint qu'aux 2 % de saison écoulée).
   island.setSeason(game.season.id, game.seasonU)
-  // Les ailes du moulin tournent, et le cadran du campanile donne l'heure
-  // qu'il est sur l'île — la même fraction de journée que celle du soleil.
   village.tickMovers(dt, hour)
   stage.driftSky(dt)
-  // Hystérésis : l'encre du HUD ne doit pas clignoter pendant tout un crépuscule.
   if (hudNight ? daylight > 0.55 : daylight < 0.4) {
     hudNight = !hudNight
     document.body.classList.toggle('night', hudNight)
@@ -2003,7 +1742,6 @@ function frame(now: number): void {
   stage.updateCamera()
   hud.update()
   if (hud.placing) {
-    // La carte a pu disparaître sous le choix (Exode) : on referme.
     if (!game.landOffer) endPlacing()
     else {
       anchorMarks.tick(dt)
@@ -2039,9 +1777,6 @@ requestAnimationFrame((t) => {
   requestAnimationFrame(frame)
 })
 
-// ── Mode photo maquette ────────────────────────────────────────────────────
-// La scène seule, en plongée et en tilt-shift. Le post-traitement vit dans
-// Stage.setPhoto : hors de ce mode, il n'existe pas.
 function setPhotoMode(on: boolean): void {
   if (on && hud.placing) hud.onPlaceCancel?.()
   stage.setPhoto(on)
@@ -2052,9 +1787,6 @@ document.getElementById('photo-close')!.addEventListener('click', () => setPhoto
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && stage.photo) setPhotoMode(false)
 })
-// L'image part sur l'appareil du joueur, nulle part ailleurs. Le tampon WebGL
-// est vidé après chaque présentation : on redessine puis on le lit dans la
-// même tâche, sans avoir à le conserver à chaque image.
 document.getElementById('photo-save')!.addEventListener('click', () => {
   stage.render()
   canvas.toBlob((blob) => {
@@ -2069,9 +1801,6 @@ document.getElementById('photo-save')!.addEventListener('click', () => {
   }, 'image/png')
 })
 
-// Measurement hook for the screenshot/perf harness in tools/. Costs one object;
-// exposing draw calls and triangles is what makes the perf half of the bar
-// objective instead of a vibe.
 ;(window as unknown as Record<string, unknown>).__tribu = {
   info: () => ({
     calls: stage.renderer.info.render.calls,
@@ -2083,7 +1812,6 @@ document.getElementById('photo-save')!.addEventListener('click', () => {
   ready: true,
   stage,
   game,
-  // Recréés à chaque buildWorld : le harnais passe par des getters.
   fauna: () => fauna,
   settler: () => settler,
   villagers: () => villagers,
@@ -2095,18 +1823,11 @@ document.getElementById('photo-save')!.addEventListener('click', () => {
   caravan: () => caravan,
 }
 
-// Credit real elapsed time when the tab comes back, and never lose a session.
-// Sur mobile la page vit en arrière-plan sans repasser par le constructeur :
-// le temps caché doit être crédité ici, par le même chemin que le hors-ligne.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     game.flush(Date.now())
-    // Le son ne doit pas survivre à l'onglet : navigateur réduit, l'ambiance
-    // continuait de jouer dans le vide.
     ambience.pauseForBackground()
   } else {
-    // Le crédit passe par la détection d'écart de la boucle : ici on ne fait
-    // que réarmer le chrono d'animation.
     last = performance.now()
     ambience.resumeFromBackground()
   }
@@ -2118,12 +1839,6 @@ window.addEventListener('pagehide', () => {
   if (snap) publishBeacon(snap)
 })
 
-// ── Le voisinage ───────────────────────────────────────────────────────────
-// Les silhouettes de l'horizon sont d'autres tribus. Tout ici est facultatif :
-// serveur éteint ou avion activé, le jeu ne s'en aperçoit pas.
-
-/** L'instantané public — un pseudo et des compteurs, rien d'autre. `null`
- *  tant que le joueur n'a pas rejoint le voisinage. */
 function snapshot(): Snapshot | null {
   const t = game.save.tribe
   if (!t) return null
@@ -2142,8 +1857,6 @@ function snapshot(): Snapshot | null {
   }
 }
 
-/** Ce qui, dans le voisinage, change ce qu'on DESSINE : identité, époque,
- *  merveilles. Un simple jour de plus chez le voisin ne reconstruit rien. */
 const horizonKey = (list: Neighbor[]): string =>
   list
     .slice(0, 8)
@@ -2153,7 +1866,6 @@ const horizonKey = (list: Neighbor[]): string =>
 async function syncNeighborhood(): Promise<void> {
   const snap = snapshot()
   if (snap) await publish(snap)
-  // Le courrier d'abord : ce que les autres ont fait pendant l'absence.
   const t = game.save.tribe
   if (t) {
     const mail = await drainInbox(t.id, t.secret)
@@ -2161,7 +1873,6 @@ async function syncNeighborhood(): Promise<void> {
   }
   const list = await fetchNeighbors(game.save.tribe?.id ?? '', 8)
   if (!list) return
-  // Les îles joignables par le colon : le choix de destination s'en sert.
   game.visitable = list.map((n) => ({ id: n.id, name: n.name, age: n.age, relics: n.relics }))
   const before = horizonKey(neighbors)
   neighbors = list
@@ -2170,6 +1881,5 @@ async function syncNeighborhood(): Promise<void> {
   onNeighborsChange?.()
 }
 
-// Premier appel décalé : la première image du jeu passe avant le réseau.
 setTimeout(() => void syncNeighborhood(), 4000)
 setInterval(() => void syncNeighborhood(), 5 * 60_000)

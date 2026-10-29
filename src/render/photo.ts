@@ -5,39 +5,24 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 
-/** Le mode photo maquette : la chaîne de post-traitement n'existe QUE là.
- *  Ce module est chargé à la demande (import dynamique depuis scene.ts) — le
- *  premier chargement du jeu n'en paie pas un octet, et la boucle normale ne
- *  passe jamais par un composer.
- *
- *  Le tilt-shift des exemples de three floute en proportion LINÉAIRE de
- *  l'écart à la ligne de netteté : il n'y a pas de bande nette, tout est un
- *  peu flou sauf une ligne. Une maquette photographiée se lit au contraire
- *  à sa bande nette franche, puis à un flou qui monte vite vers les bords —
- *  d'où ce flou séparable maison, masqué par un smoothstep. */
 const TiltShiftShader = {
   name: 'TribuTiltShift',
   uniforms: {
     tDiffuse: { value: null },
-    /** Pas d'échantillonnage, en fraction d'écran : (1/w, 0) puis (0, 1/h). */
     dir: { value: new Vector2(1 / 512, 0) },
-    /** Écart maximal entre deux échantillons, en pixels du tampon. */
     spread: { value: 2.4 },
-    /** Hauteur (0..1) de la ligne de netteté. */
     focus: { value: 0.5 },
-    /** Demi-hauteur de la bande nette, puis largeur du fondu vers le flou. */
     band: { value: 0.12 },
     feather: { value: 0.3 },
-    /** Vignettage, appliqué seulement par la seconde passe. */
     vignette: { value: 0 },
   },
-  vertexShader: /* glsl */ `
+  vertexShader: `
     varying vec2 vUv;
     void main() {
       vUv = uv;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }`,
-  fragmentShader: /* glsl */ `
+  fragmentShader: `
     uniform sampler2D tDiffuse;
     uniform vec2 dir;
     uniform float spread;
@@ -73,9 +58,6 @@ export class PhotoFx {
     camera: PerspectiveCamera,
   ) {
     const size = renderer.getDrawingBufferSize(new Vector2())
-    // L'antialiasing du canvas ne s'applique pas à une cible de rendu : sans
-    // MSAA sur la cible, la bande nette — la seule qu'on regarde — crénelait.
-    // Mêmes règles que le canvas : rien sur pointeur grossier.
     const coarse = window.matchMedia('(pointer: coarse)').matches
     const target = new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: coarse ? 0 : 4 })
     this.composer = new EffectComposer(renderer, target)
@@ -85,13 +67,10 @@ export class PhotoFx {
     this.blurY.uniforms.vignette!.value = 0.32
     this.composer.addPass(this.blurX)
     this.composer.addPass(this.blurY)
-    // Tonemapping et sRGB en fin de chaîne : sans elle, l'image sortait
-    // délavée — la scène se rend en linéaire dans les cibles du composer.
     this.composer.addPass(new OutputPass())
     this.resize()
   }
 
-  /** Suit la taille ET le DPR bridé du renderer (posés par Stage.resize). */
   resize(): void {
     const css = this.renderer.getSize(new Vector2())
     const pr = this.renderer.getPixelRatio()
@@ -101,7 +80,6 @@ export class PhotoFx {
     const h = Math.max(1, css.y * pr)
     ;(this.blurX.uniforms.dir!.value as Vector2).set(1 / w, 0)
     ;(this.blurY.uniforms.dir!.value as Vector2).set(0, 1 / h)
-    // Le flou se dose en pixels CSS : même rendu à DPR 1 et à DPR 2.
     this.blurX.uniforms.spread!.value = 2.6 * pr
     this.blurY.uniforms.spread!.value = 2.6 * pr
   }

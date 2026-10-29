@@ -1,34 +1,4 @@
 #!/usr/bin/env node
-/**
- * gen-sfx.mjs — génère les sons de Tribu avec ElevenLabs (text-to-sound-effects).
- *
- * L'ambiance du jeu est aujourd'hui 100 % synthétisée dans le navigateur
- * (src/audio/ambience.ts) : zéro octet d'asset, boucles parfaites, et des
- * paramètres qui suivent l'état du jeu. Ce script sert à REMPLACER
- * sélectivement ce qui sonne le plus « synthé » — les nappes d'ambiance et
- * les sons d'interaction — sans toucher à la couche paramétrique.
- *
- * PALIER GRATUIT (choix assumé de Damien, jeu personnel non monétisé) :
- * 10 000 crédits par mois, usage NON COMMERCIAL, attribution demandée. La
- * série complète coûte ~3 000 crédits, soit moins d'un tiers du quota
- * mensuel — et on ne la génère qu'une fois. Si le jeu devait un jour être
- * monétisé, il faudrait soit un plan Starter, soit repasser par la banque
- * CC0 : tools/fetch-sfx.mjs fait exactement le même travail, gratuitement et
- * sans clause d'usage.
- *
- *   ELEVENLABS_API_KEY=... node tools/gen-sfx.mjs --dry-run
- *   ELEVENLABS_API_KEY=... node tools/gen-sfx.mjs --only=toc,carillon
- *   ELEVENLABS_API_KEY=... node tools/gen-sfx.mjs --force
- *
- * Options :
- *   --dry-run     n'appelle rien : affiche les prompts et le coût estimé
- *   --only=a,b    ne génère que ces identifiants
- *   --force       régénère même si le fichier existe déjà
- *   --format=...  format de sortie (défaut : par catégorie, voir FORMATS)
- *
- * Les fichiers atterrissent dans public/audio/<id>.mp3. Rien n'est écrasé
- * sans --force : une génération réussie est un tirage, on la garde.
- */
 import { mkdir, writeFile, readFile, stat, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,9 +8,6 @@ import { mergeCredits } from './credits-file.mjs'
 
 const run = promisify(execFile)
 
-/** Le modèle rend des niveaux très inégaux d'un tirage à l'autre (mesuré :
- *  de -23 dB à -64 dB de moyenne sur la même série). Ces sons se mélangent à
- *  un synthé calibré : ils doivent viser la même cible de sonie. */
 async function normalize(file, kind) {
   const tmp = `${file}.tmp.mp3`
   await run('ffmpeg', [
@@ -55,17 +22,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = join(ROOT, 'public', 'audio')
 const API = 'https://api.elevenlabs.io/v1/sound-generation'
 
-/** Nappes : longues, bouclées, jouées en continu. Un débit modeste suffit —
- *  ce sont des textures larges, personne n'y cherche un aigu cristallin, et
- *  chaque kilo-octet est payé au chargement de la PWA.
- *  Sons d'interaction : courts, joués au premier plan, pleine qualité. */
 const FORMATS = { bed: 'mp3_22050_32', shot: 'mp3_44100_128' }
 
-/** Les prompts sont en ANGLAIS : le modèle y est nettement plus obéissant.
- *  Chacun dit aussi ce qu'il ne veut PAS — c'est ce qui évite les nappes
- *  « cinématiques » avec nappe de synthé et coup de tonnerre dramatique. */
 const SOUNDS = [
-  // ── Nappes d'ambiance (bouclées) ────────────────────────────────────────
   {
     id: 'mer',
     kind: 'bed',
@@ -84,16 +43,12 @@ const SOUNDS = [
     seconds: 12,
     text: 'Steady light rain falling on grass and leaves, soft and even, no thunder, no wind gusts, no music, clean field recording',
   },
-  // PAS de `nuit` ni d'`oiseaux` : ce sont des prises réelles en CC0,
-  // épinglées dans tools/fetch-cc-sfx.mjs (issue #20). Les régénérer ici
-  // remplacerait des sons libres par des sons à usage non commercial.
   {
     id: 'bourdon',
     kind: 'bed',
     seconds: 8,
     text: 'Low steady electrical hum of a street lamp ballast, continuous drone, clear and present, no buzzing insects, no music',
   },
-  // ── Le travail du colon : un son PAR COUP, déclenché par l'animation ────
   {
     id: 'bois',
     kind: 'shot',
@@ -119,7 +74,6 @@ const SOUNDS = [
     text: 'One spear thrust into hide and straw, dull thud with a short fibrous tear, close, brief, no music, no animal cry',
   },
 
-  // ── Sons d'interaction (coups uniques) ──────────────────────────────────
   {
     id: 'toc',
     kind: 'shot',
@@ -162,9 +116,6 @@ const formatOverride = val('--format')
 
 const wanted = only ? SOUNDS.filter((s) => only.includes(s.id)) : SOUNDS
 
-/** Tarif public au moment de l'écriture : 40 crédits par seconde quand la
- *  durée est imposée (ce qu'on fait ici, pour des boucles régulières), ou
- *  ~0,02 $ par effet en paiement à la génération. */
 const credits = wanted.reduce((n, s) => n + Math.ceil(s.seconds * 40), 0)
 
 console.log(
@@ -208,10 +159,8 @@ for (const s of wanted) {
   const body = {
     text: s.text,
     duration_seconds: s.seconds,
-    // Prompt suivi de près : sans ça le modèle « embellit » (nappes, reverb).
     prompt_influence: 0.6,
     model_id: 'eleven_text_to_sound_v2',
-    // Une nappe doit boucler sans couture — c'est tout l'intérêt face au synthé.
     loop: s.kind === 'bed',
     output_format: fmt,
   }
@@ -221,7 +170,6 @@ for (const s of wanted) {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    // Le corps d'erreur liste les valeurs acceptées : on le montre tel quel.
     console.error(`✗ ${s.id} — HTTP ${res.status} : ${(await res.text()).slice(0, 300)}`)
     continue
   }
@@ -237,7 +185,6 @@ for (const s of wanted) {
   console.log(`✓ ${s.id.padEnd(9)} ${(st.size / 1024).toFixed(0).padStart(4)} ko  ${fmt}`)
 }
 
-// Chaque fichier généré a sa ligne dans CREDITS.md, fusionnée avec les autres.
 if (Object.keys(generated).length > 0) {
   const creditsFile = join(OUT, 'CREDITS.md')
   const existing = await readFile(creditsFile, 'utf8').catch(() => null)

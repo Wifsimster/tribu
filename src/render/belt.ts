@@ -1,32 +1,4 @@
-// La CEINTURE : le tracé qui fait le tour de l'île, sentier côtier aux
-// premiers âges, chemin ensuite, voie ferrée à l'âge 7. Module sans three ni
-// asset : les tests le chargent sous Node, et la règle se lit ici d'un bloc.
-//
-// Le tracé (conception du 2026-10-13, section 2.a) :
-// 1. le rivage réel, échantillonné en polaire depuis le centre de l'île sur
-//    720 rayons (distance à la première eau, `isLand` faisant foi) ;
-// 2. lissé par une convolution circulaire GAUSSIENNE (σ = 30°) — son noyau
-//    est positif, donc une côte qui avance ne fait jamais reculer la voie ;
-// 3. abaissé d'un recul unique, le plus petit qui garde l'axe à une case
-//    (1,35 u) de l'eau partout.
-// Il est gardé en 72 rayons (tous les 5°), relus comme les points de contrôle
-// d'une B-spline cubique périodique en polaire : courbe C², et chaque point
-// est une moyenne à poids positifs des rayons voisins — un rayon qui grandit
-// ne peut que repousser la courbe vers le large.
-
 export const BELT_N = 72
-/** Le tracé sur l'île de base (le sentier, avant l'âge 7) : lissage de 32°
- *  et une case de garde (1,35 u). Mesuré (conception) : la moyenne glissante
- *  ou Fourier à 5 harmoniques descendaient à 2,2 u de rayon de courbure ; à
- *  30°, l'île de base descend à 8,99 u (graine 123), à 32° 9,5 u au moins.
- *
- *  Le tracé de la VOIE, sur l'île agrandie (2026-10-20, 90 sauvegardes 3.61
- *  générées, dix graines, âges 7 à 10, 0 à 12 parcelles, phare à part) :
- *  σ 32° / garde 1,35 → rayon ≥ 12,2 u, 13,6 % des bâtiments sur le tracé,
- *  11 parties sur 90 au-delà de 20 % ; σ 28° / garde 1,2 → rayon ≥ 11,3 u,
- *  10,9 %, 2 parties sur 90 (22,7 % au pire). On garde la seconde : moins de
- *  bâtiments déplacés, la garde de la conception (1,2 u) et un rayon bien
- *  au-dessus du plancher de 9 u. */
 export const BELT_SIGMA = (32 * Math.PI) / 180
 export const BELT_GUARD = 1.35
 export const RAIL_SIGMA = (28 * Math.PI) / 180
@@ -40,7 +12,6 @@ export interface Pt {
   z: number
 }
 
-/** Distance du centre à la première eau, sur `rays` rayons (θ = atan2(z, x)). */
 export function shoreRadii(isLand: IsLand, rays = RAYS, step = 0.05, max = 80): Float64Array {
   const out = new Float64Array(rays)
   for (let i = 0; i < rays; i++) {
@@ -54,7 +25,6 @@ export function shoreRadii(isLand: IsLand, rays = RAYS, step = 0.05, max = 80): 
   return out
 }
 
-/** Convolution circulaire par une gaussienne d'écart-type `sigma` (radians). */
 export function gaussCircular(v: ArrayLike<number>, sigma: number): Float64Array {
   const n = v.length
   const s = (sigma / (Math.PI * 2)) * n
@@ -75,8 +45,6 @@ export function gaussCircular(v: ArrayLike<number>, sigma: number): Float64Array
   return out
 }
 
-/** Le rayon de la ceinture à l'angle θ : B-spline cubique uniforme et
- *  périodique des rayons de contrôle. */
 export function beltRadius(radii: readonly number[], theta: number): number {
   const n = radii.length
   const t = ((((theta / (Math.PI * 2)) * n) % n) + n) % n
@@ -90,10 +58,6 @@ export function beltRadius(radii: readonly number[], theta: number): number {
   )
 }
 
-/** La ceinture en polyligne FERMÉE, à pas régulier (≈ `step` u), parcourue
- *  dans le sens HORAIRE vu du ciel (θ décroissant) : vu de la caméra par
- *  défaut, la rame passe de gauche à droite au premier plan. Le dernier point
- *  répète le premier ; `cum` va de 0 à la longueur de la boucle. */
 export function beltPath(radii: readonly number[], step = 0.4): { pts: Pt[]; cum: number[] } {
   const fineN = 4096
   const fine: Pt[] = []
@@ -124,8 +88,6 @@ export function beltPath(radii: readonly number[], step = 0.4): { pts: Pt[]; cum
   return { pts, cum }
 }
 
-/** Distance à l'eau la plus proche, plafonnée à `cap` (échantillonnée tous
- *  les 5 cm sur 32 directions). */
 export function waterDist(isLand: IsLand, x: number, z: number, cap = 4): number {
   if (!isLand(x, z)) return 0
   for (let r = 0.05; r <= cap + 1e-9; r += 0.05)
@@ -136,26 +98,19 @@ export function waterDist(isLand: IsLand, x: number, z: number, cap = 4): number
   return cap
 }
 
-/** La plus petite garde axe-eau le long de la ceinture. */
 export function beltGuard(isLand: IsLand, pts: readonly Pt[], cap = 4): number {
   let g = Infinity
   for (const p of pts) g = Math.min(g, waterDist(isLand, p.x, p.z, cap))
   return g
 }
 
-/** Vrai si tout l'axe tient à `guard` de l'eau (sortie dès le premier point
- *  fautif : c'est la sonde de la recherche du recul). */
 function guarded(isLand: IsLand, pts: readonly Pt[], guard: number): boolean {
   for (const p of pts) if (waterDist(isLand, p.x, p.z, guard) < guard - 1e-9) return false
   return true
 }
 
-/** Arrondi au centième PAR EXCÈS : une ceinture relue n'est jamais en deçà de
- *  celle qu'on a tracée. */
 const up = (v: number): number => Math.ceil(v * 100 - 1e-6) / 100
 
-/** Le tracé que réclame CETTE île : rivage lissé, puis recul. `rail` : le
- *  tracé de la voie (île agrandie), sinon celui du sentier. */
 export function beltFor(isLand: IsLand, rail = false): number[] {
   const guard = rail ? RAIL_GUARD : BELT_GUARD
   const g = gaussCircular(shoreRadii(isLand), rail ? RAIL_SIGMA : BELT_SIGMA)
@@ -165,8 +120,6 @@ export function beltFor(isLand: IsLand, rail = false): number[] {
   const at = (d: number): number[] => base.map((r) => up(Math.max(2, r - d)))
   const ok = (d: number): boolean => guarded(isLand, beltPath(at(d)).pts, guard)
   if (ok(0)) return at(0)
-  // Le plus petit recul qui tient la garde, au vingtième d'unité, par
-  // dichotomie : `lo` ne tient pas, `hi` tient.
   let lo = 0
   let hi = 12
   if (!ok(hi)) return at(hi)
@@ -178,30 +131,17 @@ export function beltFor(isLand: IsLand, rail = false): number[] {
   return at(hi)
 }
 
-/** La ceinture après une terre gagnée (ou le palier de l'âge 7) : elle ne
- *  peut que s'éloigner du centre — rayon par rayon, le plus grand des deux.
- *  Le raccord se lisse de lui-même : la courbe est une B-spline des rayons.
- *  La conception proposait un maximum ADOUCI (k = 0,6) ; mesuré, il ajoutait
- *  0,15 u à chaque pose là où les deux tracés coïncident — au point même où
- *  la garde est la plus juste — et la voie glissait vers l'eau de pose en pose
- *  (garde 0,95 u après quatre parcelles, graine 2024). Le maximum simple tient
- *  1,3 u et un rayon de courbure de 9,5 u au moins (dix graines, douze
- *  parcelles). Si le nouveau tracé ne dépasse nulle part l'ancien, l'ancien
- *  est rendu TEL QUEL : les chargements successifs ne le font pas dériver. */
 export function growBelt(prev: readonly number[] | null, next: readonly number[]): number[] {
   if (!prev || prev.length !== BELT_N) return [...next]
   return prev.map((r, j) => Math.max(r, next[j]!))
 }
 
-/** Une ceinture relue de la sauvegarde : 72 rayons finis et positifs, ou rien. */
 export function cleanBelt(v: unknown): number[] | null {
   if (!Array.isArray(v) || v.length !== BELT_N) return null
   if (!v.every((r) => typeof r === 'number' && Number.isFinite(r) && r > 1 && r < 80)) return null
   return v.map((r) => up(r as number))
 }
 
-/** Le rayon de courbure, mesuré sur la polyligne : cercle par trois points
- *  espacés de `span` sommets de part et d'autre. */
 export function minCurvatureRadius(pts: readonly Pt[], span = 3): number {
   const n = pts.length - 1
   let best = Infinity
@@ -219,7 +159,6 @@ export function minCurvatureRadius(pts: readonly Pt[], span = 3): number {
   return best
 }
 
-/** Le point de la ceinture (abscisse) le plus proche de `p`, et sa distance. */
 export function nearestOnLoop(t: { pts: readonly Pt[]; cum: readonly number[] }, p: Pt): { s: number; d: number } {
   let best = 0
   let bestD = Infinity
@@ -239,7 +178,6 @@ export function nearestOnLoop(t: { pts: readonly Pt[]; cum: readonly number[] },
   return { s: best, d: bestD }
 }
 
-/** Le point (x, z) est-il À L'INTÉRIEUR de la ceinture ? */
 export function insideBelt(radii: readonly number[], x: number, z: number): boolean {
   return Math.hypot(x, z) < beltRadius(radii, Math.atan2(z, x))
 }

@@ -1,6 +1,3 @@
-// La palette A (v3.60.0) figée : un changement de couleur doit être voulu,
-// donc passer par ce test, pas glisser au détour d'un autre chantier.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -41,8 +38,6 @@ test('palette A : lumière figée', () => {
 test('ciel et brume ne prennent plus la teinte d’âge', () => {
   assert.equal(AGE_SKY_MIX, 0)
   assert.equal(AGE_HAZE_MIX, 0)
-  // Mélange tel que le fait scene.ts : quel que soit l'âge, le ciel et la
-  // brume restent exactement ceux de la palette.
   for (const age of AGES) {
     const top = PALETTE.sky.clone().lerp(PALETTE.sky.clone().setHex(age.sky), AGE_SKY_MIX)
     const haze = PALETTE.haze.clone().lerp(PALETTE.haze.clone().setHex(age.fog), AGE_HAZE_MIX)
@@ -52,7 +47,6 @@ test('ciel et brume ne prennent plus la teinte d’âge', () => {
 })
 
 test("l'eau garde son écart de valeur avec la terre", () => {
-  // La leçon de la v3.3 : c'est la VALEUR, pas la teinte, qui détache l'île.
   const lum = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
   assert.ok(lum(PALETTE.sand) > lum(PALETTE.water) * 2, 'sable nettement plus clair que l’eau')
   assert.ok(lum(PALETTE.waterDeep) < lum(PALETTE.water), 'le profond fonce')

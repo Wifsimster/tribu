@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-// La vraie géométrie du colon, sortie du jeu pour Blender : chaque membre
-// (body, head, armL, armR, legL, legR) dans l'espace de son nœud, avec ses
-// couleurs. tools/blender/settler_rig.py l'attache à l'os du même nom :
-// l'animateur voit la silhouette du jeu, pas une approximation.
-//
-//   node --import ./tests/resolve-ts.mjs tools/export-settler-proxy.mjs [sortie.json]
-//
-// Sans argument, le JSON part sur la sortie standard.
 
 import { writeFileSync } from 'node:fs'
 

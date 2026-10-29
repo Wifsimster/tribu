@@ -1,23 +1,3 @@
-# Les gestes de la cueillette, keyframés dans Blender sur l'armature « Colon »
-# (une Action par clip) : gather_hand (main nue et panier), gather_sickle
-# (faucille et gerbe), gather_scythe (faux, gerbe sur le dos).
-#
-# Une clé = une pose. Les membres se posent soit par une rotation locale
-# (euler du jeu, parent de travail de settler_rig.AUTHOR_PARENT), soit par une
-# VISÉE : le bras pointe vers un point du monde (le buisson, le panier, le
-# mancheron de la faux), l'outil s'oriente selon deux directions. C'est un IK
-# résolu à chaque clé ; Blender interpole ensuite (Bézier) et l'export
-# échantillonne ce qu'il évalue.
-#
-# Un clip = intro (depuis la pose de repos) + boucle [loop_in, loop_out]
-# rejouée `loops` fois + sortie (retour au repos). Les marqueurs de l'Action
-# portent les événements : strike (le geste touche), fill (le panier ou la
-# gerbe monte d'un cran), loop_in, loop_out.
-#
-# Les jambes ne bougent pas pendant un clip (aucun pas prévu) : le pied ne
-# glisse pas. Elles prennent leur appui dès la première image ; le fondu du
-# jeu (0,15 s au moins) les y amène depuis la marche.
-
 import json
 import math
 
@@ -99,14 +79,8 @@ def rot_y(v, a):
     return Vector((v.x * math.cos(a) + v.z * math.sin(a), v.y, -v.x * math.sin(a) + v.z * math.cos(a)))
 
 
-# ── Les clips ──────────────────────────────────────────────────────────────
-# Repère du rig (avant ×1,32) : sol y = 0, le colon regarde +z. Le buisson
-# est à ~0,5 devant lui, son demi-hauteur vers y ≈ 0,24.
-
 def gather_hand(rig):
     legs = {'legL': (0.08, 0, -0.04), 'legR': (-0.1, 0, 0.04)}
-    # Le panier pend à côté de la hanche gauche, bras écarté : il se voit de
-    # dos comme de profil. Il vient devant le ventre recevoir les baies.
     side = (-0.72, 0.46, 0.26)
     front = (-0.18, 0.48, 0.34)
     basket = {'armL': ('aim', side), 'toolL': ('upright', (0, 0, 0))}
@@ -145,14 +119,12 @@ def gather_hand(rig):
 
 def gather_sickle(rig):
     legs = {'legL': (0.1, 0, -0.05), 'legR': (-0.12, 0, 0.05)}
-    stalks = (-0.08, 0.36, 0.5)          # la main gauche saisit les tiges
+    stalks = (-0.08, 0.36, 0.5)
 
     def pose(body, arm, tool, head=(-0.35, 0, 0)):
         return {'body': body, 'head': head, **legs, 'armR': ('aim', arm), 'toolR': tool,
                 'armL': ('aim', stalks), 'toolL': ('upright', (0, 0, 0))}
 
-    # Faucille : le manche (axe -y de l'outil) suit le geste, la lame
-    # (ouverte vers +z de l'outil) regarde les tiges.
     raised = pose((0.55, 0.45, 0), (0.85, 1.05, 0.0), ('look', DOWN, (0.4, 0.6, -0.5), (0, 0, 1), (0, 1, 0)))
     mid = pose((0.7, 0.1, 0), (0.55, 0.38, 0.42), ('look', DOWN, (-0.4, -0.1, 1), (0, 0, 1), (-1, 0, 0)))
     cut = pose((0.8, -0.3, 0), (0.12, 0.34, 0.5), ('look', DOWN, (-1, -0.2, 0.35), (0, 0, 1), (0, 0, -1)))

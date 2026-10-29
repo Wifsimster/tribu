@@ -1,8 +1,3 @@
-// Chaque fichier livré avec le jeu a une ligne de provenance : les sons dans
-// public/audio/CREDITS.md, les modèles dans ASSETS.md. Les licences CC BY et
-// CC BY-SA exigent l'attribution ; un fichier sans ligne, c'est une
-// attribution perdue (c'est arrivé : 14 sons sur 15 jusqu'à la 3.61.0).
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -18,7 +13,6 @@ const files = (dir, ext) =>
 test('chaque son de public/audio a sa ligne dans CREDITS.md', () => {
   const sounds = files('public/audio/', '.mp3')
   assert.ok(sounds.length > 0, 'aucun son trouvé')
-  // Même format que tools/credits-file.mjs : `- **<id>** — <provenance>`.
   const credited = new Set(
     read('public/audio/CREDITS.md')
       .split('\n')

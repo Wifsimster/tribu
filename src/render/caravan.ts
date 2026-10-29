@@ -19,18 +19,13 @@ import { VEHICLE_SCALE, headingYaw, vehicleGeometry } from './vehicles'
 
 type State = 'away' | 'sailingIn' | 'docked' | 'sailingOut'
 
-const APPROACH = 2.35 // azimut d'arrivée, choisi pour croiser la caméra par défaut
+const APPROACH = 2.35
 const SPAWN_R = 46
-/** L'échelle de jeu de la barque jusqu'à la 3.61.0, puis le facteur de taille
- *  réelle par-dessus (voir vehicles.ts). */
 const BASE_SCALE = 1.5
 const SCALE = BASE_SCALE * VEHICLE_SCALE.merchant
-/** La poupe mouille à 19 u du centre, où mouillait le milieu de la barque
- *  jusqu'à la 3.61.0, et la coque s'étend au large. Centrée à 19, la barque
- *  de 12,4 u avait la moitié de sa coque sur la plage (la côte est à 17,7). */
 const HALF_LENGTH = 4.286 / 2
 const DOCK_R = 19 + HALF_LENGTH * VEHICLE_SCALE.merchant
-const TRAVEL = 7 // secondes de trajet, dans un sens comme dans l'autre
+const TRAVEL = 7
 
 function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
   geo.translate(x, y, z)
@@ -45,8 +40,6 @@ function tinted(geo: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferG
   return geo
 }
 
-/** La barque marchande : coque et cargaison fondues en un seul mesh, la voile à
- *  part parce qu'elle apparaît avec la techno « voile » et gonfle en route. */
 export class Caravan {
   readonly group = new Group()
   private readonly sail: Mesh
@@ -66,19 +59,16 @@ export class Caravan {
     const cream = new Color('#efe2c4')
 
     const hullParts: BufferGeometry[] = [
-      // Coque évasée : une boîte écrasée + deux extrémités relevées.
       tinted(new BoxGeometry(2.0, 0.34, 0.78), wood, 0, 0.22, 0),
       tinted(new BoxGeometry(0.5, 0.3, 0.62).rotateZ(0.5), woodLight, 1.05, 0.38, 0),
       tinted(new BoxGeometry(0.5, 0.3, 0.62).rotateZ(-0.5), woodLight, -1.05, 0.38, 0),
       tinted(new BoxGeometry(1.9, 0.08, 0.9), woodLight, 0, 0.42, 0),
-      // Cargaison : jarres et ballots, la silhouette du commerce.
       tinted(new CylinderGeometry(0.1, 0.13, 0.3, 7), clay, -0.45, 0.6, 0.16),
       tinted(new SphereGeometry(0.09, 7, 5), clay, -0.45, 0.79, 0.16),
       tinted(new CylinderGeometry(0.1, 0.13, 0.3, 7), clay, -0.62, 0.6, -0.14),
       tinted(new SphereGeometry(0.09, 7, 5), clay, -0.62, 0.79, -0.14),
       tinted(new BoxGeometry(0.42, 0.26, 0.42), cream, 0.32, 0.58, -0.08),
       tinted(new BoxGeometry(0.34, 0.2, 0.34).rotateY(0.4), woodLight, 0.6, 0.55, 0.18),
-      // Mât et vergue.
       tinted(new CylinderGeometry(0.045, 0.055, 1.7, 6), wood, 0, 1.25, 0),
       tinted(new CylinderGeometry(0.035, 0.035, 1.15, 5).rotateX(Math.PI / 2), wood, 0, 1.95, 0),
     ]
@@ -90,7 +80,6 @@ export class Caravan {
     hull.castShadow = true
     this.hull = hull
 
-    // Voile carrée rayée, gonflée par déplacement de sommets à l'update.
     const sailGeo = new PlaneGeometry(1.05, 1.0, 1, 6)
     const stripes = new Float32Array(sailGeo.attributes.position!.count * 3)
     const a = new Color('#f2e8d0')
@@ -112,10 +101,6 @@ export class Caravan {
     this.sail.castShadow = true
 
     this.group.add(hull, this.sail)
-    // ×1.5 : un cargo côtier, même modeste, dépasse les 2.7 u — la barque
-    // marchande faisait la taille de la barque d'expédition du colon. L'échelle
-    // vit sur le groupe : la houle (position) et la voile animée n'y touchent pas.
-    // La taille réelle (×VEHICLE_SCALE) s'y ajoute : 12,4 u de long.
     this.group.scale.setScalar(SCALE)
     this.group.visible = false
 
@@ -125,10 +110,6 @@ export class Caravan {
     this.exit = new Vector3(Math.sin(exitA) * SPAWN_R, 0, Math.cos(exitA) * SPAWN_R)
   }
 
-  /** La côte de l'île : la barque mouille au premier rayon, à partir de
-   *  DOCK_R, où toute sa coque flotte (0,2 u de marge), à l'approche, à quai
-   *  et au départ — comme l'appareillage de la barque d'expédition. Une langue
-   *  de terre dans l'axe d'arrivée (graines 20, 41, 777) mordait la coque. */
   fitShore(isLand: (x: number, z: number) => boolean): void {
     this.isLand = isLand
     this.fitDock()
@@ -141,7 +122,6 @@ export class Caravan {
     geo.computeBoundingBox()
     const bb = geo.boundingBox!
     const m = 0.2 / SCALE
-    /** La coque posée en (x, z), proue vers (dx, dz) : flotte-t-elle ? */
     const floats = (x: number, z: number, dx: number, dz: number): boolean => {
       const L = Math.hypot(dx, dz)
       const fx = dx / L
@@ -156,10 +136,8 @@ export class Caravan {
     for (let r = DOCK_R; r <= DOCK_R + 12; r += 0.25) {
       const x = ax * r
       const z = az * r
-      // À quai et sur l'approche (l'axe d'arrivée, vers le centre)…
       let ok = floats(x, z, -ax, -az)
       for (let d = r + 0.5; ok && d < SPAWN_R; d += 0.5) ok = floats(ax * d, az * d, -ax, -az)
-      // …puis au départ, cap sur la sortie.
       const ex = this.exit.x - x
       const ez = this.exit.z - z
       for (let s = 0.02; ok && s <= 1; s += 0.02) ok = floats(x + ex * s, z + ez * s, ex, ez)
@@ -176,8 +154,6 @@ export class Caravan {
   }
 
   arrive(): void {
-    // Le modèle ne se télécharge qu'à la première visite : avant l'âge du
-    // Bronze, il n'y a pas de marchand à dessiner.
     void loadModels(['merchant']).then(() => this.adopt())
     this.state = 'sailingIn'
     this.t = 0
@@ -185,9 +161,6 @@ export class Caravan {
     this.group.position.copy(this.spawn)
   }
 
-  /** Coque et cargaison passent au modèle Blender, s'il est là. Le ×1,5 vit
-   *  sur le groupe et le fichier est livré à sa taille finale : on le lui
-   *  retire, sinon la barque serait agrandie deux fois. */
   private adopt(): void {
     if (this.modelled) return
     const geo = vehicleGeometry('merchant', BASE_SCALE)
@@ -195,7 +168,6 @@ export class Caravan {
     this.hull.geometry.dispose()
     this.hull.geometry = geo
     this.modelled = true
-    // La coque du modèle n'a pas tout à fait la forme de la primitive.
     this.fitDock()
   }
 
@@ -212,14 +184,12 @@ export class Caravan {
     if (this.state === 'sailingIn' || this.state === 'sailingOut') {
       this.t += dt
       const k = Math.min(1, this.t / TRAVEL)
-      // Départ et arrivée amortis : une barque n'a pas de frein à main.
       const e = k * k * (3 - 2 * k)
       const from = this.state === 'sailingIn' ? this.spawn : this.dock
       const to = this.state === 'sailingIn' ? this.dock : this.exit
       this.group.position.lerpVectors(from, to, e)
       const dx = to.x - from.x
       const dz = to.z - from.z
-      // La proue (+X local) dans le sens de la route — voir headingYaw.
       this.group.rotation.y = headingYaw(dx, dz)
       if (k >= 1) {
         if (this.state === 'sailingIn') this.state = 'docked'
@@ -230,13 +200,11 @@ export class Caravan {
       }
     }
 
-    // Houle : tangage et roulis légers, plus francs en route qu'à quai.
     const drive = this.state === 'docked' ? 0.5 : 1
     this.group.position.y = Math.sin(time * 1.7) * 0.05 * drive
     this.group.rotation.z = Math.sin(time * 1.3) * 0.035 * drive
     this.group.rotation.x = Math.sin(time * 2.1) * 0.02 * drive
 
-    // La voile gonfle en route, pend à quai.
     const pos = this.sail.geometry.attributes.position!
     const belly = this.state === 'docked' ? 0.04 : 0.16
     for (let i = 0; i < pos.count; i++) {

@@ -1,22 +1,5 @@
-// Un traducteur GLSL → JavaScript, limité à ce qu'écrit `RIG_PARS`
-// (src/render/fauna-rig.ts) : flottants et vec2/3/4, swizzles en lecture et
-// en écriture, `if`/`return`, ternaire, `inout`, tableaux d'uniformes et les
-// fonctions intégrées listées dans `BUILTINS`. Il sert au test de parité du
-// squelette de la faune, qui doit tourner sous Node, sans GPU ni navigateur.
-//
-// Tout ce qu'il ne connaît pas est une erreur, jamais un repli : si le shader
-// gagne une construction nouvelle (boucle, matrice, `else`…), le test casse
-// en le disant, et il faut l'ajouter ici plutôt que de la deviner.
-//
-// Les calculs se font en double précision, comme la copie TS : ce test
-// vérifie que les deux écrivent la même formule. Que le GPU (en simple
-// précision) rende bien cette formule, la QA l'a mesuré une fois par
-// transform feedback sous SwiftShader le 2026-10-20 (PR #24) : écart max
-// 2,0e-4 u, cerf, tête.
-
 const TYPES = new Set(['float', 'vec2', 'vec3', 'vec4', 'void'])
 const SIZE = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
-// Priorités : ternaire < || < && < comparaisons < + - < * / < unaire < postfixe.
 const LEVELS = [['||'], ['&&'], ['==', '!=', '<', '>', '<=', '>='], ['+', '-'], ['*', '/']]
 
 function tokenize(src) {
@@ -35,7 +18,6 @@ function tokenize(src) {
   return out
 }
 
-// ── Exécution : nombres ou tableaux de 2 à 4 composantes, jamais modifiés ──
 const zip = (a, b, f) => {
   if (typeof a === 'number' && typeof b === 'number') return f(a, b)
   const n = typeof a === 'number' ? b.length : a.length
@@ -110,7 +92,6 @@ const BUILTINS = {
     }),
 }
 
-// ── Analyse et génération ──────────────────────────────────────────────────
 class Parser {
   constructor(tokens) {
     this.k = tokens
@@ -134,9 +115,6 @@ class Parser {
   }
 }
 
-/** Traduit `src` (déclarations globales et fonctions) en un module JS.
- *  Rend `{ call(name, args, globals) }` : `globals` donne attributs,
- *  uniformes et `#define` ; un argument `inout` se passe en `{ v }`. */
 export function compileGlsl(src) {
   const p = new Parser(tokenize(src))
   const globals = new Set()
@@ -275,7 +253,6 @@ export function compileGlsl(src) {
         p.eat('.')
         a = `RT.get(${a}, '${p.ident()}')`
       } else if (p.is('[')) {
-        // Un indice de tableau est un entier littéral : uRig[5].
         p.eat('[')
         const t = p.eat()
         if (t.t !== 'num' || t.v.includes('.')) throw new Error(`GLSL : indice ${t.v} non traduit`)
@@ -321,7 +298,6 @@ export function compileGlsl(src) {
     return `G.def(${JSON.stringify(name)})`
   }
 
-  // Un seul module par shader ; `G` lit l'environnement de l'appel en cours.
   let env = null
   const G = {
     v: (k) => {
@@ -340,7 +316,6 @@ export function compileGlsl(src) {
   const F = new Function('RT', 'B', 'G', `const F = {}\n${parts.join('\n')}\nreturn F`)(RT, BUILTINS, G)
   return {
     source: parts.join('\n'),
-    /** Appelle `name` ; `vars` donne attributs, uniformes et `defines`. */
     call(name, args, vars) {
       env = vars
       const params = fns.get(name)

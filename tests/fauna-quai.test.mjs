@@ -1,7 +1,3 @@
-// Aucune bête sur le quai du marchand (v3.55.1). La QA a vu un cheval debout
-// entre les caisses : la faune relevait ses habitats avant que le quai
-// n'existe, et ne les revoyait jamais quand il apparaissait en cours de partie.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Vector3 } from 'three'
@@ -20,11 +16,8 @@ const ALL = new Set(TECHS.flatMap((t) => t.effects.filter((e) => e.kind === 'bui
 const TOOLS = ['etain', 'sel', 'papyrus', 'gouvernail', 'real', 'caoutchouc', 'roulement', 'conteneur', 'terresrares']
 const CASES = [[7, 5], [42, 5], [99, 6], [3, 4], [13, 8], [21, 10]]
 const HEARTH = { x: -1.15, z: 1.15 }
-/** Loin de tout : le colon ne fait pas fuir le gibier pendant la mesure. */
 const FAR = new Vector3(1e4, 0, 1e4)
 
-/** Math.random déterministe le temps d'un appel : deux constructions de la
- *  même faune tirent alors les mêmes ancres et les mêmes bêtes. */
 function seeded(seed, fn) {
   const random = Math.random
   let a = seed >>> 0
@@ -49,8 +42,6 @@ function town(seed, age) {
   return { island, village }
 }
 
-/** Distance signée au rectangle de terre battue du quai, bordure comprise
- *  (négative dessus). Même orientation que `Village.quay` : face au feu. */
 function quayDist(g, x, z) {
   const { w, d } = Village.QUAY
   const rot = Math.atan2(HEARTH.x - g.x, HEARTH.z - g.z)
@@ -67,8 +58,6 @@ function quayDist(g, x, z) {
 const herds = (f) => [...f.deer, ...f.sheep, ...f.hens, ...f.horses]
 const spots = (f) => [...f.deerSpots, ...f.sheepSpots, ...f.henSpots, ...f.horseSpots]
 
-/** Simule `secs` secondes de jour, toutes espèces visibles ; rend la distance
- *  minimale d'une bête au quai sur tous les pas. */
 function walk(f, g, secs) {
   f.setKnown(true, true, true, true)
   let min = Infinity
@@ -79,7 +68,6 @@ function walk(f, g, secs) {
   return min
 }
 
-/** L'état de la faune qui se voit : zones, enclos, poulailler, bêtes. */
 const snapshot = (f) =>
   JSON.stringify({
     spots: [f.deerSpots, f.sheepSpots, f.henSpots, f.horseSpots],
@@ -129,8 +117,6 @@ test('quai posé en cours de partie : les bêtes déjà là le quittent et n’y
         f.setBlockers(village.blockers)
         f.setKnown(true, true, true, true)
         for (let i = 0; i < 200; i++) f.update(0.05, i * 0.05, FAR, false)
-        // Le premier objet qui n'est pas de l'étain : le quai apparaît, et
-        // il évite l'enclos déjà dressé, comme dans `placeGoods`.
         const v = new Village(island, age, true, false)
         v.sync(livingBuildings(ALL, age))
         v.goodsAvoid = [f.pen]
@@ -161,9 +147,6 @@ test('sans quai, la faune reste exactement celle d’avant', () => {
   }
 })
 
-/** Marge la plus faible entre la palissade (48 points à R 3,1) et l'emprise
- *  RÉELLE d'un bâtiment (`Village.FOOTPRINT`, sans la marge de 0,45 des
- *  obstacles de la faune) ; négative = un piquet dans le mur. */
 function penVsBuildings(f, village) {
   const FP = Village.FOOTPRINT
   let min = Infinity
@@ -177,13 +160,8 @@ function penVsBuildings(f, village) {
 }
 
 test('l’enclos ne plante jamais sa palissade dans un bâtiment ni sur le quai', () => {
-  // L'ancre de l'enclos est tirée parmi les points du pré, qui ne gardent que
-  // ~1 u du bâti quand la palissade en fait 3,1 : sur master, graine 7, le
-  // tirage 3 plantait la clôture 1,5 dans l'aqueduc. Avec ou sans quai, au
-  // tirage comme après `setBlockers`, chaque piquet reste dehors.
   for (const [seed, age] of CASES) {
     for (const quay of [true, false]) {
-      // Un village neuf par cas : le quai, une fois posé, ne se retire pas.
       const { island, village } = town(seed, age)
       village.setTools(quay ? TOOLS.slice(0, age - 1) : ['etain'])
       const g = village.goodsAt
@@ -209,11 +187,6 @@ test('l’enclos ne plante jamais sa palissade dans un bâtiment ni sur le quai'
 })
 
 test('les villageois contournent un quai posé après eux', async () => {
-  // Les villageois recevaient le quai seulement à la construction du monde :
-  // un quai acheté ensuite restait invisible pour eux (QA PR #12, graine 42 :
-  // une cueilleuse à 0,33 à l'intérieur des caisses). `placeGoods` le leur
-  // donne désormais par `setBlockers`, comme à la faune. On pose chaque âme
-  // au milieu du quai : elle doit en être repoussée dès le premier pas.
   const { Villagers } = await import('../src/render/villagers.ts')
   for (const [seed, age] of CASES) {
     const { island, village } = town(seed, age)

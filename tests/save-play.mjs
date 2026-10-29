@@ -1,9 +1,3 @@
-// Une partie jouée âge par âge, sous Node, et le chemin de chargement du jeu
-// (`Game` relit `localStorage`, `load()` refait les étapes de `buildWorld`
-// qui touchent au plan, `game.flush` réécrit). Sert au test de rechargement
-// (save-reload.test.mjs) et produit la sauvegarde figée du budget de rendu :
-//   node --import ./tests/resolve-ts.mjs tests/save-play.mjs 1337042 10 12 > tools/saves/age10.json
-
 const warn = console.warn
 console.warn = (...a) => {
   if (!String(a[0]).includes('indisponible')) warn(...a)
@@ -35,10 +29,6 @@ export function seeded(seed) {
   }
 }
 
-/** Les étapes de `buildWorld` (src/main.ts) qui décident du plan, dans le
- *  même ordre ; `raiseWorld` (src/render/plan.ts, celui du jeu) et
- *  `placeGoods` compris. Le test « l'ordre suit main.ts » de
- *  save-reload.test.mjs casse si main.ts change cet ordre sans ce fichier. */
 export function load(game) {
   const s = game.save
   const stageOf = (v) => (v >= 0.75 ? 3 : v >= 0.5 ? 2 : v >= 0.25 ? 1 : 0)
@@ -69,7 +59,6 @@ export function load(game) {
   return { island, village }
 }
 
-/** Ouvre la partie enregistrée, la monte, la réécrit : un chargement. */
 export function reload(randomSeed) {
   seeded(randomSeed)
   const game = new Game(NOW)
@@ -79,18 +68,12 @@ export function reload(randomSeed) {
   return { game, ...world }
 }
 
-/** Les savoirs jusqu'à `age`, moins un de cet âge-là (sans bâtiment, si
- *  possible) : l'âge suivant ne s'ouvre pas tout seul au chargement. */
 export function techsUpTo(age) {
   const cur = TECHS.filter((t) => t.age === age)
   const skip = cur.findLast((t) => !t.effects.some((e) => e.kind === 'building')) ?? cur.at(-1)
   return TECHS.filter((t) => t.age <= age && t !== skip).map((t) => t.id)
 }
 
-/** Une partie jouée âge par âge jusqu'à `age`, avec `parcels` terres gagnées
- *  dès qu'une carte est offerte : chaque âge recharge le monde, comme le
- *  passage d'âge (`buildWorld`). Rend la sauvegarde écrite et ce que la
- *  partie a écrit en dernier, pour vérifier que la sauvegarde le garde. */
 export function play(seed, age, parcels) {
   store.clear()
   seeded(seed)
@@ -110,8 +93,6 @@ export function play(seed, age, parcels) {
     store.set(SAVE_KEY, JSON.stringify(raw))
     played = raw
     let { game, island } = reload(seed * 97 + a)
-    // Les terres offertes à cet âge, posées à l'ancre que le jeu propose en
-    // premier : chaque pose reconstruit le monde, comme dans main.ts.
     while (game.save.land.length < parcels && game.landOffer) {
       const kind = game.landOffer.kinds[0]
       const at = island.anchorCandidates(kind)[0]
@@ -123,7 +104,6 @@ export function play(seed, age, parcels) {
   return { saved: JSON.parse(store.get(SAVE_KEY)), played }
 }
 
-// En ligne de commande : la sauvegarde d'une partie jouée, en JSON.
 if (import.meta.main) {
   const [seed, age, parcels] = process.argv.slice(2).map(Number)
   if (![seed, age, parcels].every(Number.isInteger)) {

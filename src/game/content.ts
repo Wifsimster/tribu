@@ -1,7 +1,3 @@
-// Game content: resources, ages, technologies. Each technology carries a real
-// historical fact — the dates are the currently accepted archaeological ranges,
-// deliberately hedged ("vers", "il y a environ") where the record is a range.
-
 export type ResourceId =
   | 'food'
   | 'wood'
@@ -16,7 +12,6 @@ export interface ResourceDef {
   id: ResourceId
   name: string
   icon: string
-  /** Hidden from the HUD until the player first owns some. */
   hidden: boolean
 }
 
@@ -35,9 +30,7 @@ export interface AgeDef {
   id: number
   name: string
   period: string
-  /** Technologies of this age that must be known before the next age opens. */
   techsToAdvance: number
-  /** Sky and ground shift subtly per age so progression is felt, not just read. */
   sky: number
   fog: number
   ground: number
@@ -134,12 +127,6 @@ export const AGES: AgeDef[] = [
     fog: 0xdfe9ee,
     ground: 0xafc178,
   },
-  // La seule époque que l'Histoire n'a pas encore écrite. Elle n'est pas
-  // inventée pour autant : chacun de ses savoirs existe déjà, à l'état de
-  // prototype, de première usine ou de première autorisation. Ce qui reste
-  // hypothétique, c'est le passage à l'échelle — et c'est le sujet même de
-  // l'époque : plus « peut-on le faire ? », mais « à quelle échelle, à quel
-  // coût, et à temps ? ».
   {
     id: 10,
     name: 'Ère des limites',
@@ -151,10 +138,6 @@ export const AGES: AgeDef[] = [
   },
 ]
 
-/** LE TEMPS DES CADEAUX. Sur l'horloge du joueur, pas sur celle du jeu : du
- *  20 au 26 décembre, des paquets attendent autour du feu ; les nuits du 24 et
- *  du 25, un traîneau traverse le ciel. C'est le seul endroit du jeu où le
- *  calendrier réel entre — d'où le nom explicite. */
 export type YuleState = 'none' | 'gifts' | 'flight'
 
 export function yuleState(now = new Date()): YuleState {
@@ -164,24 +147,16 @@ export function yuleState(now = new Date()): YuleState {
   return d >= 20 && d <= 26 ? 'gifts' : 'none'
 }
 
-/** Ce que raconte la carte du traîneau : la vraie histoire, et un mythe défait.
- *  Le jeu explique TOUT ce qu'il montre — un événement sans son fait ne serait
- *  qu'une décoration. */
 export const YULE_STORY =
   "Le 25 décembre ne doit rien à une date de naissance : l'Église l'a fixé au IVe siècle sur le solstice romain du Sol Invictus, la fête du soleil qui renaît. Le personnage, lui, vient de saint Nicolas de Myre, évêque du IVe siècle réputé pour ses dons secrets, que les Néerlandais emportent en Amérique sous le nom de Sinterklaas. Le traîneau et ses huit rennes n'apparaissent qu'en 1823, dans un poème américain ; Rudolph, le neuvième, est inventé en 1939 par un grand magasin de Chicago pour son catalogue de Noël. Et non : ce n'est pas Coca-Cola qui l'a habillé de rouge — le dessinateur Thomas Nast le représentait déjà ainsi dans les années 1860, quarante ans avant la marque."
 
-/** Une journée complète en secondes de jeu. Vit ici parce que la nuit est une
- *  règle du jeu, pas un habillage ; l'heure, elle, se lit dans clock.ts. */
 export const DAY_SECONDS = 240
 
-/** Une saison dure trois jours de jeu : l'année entière tient en 48 minutes.
- *  Les saisons sont une règle (la récolte suit) autant qu'un décor. */
 export const SEASON_DAYS = 3
 
 export interface SeasonDef {
   id: number
   name: string
-  /** Multiplicateur de récolte de nourriture — l'hiver mord, le grenier aide. */
   food: number
   fact: string
 }
@@ -220,10 +195,7 @@ export type Effect =
   | { kind: 'carry'; add: number }
   | { kind: 'expeditionSpeed'; mult: number }
   | { kind: 'building'; building: string }
-  /** Part du rendement conservée en pleine nuit (la meilleure source l'emporte). */
   | { kind: 'nightFloor'; value: number }
-  /** Ce que le marchand consent en plus au troc — le seul effet qu'aucun savoir
-   *  ne porte : il n'appartient qu'aux outils achetés au marchand lui-même. */
   | { kind: 'tradeBonus'; mult: number }
 
 export interface TechDef {
@@ -231,20 +203,14 @@ export interface TechDef {
   name: string
   age: number
   cost: number
-  /** Ressources d'époque consommées en plus du savoir : c'est le puits qui
-   *  donne un sens à la récolte et au troc. */
   materials?: Partial<Record<ResourceId, number>>
   requires: string[]
-  /** The payload the whole game exists to deliver. */
   fact: string
-  /** Le « Le saviez-vous ? » : une seconde anecdote, plus inattendue que le
-   *  fait principal. C'est elle qui fait qu'on relit une fiche déjà lue. */
   funFact?: string
   effects: Effect[]
 }
 
 export const TECHS: TechDef[] = [
-  // ── Paléolithique ────────────────────────────────────────────────────────
   {
     id: 'flint',
     name: 'Taille du silex',
@@ -330,7 +296,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Néolithique ──────────────────────────────────────────────────────────
   {
     id: 'agriculture',
     name: 'Agriculture',
@@ -403,7 +368,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Âge du bronze ────────────────────────────────────────────────────────
   {
     id: 'copper',
     name: 'Métallurgie du cuivre',
@@ -474,12 +438,9 @@ export const TECHS: TechDef[] = [
     fact: "Les premières voiles attestées sont peintes sur des vases égyptiens vers −3100 : un carré de lin tendu, qui ne sait remonter au vent qu'à peine.",
     funFact:
       "Une voile carrée ne remonte pas au vent : pendant des millénaires, on n'a navigué qu'avec le vent dans le dos, ou en attendant qu'il tourne. La voile latine, qui permet de louvoyer, n'arrive qu'à la fin de l'Antiquité.",
-    // PAS de bâtiment : découvrir la voile doit se voir sur la BARQUE, pas
-    // ajouter un atelier sur l'île. Le palier 2 de la flotte gréé sa voile.
     effects: [{ kind: 'expeditionSpeed', mult: 1.6 }],
   },
 
-  // ── Âge du fer ───────────────────────────────────────────────────────────
   {
     id: 'ironworking',
     name: 'Forge du fer',
@@ -569,7 +530,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Antiquité ────────────────────────────────────────────────────────────
   {
     id: 'concrete',
     name: 'Béton romain',
@@ -647,7 +607,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Moyen Âge ────────────────────────────────────────────────────────────
   {
     id: 'horsecollar',
     name: "Collier d'épaule",
@@ -727,7 +686,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Renaissance ──────────────────────────────────────────────────────────
   {
     id: 'caravel',
     name: 'Caravelle',
@@ -803,7 +761,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Ère industrielle ─────────────────────────────────────────────────────
   {
     id: 'steamengine',
     name: 'Machine à vapeur',
@@ -881,7 +838,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Ère moderne ──────────────────────────────────────────────────────────
   {
     id: 'electricity',
     name: 'Électricité',
@@ -961,7 +917,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Ère contemporaine ────────────────────────────────────────────────────
   {
     id: 'computer',
     name: 'Ordinateur personnel',
@@ -1041,12 +996,6 @@ export const TECHS: TechDef[] = [
     ],
   },
 
-  // ── Ère des limites ──────────────────────────────────────────────────────
-  // Aucun de ces savoirs n'est inventé : tous existent en 2026, à l'état de
-  // prototype, de première usine ou de première autorisation. Ce qui reste
-  // hypothétique, c'est leur passage à l'échelle — et c'est le sujet même de
-  // l'époque : non plus « peut-on le faire ? », mais « à quelle échelle, et
-  // à quel coût ? ».
   {
     id: 'ai',
     name: 'Intelligence artificielle',
@@ -1145,32 +1094,18 @@ export const TECHS: TechDef[] = [
 ]
 export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]))
 
-// ── Expéditions : destinations et reliques ───────────────────────────────────
-
 export interface DestinationDef {
-  /** 'ilot' | 'cote' | 'large' — ou 'visite', la destination fabriquée à la
-   *  volée quand on met le cap sur l'île d'un voisin. */
   id: string
   name: string
-  /** Une ligne d'intention : le joueur choisit un tempérament, pas des chiffres. */
   blurb: string
   durationK: number
   lootK: number
-  /** Probabilité d'un revers en route (le butin en souffre, jamais le colon). */
   risk: number
   relicChance: number
-  /** Azimut monde de la silhouette à l'horizon — la destination se VOIT. */
   azimuth: number
-  /** Palier de bateau minimal (0 radeau, 1 pirogue, 2 voile…) : on ne
-   *  traverse pas le grand large sur trois rondins. */
   minTier: number
-  /** Ce qu'il faut construire pour y aller, en toutes lettres. */
   needs: string
-  /** Par quoi l'on part. La mer a longtemps été le seul chemin ; le rail ouvre
-   *  l'arrière-pays, l'avion ouvre le monde. Le mode décide de ce qui est
-   *  exigé (palier de flotte, ou savoir) et de ce qu'on VOIT au départ. */
   mode?: 'sea' | 'rail' | 'air'
-  /** Savoir requis pour les modes rail et air. */
   tech?: string
 }
 
@@ -1212,9 +1147,6 @@ export const DESTINATIONS: DestinationDef[] = [
     needs: 'la barque à voile',
     mode: 'sea',
   },
-  // Le rail et l'avion changent la NATURE du voyage : on ne longe plus une
-  // côte, on traverse un continent. D'où des durées et des butins d'un autre
-  // ordre — et deux modes de départ qui ne passent plus par la barque.
   {
     id: 'arriere',
     name: "L'arrière-pays",
@@ -1245,36 +1177,18 @@ export const DESTINATIONS: DestinationDef[] = [
   },
 ]
 
-/** LA VIE DES BÂTIMENTS. Un ouvrage naît à son époque ; ensuite il est
- *  remplacé par son successeur, ou il disparaît. Sans cette table, l'abri de
- *  branchages du Paléolithique tenait encore debout à l'ère contemporaine,
- *  au milieu des paraboles.
- *
- *  La valeur est le DERNIER âge où l'ouvrage se voit encore. Ce qui n'est pas
- *  listé traverse les siècles — et c'est voulu : un aqueduc, un moulin, un
- *  phare ou une villa sont des monuments, ils restent. */
 export const BUILDING_UNTIL: Record<string, number> = {
-  // L'abri de branchages cède à l'habitat de pierre (béton romain, âge 4).
   hut: 3,
-  // Le métier à bras finit avec l'industrie textile.
   loom: 6,
-  // Le bas fourneau à bronze cède au convertisseur (Bessemer, âge 7).
   furnace: 6,
-  // La forge de village cède à l'acier industriel.
   forge: 7,
-  // L'attelage de bœufs cède au moteur (automobile, âge 8).
   plough: 7,
-  // Le réverbère à gaz cède à l'électricité — le fait historique exact.
   gaslamp: 7,
-  // Le télégraphe cède à la radio.
   telegraph: 7,
-  // Le mât de radio cède à l'antenne relais (smartphone, âge 9).
   radio: 8,
-  // La tente de dispensaire cède à la médecine des laboratoires (âge 10).
   clinic: 9,
 }
 
-/** Les ouvrages encore debout à cet âge. */
 export function livingBuildings(all: Set<string>, age: number): Set<string> {
   const out = new Set<string>()
   for (const b of all) if ((BUILDING_UNTIL[b] ?? 99) >= age) out.add(b)
@@ -1285,9 +1199,6 @@ export const DESTINATION_BY_ID = new Map<string, DestinationDef>(
   DESTINATIONS.map((d) => [d.id, d]),
 )
 
-/** Mettre le cap sur l'île d'un voisin : plus loin que la côte, moins que le
- *  grand large, et payant — on ne rentre pas les mains vides de chez les
- *  autres. Il faut une vraie barque : leurs îles sont au-delà de la côte. */
 export const VISIT_DEST: DestinationDef = {
   id: 'visite',
   name: 'Chez le voisin',
@@ -1307,8 +1218,6 @@ export interface RelicDef {
   fact: string
 }
 
-/** Les reliques rapportées d'expédition : chacune expose un vrai objet de
- *  l'archéologie — le musée du village est un musée d'histoire miniature. */
 export const RELICS: RelicDef[] = [
   { id: 'venus', name: 'Une figurine d’ivoire', fact: 'La Dame de Brassempouy, sculptée dans l’ivoire de mammouth il y a ~25 000 ans, est l’une des plus anciennes représentations de visage humain.' },
   { id: 'lionman', name: 'Une statuette mi-homme mi-lion', fact: 'L’Homme-lion de Hohlenstein-Stadel (~40 000 ans) est la plus ancienne sculpture d’un être imaginaire — preuve d’un esprit qui raconte déjà des histoires.' },
@@ -1328,31 +1237,12 @@ export const RELICS: RelicDef[] = [
 
 export const RELIC_BY_ID = new Map(RELICS.map((r) => [r.id, r]))
 
-// ── Les outils du marchand ───────────────────────────────────────────────────
-
-/** Ce que l’île ne saura JAMAIS fabriquer, et qu’aucun savoir ne donne : il
- *  faut qu’une cale venue d’ailleurs le pose sur le sable. Chaque objet a
- *  réellement circulé par le commerce à son époque — l’étain qui manque au
- *  cuivre, le sel qui fait passer l’hiver, la boîte qui a fait la
- *  mondialisation. C’est la raison d’être du troc : il n’échange pas seulement
- *  des tas, il APPORTE.
- *
- *  Un outil s’achète une fois, sur les réserves, et sert pour toujours. Il ne
- *  survit pas à l’Exode : la tribu emporte sa mémoire (le musée), pas son
- *  outillage — celui-ci reste sur l’île avec le village qu’il a servi. */
 export interface ToolDef {
   id: string
   name: string
   icon: string
-  /** Le marchand ne le sort de sa cale qu’à partir de cet âge. */
   age: number
-  /** Ce qu’il en demande, prélevé sur les réserves EN PLUS du troc ordinaire.
-   *  Une ressource encore inconnue de la tribu ajourne l’offre : on ne paie
-   *  pas en fer avant de savoir ce qu’est le fer. */
   price: Partial<Record<ResourceId, number>>
-  /** Ce qu’il change, en une ligne. Les savoirs se lisent dans l’arbre, où le
-   *  coût dit déjà le poids ; un outil, lui, arrive sans qu’on l’ait demandé —
-   *  il doit annoncer lui-même ce qu’il fait. */
   boon: string
   fact: string
   effects: Effect[]
@@ -1459,13 +1349,10 @@ export const TOOLS: ToolDef[] = [
 
 export const TOOL_BY_ID = new Map(TOOLS.map((t) => [t.id, t]))
 
-// ── Les Merveilles : une grande œuvre par époque ─────────────────────────────
-
 export interface WonderDef {
   age: number
   id: string
   name: string
-  /** Coût TOTAL du chantier, drainé peu à peu sur les surplus. */
   cost: Partial<Record<ResourceId, number>>
   fact: string
 }
@@ -1487,10 +1374,8 @@ export const WONDERS: WonderDef[] = [
 export const WONDER_BY_AGE = new Map(WONDERS.map((w) => [w.age, w]))
 
 
-/** « À mi-chemin » : la moitié de l'arbre, comptée sur l'arbre lui-même. */
 export const HALF_TECHS = Math.ceil(TECHS.length / 2)
 
-/** Les hauts faits : des jalons, pas des corvées — chacun se lit d'un état. */
 export interface FeatDef { id: string; name: string; desc: string }
 export const FEATS: FeatDef[] = [
   { id: 'etincelle', name: "L'étincelle", desc: 'Faire une première découverte.' },
@@ -1509,19 +1394,13 @@ export const FEATS: FeatDef[] = [
   { id: 'memoire', name: 'La mémoire longue', desc: 'Écrire 100 lignes de Chronique.' },
 ]
 
-/** « La mer recule » : les terres que la tribu gagne sur l'eau, deux fois par
- *  âge. Chacune est un paquet d'effets de plus — le même moulin que savoirs et
- *  outils — et porte, comme eux, une ligne d'histoire vraie. */
 export interface LandDef {
   id: string
   name: string
-  /** Ce que la carte promet, en une ligne lisible. */
   gain: string
   effects: Effect[]
   fact: string
-  /** Ressource qu'il faut savoir récolter pour que la carte soit tirée. */
   needs?: ResourceId
-  /** Âge à partir duquel la carte peut sortir. */
   fromAge?: number
 }
 

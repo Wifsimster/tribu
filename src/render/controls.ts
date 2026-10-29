@@ -4,9 +4,6 @@ import { ORBIT, clamp, zoomBy } from './orbit'
 const TAP_MS = 250
 const TAP_SLOP = 12
 
-/** A deliberately small touch controller instead of OrbitControls: one finger
- *  orbits, two pinch, and a short stationary press is a tap. No panning, so the
- *  village can never be lost off-screen on a phone. */
 export function attachControls(
   stage: Stage,
   canvas: HTMLCanvasElement,
@@ -75,7 +72,6 @@ export function attachControls(
     { passive: false },
   )
 
-  // Gentle drift after a flick, killed quickly so it never feels slippery.
   const spin = () => {
     if (pointers.size === 0 && Math.abs(velocity) > 1e-4) {
       stage.azimuth += velocity
