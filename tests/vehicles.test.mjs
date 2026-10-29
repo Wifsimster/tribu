@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Object3D, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 const { headingYaw, vehicleGeometry, BOAT_MODELS } = await import('../src/render/vehicles.ts')
@@ -19,7 +20,8 @@ const VEHICLES = [
   ['canoe', 218, [2.4, 1.121, 0.74]],
   ['sailboat', 280, [2.938, 2.155, 0.86]],
   ['caravel', 450, [5.014, 3.61, 1.44]],
-  ['steamer', 626, [4.45, 3.18, 2.2]],
+  // 610 et non 626 : gltfpack a retiré 16 triangles d'aire nulle (surface et boîte inchangées).
+  ['steamer', 610, [4.45, 3.18, 2.2]],
   ['motorboat', 226, [3.6, 0.852, 0.96]],
   ['merchant', 778, [4.286, 3.11, 1.336]],
   ['car', 644, [2.47, 1.1, 1.286]],
@@ -28,7 +30,7 @@ const VEHICLES = [
 
 async function load(name) {
   const b = readFileSync(new URL(`../src/assets/models/${name}.glb`, import.meta.url))
-  const gltf = await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '')
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '')
   let geo = null
   gltf.scene.traverse((o) => {
     if (!geo && o.isMesh) geo = o.geometry

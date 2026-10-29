@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { BoxGeometry, BufferAttribute } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 const { asPart, heightOf } = await import('../src/render/model-geo.ts')
@@ -20,7 +21,7 @@ const MODELS = [
 
 async function load(name) {
   const b = readFileSync(new URL(`../src/assets/models/${name}.glb`, import.meta.url))
-  const gltf = await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '')
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '')
   let geo = null
   gltf.scene.traverse((o) => {
     if (!geo && o.isMesh) geo = o.geometry

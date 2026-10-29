@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Box3, Matrix4, Quaternion, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
 const warn = console.warn
 console.warn = (...a) => {
@@ -29,7 +30,7 @@ const IDS = [...BOAT_MODELS, 'merchant', 'car', 'plane']
 
 for (const id of IDS) {
   const b = readFileSync(new URL(`../src/assets/models/${id}.glb`, import.meta.url))
-  const gltf = await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '')
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '')
   let geo = null
   gltf.scene.traverse((o) => {
     if (!geo && o.isMesh) geo = o.geometry

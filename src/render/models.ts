@@ -183,7 +183,10 @@ function loadOne(id: string): Promise<boolean> {
     p = (async () => {
       try {
         const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
-        const gltf = await new GLTFLoader().loadAsync(URLS[id]!)
+        // Les glb passés par `models:pack` sont compressés (EXT_meshopt) ; le
+        // décodeur (wasm de quelques Ko) ne vient qu'avec le chargeur.
+        const { MeshoptDecoder } = await import('three/examples/jsm/libs/meshopt_decoder.module.js')
+        const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(URLS[id]!)
         let source: BufferGeometry | null = null
         gltf.scene.traverse((o) => {
           if (!source && (o as Mesh).isMesh) source = (o as Mesh).geometry
