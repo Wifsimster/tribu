@@ -5,6 +5,8 @@ ci-dessous, et les sons (section [Sons](#sons--publicaudio)).
 
 ## Modèles 3D — `src/assets/models/`
 
+Les glb des reliques, véhicules et wagons sont compressés par [gltfpack](https://github.com/zeux/meshoptimizer) (meshoptimizer, licence MIT, outil de build en devDependency ; le décodeur `meshopt_decoder` vient de three, MIT) via `pnpm models:pack`. Le contenu reste une création originale du projet.
+
 | Fichier | Objet dans le jeu | Auteur / source | Licence |
 | --- | --- | --- | --- |
 | `amphore.glb` | Relique `amphore` (musée) — amphore incrustée de sel | Création originale du projet, modélisée dans Blender 5.2 pour Tribu | Créations originales du projet, même statut que le code |

@@ -10,6 +10,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.72.3',
+    title: 'Un jeu plus léger à charger',
+    items: [
+      "Les modèles 3D des reliques, des véhicules et du chemin de fer pèsent presque quatre fois moins lourd : ils arrivent plus vite, surtout sur une connexion lente.",
+      "Rien ne change à l'écran ni dans ta partie.",
+    ],
+  },
+  {
     version: '3.72.2',
     title: 'Les oiseaux chantent, les grillons aussi',
     items: [

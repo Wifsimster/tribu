@@ -46,3 +46,14 @@ n'est fait à la main dans l'interface. Ils reconstruisent la scène « Colon »
 
 La scène « Colon » est créée à côté des scènes ouvertes ; le fichier .blend
 n'est jamais enregistré par ces scripts.
+
+## Compresser les glb du jeu
+
+Après tout export vers `src/assets/models/`, lancer `corepack pnpm models:pack`
+(`tools/pack-models.mjs`, gltfpack/meshoptimizer, MIT) : les glb des reliques,
+véhicules et wagons passent en `EXT_meshopt_compression`, sans simplification.
+Le script ignore ce qui est déjà compressé, les glb lus à la main (faune,
+colon : `fauna-glb.ts`, `settler-clips.ts`, sans décodeur meshopt) et ceux qui
+portent un attribut personnalisé (`_STAGE` des Merveilles, que gltfpack 1.3
+supprime). Le chargeur (`src/render/models.ts`) et les tests branchent
+`MeshoptDecoder`.
