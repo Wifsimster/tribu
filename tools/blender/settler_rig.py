@@ -1,22 +1,7 @@
-# Le squelette du colon dans Blender : une armature « Colon » aux os plats,
-# têtes d'os = pivots de src/render/settler-rig.json, et la vraie géométrie du
-# colon (tools/export-settler-proxy.mjs) attachée rigidement à chaque os.
-#
-# Les os sont orientés comme les axes de l'armature (queue = tête + Y, roll 0) :
-# leur repère local est celui de l'armature, une rotation d'os se lit donc
-# telle quelle dans le jeu, au changement d'axes près (tribu_io).
-#
-# Hiérarchie de TRAVAIL : la tête, les bras et l'accessoire suivent le torse,
-# les outils suivent la main. C'est ce qui permet de plier le dos sans
-# recaler les épaules à la main. Le jeu, lui, garde ses six membres à plat
-# sous le rig : l'export (export_settler.py) recalcule chaque nœud dans SON
-# parent du jeu.
-
 import bpy
 
 from tribu_io import g2b, rig_world_pivot
 
-# Parent de travail dans Blender (≠ parent du jeu pour tête, bras, prop).
 AUTHOR_PARENT = {
     'body': None, 'legL': None, 'legR': None, 'cast': None,
     'head': 'body', 'armL': 'body', 'armR': 'body', 'prop': 'body',
@@ -83,7 +68,7 @@ def build_armature(scene, rig):
                 eb = arm_data.edit_bones.new(name)
                 head = g2b(rig_world_pivot(rig, name))
                 eb.head = head
-                eb.tail = head + g2b((0, 0, -BONE_LEN))  # +Y Blender
+                eb.tail = head + g2b((0, 0, -BONE_LEN))
                 eb.roll = 0
                 eb.use_deform = name in LIMBS or name.startswith('tool') or name == 'prop'
                 bones[name] = eb

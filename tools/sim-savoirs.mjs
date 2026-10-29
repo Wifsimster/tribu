@@ -1,53 +1,3 @@
-// Une partie neuve jouée par un joueur « raisonnable », sous Node, avec le
-// vrai `Game` de src/game/sim.ts : il achète chaque savoir dès qu'il est
-// abordable, travaille la ressource qui bloque le prochain savoir, encourage
-// dès que le geste est prêt et pose chaque terre offerte. Relève quand chaque
-// savoir devient abordable, quand il est acheté, quand chaque âge s'ouvre, et
-// les stocks à ce moment-là. Sert la spec docs/specs/equilibrage-savoirs.md.
-//
-//   node --import ./tests/resolve-ts.mjs tools/sim-savoirs.mjs [options]
-//
-// Options :
-//   --until=<âge>         s'arrête à l'ouverture de cet âge (défaut 3)
-//   --max=<secondes>      plafond de temps actif (défaut 4 h)
-//   --away=<t>:<s>        une absence de <s> secondes après <t> s de jeu actif
-//                         (répétable : --away=1200:28800)
-//   --rule=proposal       applique la règle de coût de la spec (sans toucher
-//                         au code du jeu : les coûts sont recalculés ici)
-//   --cycle=<jeu>:<abs>   sessions répétées : <jeu> s actives puis <abs> s
-//                         d'absence, en boucle (le joueur occasionnel)
-//   --from=human          part de la partie de l'humain (Néolithique, 6 savoirs,
-//                         6,71 k de savoir) au lieu d'une partie neuve ; avec
-//                         --rule=proposal, la migration de la spec s'applique
-//   --no-encourage        joueur qui ne tape jamais « Encourager »
-//   --focus=food          joueur qui ne change jamais de récolte (le défaut
-//                         du jeu, celui de la capture de l'humain)
-//   --eco                 bilan par âge : produit, dépensé par les savoirs,
-//                         taux focalisé et au repos de chaque ressource
-//   --costs=proportional  coûts en matériaux recalculés par la règle de la
-//                         spec (section 9), au lieu de ceux de content.ts
-//   --json                sortie JSON au lieu du tableau
-//   --seed=<n>            graine du hasard (défaut 7)
-//   --no-tools            joueur qui refuse tous les outils du marchand
-//   --costs=3.72          coûts de la section 10 de la spec (savoirs des âges
-//                         4 à 10, Charrue, Merveilles 3 à 10), export COSTS_372
-//   --costs=3.72.0        la table de la 3.72.0 (section 10.10, export
-//                         COSTS_3720) : celle de content.ts depuis la 3.72.0
-//   --costs-file=<json>   même forme que COSTS_372, lue dans un fichier (sert
-//                         à tools/couts-ages-tardifs.mjs)
-//   --wonders=v1          le joueur construit la Merveille de chaque âge : il
-//                         la lance dès qu'il entre dans l'âge (ou dès que la
-//                         précédente est finie), sans rien changer à sa
-//                         récolte : le chantier vit de ce que l'île produit.
-//                         Conduite v1 ; une autre conduite prendra un autre
-//                         nom, pour garder les chiffres de la spec rejouables.
-//   --wonder-focus        avec --wonders=v1 : quand aucun savoir n'attend de
-//                         matériau, le joueur focalise le matériau du chantier
-//                         le plus en retard au lieu de la nourriture
-//   --wonder-from=<âge>   premier âge dont on construit la Merveille (défaut 3)
-//
-// La partie s'arrête d'elle-même quand le dernier savoir de l'arbre est acquis.
-
 const store = new Map()
 globalThis.localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -74,7 +24,6 @@ const MAX = Number(args.max ?? 4 * 3600)
 const ENCOURAGE = !args['no-encourage']
 const SEED = Number(args.seed ?? 7)
 
-// ── Hasard reproductible (même PRNG que tests/save-play.mjs) ──────────────
 let a = SEED >>> 0
 Math.random = () => {
   a = (a + 0x6d2b79f5) >>> 0
@@ -86,10 +35,6 @@ Math.random = () => {
 
 if (args.night) console.error('(--night ignoré : depuis la 3.70.0, le jeu porte lui-même la nuit au tiers du cycle)')
 
-// ── La règle proposée (voir la spec) ──────────────────────────────────────
-// Depuis la 3.71, le jeu applique lui-même la réserve et la migration : la
-// règle modélisée ne sert plus qu'à rejouer les chiffres sur une version
-// d'avant.
 const BUILT_IN = typeof Game.prototype.creditAbsentInsight === 'function'
 const RULE = args.rule === 'proposal' && !BUILT_IN
 if (args.rule === 'proposal' && BUILT_IN) console.error('(--rule=proposal ignoré : la règle est dans le jeu)')
@@ -99,9 +44,6 @@ if (args.costs === 'proportional') {
   const { PROPORTIONAL } = await import('./savoirs-rule.mjs')
   for (const t of TECHS) if (PROPORTIONAL[t.id]) t.materials = PROPORTIONAL[t.id]
 }
-// Section 10 : une table { techs: { id: { cost?, materials } }, wonders: { âge: cost } }.
-// Les Merveilles se rangent par âge : la 3.71.2 a échangé le phare et la
-// colonne trophée, le coût reste attaché à l'âge (un id est encore lu).
 {
   let table = null
   if (args.costs === '3.72') table = (await import('./savoirs-rule.mjs')).COSTS_372
@@ -124,8 +66,6 @@ if (args.wonders && args.wonders !== 'v1') throw new Error(`--wonders=${args.won
 const WONDERS_ON = args.wonders === 'v1'
 const WONDER_FROM = Number(args['wonder-from'] ?? 3)
 
-// ── Le bilan par âge : ce qui est produit en jouant, ce que les savoirs
-// prennent. Seul le jeu actif compte (l'absence a son propre relevé).
 const eco = new Map()
 const bucket = (age) => {
   if (!eco.has(age)) eco.set(age, { seconds: 0, made: {}, spent: {}, rates: null })
@@ -153,8 +93,6 @@ let active = false
     }
     return ok
   }
-  // Ce que la Merveille prend, rangé à l'âge de la Merveille (jeu actif seul,
-  // comme la production).
   const tickWonder = P.tickWonder
   P.tickWonder = function (dt) {
     const cur = this.save.wonder
@@ -167,19 +105,15 @@ let active = false
   }
 }
 
-// ── La partie ─────────────────────────────────────────────────────────────
 const log = []
 const NOW = 1_800_000_000_000
 if (args.from === 'human') {
-  // La capture de l'humain (prod, 3.69.0) : Néolithique 0/4, lampe et
-  // cordage connus. La pierre n'est pas lisible : on la met au niveau du bois.
   const s = emptySave(NOW)
   s.age = 1
   s.techs = ['flint', 'fire', 'shelter', 'spear', 'lamp', 'cordage']
   s.seenFacts = [...s.techs]
   s.res = { food: 16100, wood: 3170, stone: 3000, fiber: 9.3, insight: 6710 }
   s.totalPlaySeconds = 3600
-  // Une sauvegarde d'avant la réserve : le champ n'existe pas.
   delete s.insightReserve
   store.set(SAVE_KEY, JSON.stringify(s))
 }
@@ -187,7 +121,6 @@ const g = new Game(NOW)
 if (args.from === 'human' && BUILT_IN)
   log.push({ kind: 'migrate', t: 0, stock: { insight: Math.round(g.amount('insight')), reserve: Math.round(g.save.insightReserve) } })
 if (args.from === 'human' && rule) {
-  // Taux moyen d'un cycle : celui que l'absence utilise.
   const lf = g.lightFactor
   g.lightFactor = meanLightFactor(g.nightFloor)
   g.refreshRates()
@@ -199,8 +132,6 @@ if (args.from === 'human' && rule) {
 }
 const DT = 0.5
 const firstAffordable = new Map()
-// L'instant où le SAVOIR suffit : l'écart avec « abordable », c'est l'attente
-// d'un matériau.
 const insightReady = new Map()
 const RES = ['food', 'wood', 'stone', 'fiber', 'clay', 'copper', 'iron', 'insight']
 const snap = () => {
@@ -216,8 +147,6 @@ if (args.cycle) {
   for (let k = play; k < MAX; k += play) awayQueue.push([k, away])
 }
 let lastAge = g.save.age
-// Production cumulée du jeu actif, toutes les 10 s (--json) : le calibrage des
-// Merveilles y lit ce que l'île produit pendant une fenêtre de l'âge.
 const timeline = []
 const totalMade = (r) => [...eco.values()].reduce((s, b) => s + (b.made[r] ?? 0), 0)
 let wondersDone = g.save.wonders.length
@@ -228,9 +157,6 @@ function noteWonders() {
   }
 }
 
-// Pour la règle de coût proportionnel : à l'instant où chaque savoir
-// apparaît dans la liste, les taux MOYENS (nuit comprise, sans encourager)
-// de savoir et de chaque ressource focalisée.
 const avail = {}
 function noteAvail() {
   for (const tech of g.available()) {
@@ -257,8 +183,6 @@ function noteAvail() {
   }
 }
 
-/** Le prochain objectif : le savoir disponible le moins cher en savoir —
- *  c'est celui sur lequel la feuille de savoir s'ouvre. */
 const costOf = (tech) => (g.techCost ? g.techCost(tech) : { insight: tech.cost, ...(tech.materials ?? {}) })
 const nextGoal = () => [...g.available()].sort((x, y) => costOf(x).insight - costOf(y).insight)[0]
 
@@ -278,10 +202,6 @@ function chooseFocus() {
       }
     }
   }
-  // --wonder-focus, et aucun savoir n'attend de matériau : le chantier, sur
-  // son matériau le plus en retard (reste dû / taux focalisé, quel que soit le
-  // focus du moment). Ça coûte du savoir : la nourriture focalisée nourrit
-  // bien plus le terme `material` du savoir que le fer ou le cuivre.
   const cur = g.save.wonder
   if (worst === 0 && WONDERS_ON && args['wonder-focus'] && cur) {
     const def = WONDER_BY_AGE.get(cur.age)
@@ -299,8 +219,6 @@ function chooseFocus() {
   if (g.save.focus !== best) g.setFocus(best)
 }
 
-/** Le taux de savoir MOYEN du moment (nuit comprise, sans encourager, récolte
- *  du moment) : celui qui règle l'attente du prochain savoir. */
 function meanInsight() {
   const lf = g.lightFactor
   const enc = g.encourageLeft
@@ -339,8 +257,6 @@ while (t < MAX) {
     noteWonders()
     buyAll()
   }
-  // Les savoirs que l'on PEUT acheter sont repérés avant l'achat : c'est
-  // l'instant « abordable », celui qui compte pour le rythme.
   for (const tech of g.available()) {
     if (!firstAffordable.has(tech.id) && g.canResearch(tech)) firstAffordable.set(tech.id, t)
     if (!insightReady.has(tech.id) && g.amount('insight') >= costOf(tech).insight) insightReady.set(tech.id, t)
@@ -354,14 +270,11 @@ while (t < MAX) {
     log.push({ kind: 'wonderStart', age: g.save.age, name: WONDER_BY_AGE.get(g.save.age).name, t })
   if (args.focus !== 'food') chooseFocus()
   if (ENCOURAGE && g.canEncourage()) g.encourage()
-  // Depuis la 3.71.1, le marchand propose ses outils au lieu de se payer
-  // seul : le joueur raisonnable accepte (avec --no-tools, il refuse tout).
   if (g.toolOffer) args['no-tools'] ? g.declineTool() : g.acceptTool()
   {
     const b = bucket(g.save.age)
     b.seconds += DT
     if (!b.rates) {
-      // Taux de référence de l'âge, au jour plein : focalisé et au repos.
       b.rates = {}
       for (const r of RES) {
         if (r === 'insight' || !g.unlocked.has(r)) continue
@@ -387,8 +300,6 @@ while (t < MAX) {
   }
 }
 
-/** Pour chaque Merveille lancée : l'âge (entrée, durée en jeu actif), le
- *  lancement, l'achèvement et sa part de la durée de l'âge. */
 function wonderSummary() {
   const entry = (age) => (age === 0 ? 0 : log.find((e) => e.kind === 'age' && e.age === age)?.t)
   const out = []
@@ -434,8 +345,6 @@ if (args.json) {
     }
   }
   {
-    // Le rythme (section 4) : de l'achat d'un savoir au moment où le suivant
-    // devient abordable, rangé à l'âge du savoir attendu.
     const techs = log.filter((e) => e.kind === 'tech')
     const by = new Map()
     for (let i = 1; i < techs.length; i++) {

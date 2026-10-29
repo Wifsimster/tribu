@@ -1,7 +1,3 @@
-// Les modèles Blender doivent pouvoir fondre dans la géométrie unique du
-// village : un attribut qui diverge, et la fusion refuse le lot ENTIER — le
-// musée disparaîtrait en silence. Tout se vérifie en Node, sans navigateur.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -12,7 +8,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 const { asPart, heightOf } = await import('../src/render/model-geo.ts')
 
-/** Ce que livre le jeu : nom de fichier, triangles et hauteur annoncés. */
 const MODELS = [
   ['amphore', 632, 1.18],
   ['nebra', 868, 0.74],
@@ -29,7 +24,6 @@ async function load(name) {
   return geo
 }
 
-/** Une pièce comme celles du village : primitive indexée + couleur RGB. */
 function villagePart() {
   const g = new BoxGeometry(1, 1, 1)
   g.setAttribute('color', new BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(0.5), 3))
@@ -46,7 +40,6 @@ for (const [name, tris, height] of MODELS) {
     assert.equal(geo.attributes.color.itemSize, 3)
     assert.equal(geo.index.count / 3, tris)
     assert.ok(Math.abs(heightOf(geo) - height) < 0.01, `hauteur ${heightOf(geo)}`)
-    // Couleurs lues en 0–1, pas en octets bruts.
     const c = geo.attributes.color.array
     assert.ok(c.every((v) => v >= 0 && v <= 1))
     assert.ok(c.some((v) => v > 0.05), 'pas tout noir')
@@ -62,11 +55,6 @@ test('un maillage sans normales est refusé, pas fondu de travers', () => {
   assert.equal(asPart(g), null)
 })
 
-// ── Les Merveilles : un fichier, cinq stades de chantier ────────────────────
-// Chaque pièce porte `_STAGE`, le stade à partir duquel elle apparaît. Au
-// stade s, on garde les triangles dont `_STAGE <= s`.
-
-/** Triangles par stade (cumulés), relevés sur les fichiers livrés. */
 const WONDER_TRIS = {
   dolmen: [102, 134, 166, 198, 290],
   ziggurat: [144, 420, 504, 528, 552],
@@ -82,8 +70,6 @@ const WONDER_TRIS = {
 
 const { WONDERS } = await import('../src/game/content.ts')
 
-/** Les Merveilles dessinées dans le code, sans fichier : le cercle de
- *  stalagmites de Bruniquel (âge 0). */
 const DRAWN_IN_CODE = ['stalagmites']
 
 test('chaque Merveille du jeu a son fichier, sauf celles dessinées dans le code', () => {
@@ -104,16 +90,13 @@ for (const [name, tris] of Object.entries(WONDER_TRIS)) {
       assert.ok(geo, `stade ${s} dessinable`)
       const n = geo.index.count / 3
       assert.equal(n, tris[s], `stade ${s}`)
-      // Strictement : chaque stade pose au moins une pièce de plus.
       assert.ok(n > before, `stade ${s} : ${n} triangles, pas plus que ${before}`)
       before = n
-      // Pas de sommet orphelin : la mesure de hauteur porte sur ce qui se voit.
       const used = new Set(geo.index.array)
       assert.equal(used.size, geo.attributes.position.count)
       assert.ok(mergeGeometries([villagePart(), geo]), `stade ${s} fondu`)
     }
     assert.equal(asPart(src, 4).index.count, all.index.count, 'stade 4 = le modèle entier')
-    // Les stades montent : une pièce posée plus tard ne fait pas baisser l'ouvrage.
     assert.ok(heightOf(asPart(src, 0)) <= heightOf(asPart(src, 4)))
   })
 }
@@ -147,11 +130,9 @@ test('dans le village, chaque Merveille tient sur son socle et garde sa silhouet
     v.setWonder(age, stage)
     return v
   }
-  // Les primitives d'abord : sans modèle chargé, c'est ce que dessine le jeu.
   const modelled = WONDERS.filter((w) => !DRAWN_IN_CODE.includes(w.id))
   const prim = new Map(WONDERS.map((w) => [w.id, measure(town(w.age, 4))]))
   for (const w of modelled) assert.ok(adoptModel(w.id, await load(w.id)), w.id)
-  // Le cercle dessiné dans le code tient aussi sur son socle, à chaque stade.
   for (const id of DRAWN_IN_CODE) {
     const w = WONDERS.find((x) => x.id === id)
     for (let s = 0; s <= 4; s++) {
@@ -163,7 +144,6 @@ test('dans le village, chaque Merveille tient sur son socle et garde sa silhouet
   for (const w of modelled) {
     const done = measure(town(w.age, 4))
     assert.notEqual(done.tris, prim.get(w.id).tris, `${w.id} : le modèle remplace la primitive`)
-    // Le rayon d'occupation couvre la géométrie réelle, perches comprises.
     for (let s = 0; s <= 4; s++) {
       const m = measure(town(w.age, s))
       assert.ok(m.r <= Village.WONDER_R + 1e-6, `${w.id} stade ${s} : ${m.r.toFixed(2)} > ${Village.WONDER_R}`)

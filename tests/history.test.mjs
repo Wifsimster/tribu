@@ -1,22 +1,10 @@
-// L'histoire que raconte le jeu doit tenir debout : chaque fait daté tombe
-// dans la période de son âge, aucune anecdote ne redit le fait, et les
-// nombres affichés hors du code (index.html, hauts faits) suivent le contenu.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const { AGES, TECHS, WONDERS, RELICS, FEATS, TOOLS, HALF_TECHS } = await import('../src/game/content.ts')
 
-// ── Les dates ────────────────────────────────────────────────────────────────
-
-/** L'année du FAIT PRINCIPAL de chaque savoir et de chaque Merveille (négatif
- *  = avant notre ère). `null` : le fait ne porte aucune date. Le « Le
- *  saviez-vous ? » n'est pas daté ici : il a le droit de regarder en arrière
- *  (la Bertha Benz de 1888 sous l'automobile) ou en avant (le Domesday Book
- *  sous le moulin à eau) — c'est souvent ce qui le rend inattendu. */
 const YEAR = {
-  // Paléolithique
   flint: -3_300_000,
   fire: -780_000,
   shelter: -400_000,
@@ -24,71 +12,61 @@ const YEAR = {
   lamp: -17_000,
   cordage: -47_000,
   stalagmites: -176_500,
-  // Néolithique
   agriculture: -9_500,
   pottery: -20_000,
   weaving: -27_000,
   polished_axe: -46_000,
   granary: -9_300,
-  dolmen: -3_500, // Browne's Hill : bâti entre −4000 et −3000
-  // Âge du bronze
+  dolmen: -3_500,
   copper: -3_300,
   bronze: null,
   wheel: -3_500,
   writing: -3_400,
   sail: -3_100,
   ziggurat: -2_100,
-  // Âge du fer
   ironworking: -3_200,
   plough: null,
   alphabet: -1_050,
   coinage: -630,
-  lighthouse: -458, // l'Agamemnon d'Eschyle
+  lighthouse: -458,
   aqueduct: -312,
   phare: -280,
-  // Antiquité
   concrete: null,
   watermill: -25,
   glass: -50,
   roads: null,
   codex: 150,
   trophee: 113,
-  // Moyen Âge
   horsecollar: null,
   threefield: null,
   windmill: 1180,
   clock: 1300,
   press: 1450,
-  cathedrale: 1439, // la flèche de Strasbourg
-  // Renaissance
+  cathedrale: 1439,
   caravel: null,
   perspective: 1425,
   observatory: 1609,
   bank: null,
   anatomy: 1543,
   dome: 1436,
-  // Ère industrielle
   steamengine: 1769,
   railway: 1830,
   gaslight: 1807,
   bessemer: 1856,
   telegraph: 1844,
   tour: 1889,
-  // Ère moderne
   electricity: 1907,
   automobile: 1908,
   radio: 1901,
   flight: 1903,
   penicillin: 1928,
   gratteciel: 1931,
-  // Ère contemporaine
   computer: 1977,
   satellite: null,
   internet: 1969,
-  solar: 2020, // « l'électricité la moins chère de l'histoire »
+  solar: 2020,
   smartphone: 2007,
   fusee: 1967,
-  // Ère des limites
   ai: 2017,
   storage: 2023,
   desal: null,
@@ -98,9 +76,6 @@ const YEAR = {
   fusion: 2022,
 }
 
-/** Les précurseurs, et pourquoi. Le fait les présente lui-même comme en avance
- *  sur leur âge — c'est l'histoire qu'il raconte. Liste fermée : tout autre
- *  fait hors période fait échouer le test. */
 const PRECURSORS = {
   pottery: 'le fait dit « 8 500 ans avant l’agriculture »',
   weaving: 'le fait dit que le tissu précède de loin le métier à tisser',
@@ -110,8 +85,6 @@ const PRECURSORS = {
   dome: 'idem : Brunelleschi, Florence, 1436',
 }
 
-/** « nos jours » et « aujourd'hui » : le XXIe siècle tout entier. L'Ère des
- *  limites rassemble des prototypes et des premières usines de ce siècle. */
 const TODAY_FROM = 2000
 
 function parseYear(s) {
@@ -163,8 +136,6 @@ test('chaque fait daté tombe dans la période de son âge (précurseurs listés
 })
 
 test('la date de la table est bien celle qu’écrit le fait', () => {
-  // L'année se retrouve sous une des formes du jeu : « −630 », « 1882 »,
-  // « 780 000 ans », « 3,3 millions d'années ». Les autres, au cas par cas.
   const nb = (s) => s.replace(/\u202f|\u00a0/g, ' ')
   const OTHER = {
     spear: '300 000 ans',
@@ -177,7 +148,6 @@ test('la date de la table est bien celle qu’écrit le fait', () => {
     codex: 'IIe siècle',
     cathedrale: '424 ans',
     solar: 'la moins chère',
-    // Datés par l'œuvre ou le lieu qu'ils citent.
     lamp: 'Lascaux',
     lighthouse: "l'Agamemnon d'Eschyle",
   }
@@ -204,11 +174,8 @@ test('la monnaie lydienne porte la même date partout', () => {
 test('le phare d’Alexandrie à l’âge du fer, la colonne Trajane à l’Antiquité', () => {
   assert.equal(WONDERS.find((w) => w.id === 'phare').age, 3)
   assert.equal(WONDERS.find((w) => w.id === 'trophee').age, 4)
-  // Une Merveille par âge, de 0 à 10 : la sauvegarde ne retient que l'âge.
   assert.deepEqual(WONDERS.map((w) => w.age), AGES.map((a) => a.id))
 })
-
-// ── Les anecdotes ────────────────────────────────────────────────────────────
 
 const words = (s) =>
   s
@@ -219,9 +186,6 @@ const words = (s) =>
     .split(/\s+/)
     .filter((w) => w.length > 3)
 
-/** Part des mots de plus de trois lettres du texte le plus court que l'autre
- *  reprend. Les doublons corrigés en 3.71.2 étaient à 0,43 (bronze), 0,53
- *  (Bessemer) et 0,58 (Ötzi) ; la paire la plus proche est ensuite à 0,29. */
 function overlap(a, b) {
   const A = new Set(words(a))
   const B = new Set(words(b))
@@ -242,8 +206,6 @@ test('chaque savoir a son anecdote, et elle ne redit pas le fait', () => {
 test('aucun texte historique n’est vide', () => {
   for (const x of [...TECHS, ...WONDERS, ...RELICS, ...TOOLS]) assert.ok(x.fact.trim().length > 40, x.id)
 })
-
-// ── Les nombres affichés ────────────────────────────────────────────────────
 
 const FR = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize']
 

@@ -1,6 +1,3 @@
-// Tests du rendu des parcelles, sans navigateur : l'île se construit en Node
-// (three n'a besoin de WebGL qu'au moment de dessiner).
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -9,7 +6,6 @@ const { Island, GROUND_Y } = await import('../src/render/island.ts')
 const SEED = 1_337_042
 const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
 
-/** Les matrices de chaque maillage de dispersion (bois, pierre, nourriture). */
 function scatterMatrices(island) {
   const out = {}
   for (const mesh of island.pickables) {
@@ -18,7 +14,6 @@ function scatterMatrices(island) {
   return out
 }
 
-/** Pose `n` parcelles à l'emplacement par défaut, comme le jeu. */
 function grow(n, age = 10, kinds = KINDS) {
   const land = []
   let island = new Island(SEED, age, land)
@@ -42,7 +37,6 @@ test("poser une parcelle ne change pas les matrices des arbres de l'île de base
       assert.deepEqual(after[res].array.slice(0, n), base[res].array.slice(0, n), `${kind} : ${res} de base`)
     }
   }
-  // Et avec vingt et une parcelles, la forêt d'origine n'a toujours pas bougé.
   const full = scatterMatrices(grow(21).island)
   assert.deepEqual(full.wood.array.slice(0, base.wood.count * 16), base.wood.array.slice(0, base.wood.count * 16))
 })
@@ -72,7 +66,6 @@ test('21 parcelles : ni trou, ni cellule détachée, et la crique reste ouverte 
   const key = (q, r) => `${q},${r}`
   const cells = new Map(island.cells.map((c) => [key(c.gx, c.gz), c]))
   const NB = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
-  // Toute la terre se tient : on la parcourt depuis la place du village.
   const seen = new Set([key(0, 0)])
   const stack = [[0, 0]]
   while (stack.length) {
@@ -86,7 +79,6 @@ test('21 parcelles : ni trou, ni cellule détachée, et la crique reste ouverte 
     }
   }
   assert.equal(seen.size, cells.size, 'aucune cellule détachée')
-  // Pas d'eau enclavée, sauf le centre d'une crique (qui doit, lui, rester de l'eau).
   let q0 = Infinity, q1 = -Infinity, r0 = Infinity, r1 = -Infinity
   for (const c of island.cells) {
     q0 = Math.min(q0, c.gx - 1); q1 = Math.max(q1, c.gx + 1)
@@ -113,10 +105,6 @@ test('21 parcelles : ni trou, ni cellule détachée, et la crique reste ouverte 
       const k = key(q, r)
       if (!cells.has(k) && !sea.has(k)) assert.fail(`eau enclavée en ${k}`)
     }
-  // Aucune cellule ne flotte et l'île n'a qu'un niveau : le maillage des
-  // cellules part du fond (y = 0) et tout dessus d'hexagone est à GROUND_Y.
-  // Les emplacements 2i/2i+1 sont ceux des cellules ; au-delà, c'est le décor
-  // des parcelles (mare, touffes), qui a ses propres creux et reliefs.
   const geo = island.terrainMesh.geometry
   const pos = geo.getAttribute('position')
   const nor = geo.getAttribute('normal')
@@ -137,8 +125,6 @@ test('21 parcelles : ni trou, ni cellule détachée, et la crique reste ouverte 
   assert.ok(tops >= island.cells.length * 6, 'chaque cellule a son dessus')
 })
 
-// ── Incrément 3 : les ancres proposées au joueur ────────────────────────────
-
 const { hexCenter } = await import('../src/render/island.ts')
 const hexDist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q - b.q + a.r - b.r)) / 2
 const RING = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
@@ -146,10 +132,7 @@ const RING = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
 test("une ancre dont une cellule chevauche la terre est rejetée", () => {
   const island = new Island(SEED, 10, [])
   const land = new Set(island.cells.map((c) => `${c.gx},${c.gz}`))
-  // Au cœur de l'île : tout est terre.
   assert.equal(island.canAnchor(0, 0), false)
-  // L'ancre par défaut est valide ; en la tirant vers le centre d'un cran, une
-  // cellule de l'anneau finit sur la côte et l'ancre tombe.
   const at = island.defaultAnchor()
   assert.ok(island.canAnchor(at.q, at.r))
   let overlapping = null
@@ -165,7 +148,6 @@ test("une ancre dont une cellule chevauche la terre est rejetée", () => {
   }
   assert.ok(overlapping, 'une ancre voisine mord sur la côte')
   assert.equal(island.canAnchor(overlapping.q, overlapping.r), false)
-  // Et contre une terre déjà gagnée : même règle.
   const withPlot = new Island(SEED, 10, [{ kind: 'foret', q: at.q, r: at.r }])
   assert.equal(withPlot.canAnchor(at.q, at.r), false)
   for (const [dq, dr] of RING) assert.equal(withPlot.canAnchor(at.q + 2 * dq, at.r + 2 * dr), false)
@@ -181,7 +163,6 @@ test('trois ancres valides, écartées, la première par défaut, le voisinage s
     assert.equal(a.bond, false, 'pas de forêt sur l’île : aucun voisinage')
   }
   for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) assert.ok(hexDist(list[i], list[j]) >= 4)
-  // Une forêt posée : la forêt suivante se voit proposer un emplacement voisin.
   const at = island.defaultAnchor()
   const grown = new Island(SEED, 10, [{ kind: 'foret', q: at.q, r: at.r }])
   const next = grown.anchorCandidates('foret')
@@ -189,9 +170,7 @@ test('trois ancres valides, écartées, la première par défaut, le voisinage s
   const bond = next.filter((a) => a.bond)
   assert.ok(bond.length >= 1, 'une ancre de voisinage proposée')
   for (const a of bond) assert.equal(hexDist(a, at), 3)
-  // Pour une prairie, la même forêt n'est pas une voisine.
   assert.ok(grown.anchorCandidates('prairie').every((a) => !a.bond))
-  // Les ancres restent à portée du cadrage.
   for (const a of next) {
     const [x, z] = hexCenter(a.q, a.r)
     assert.ok(Math.hypot(x, z) < grown.radius + 6, `${Math.hypot(x, z)} vs ${grown.radius}`)

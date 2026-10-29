@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-// Planches et GIF des gestes du colon (spec actions, critère 9) : pour chaque
-// outil de la cueillette, le colon posé près d'un buisson de l'île de l'âge 10
-// (tools/saves/age10.json), l'action forcée par `?act=gather:<outil>`.
-//
-//   corepack pnpm build && node tools/shoot-actions.mjs [sortie] [--tools hand,sickle,scythe]
-//   PW_CHROME=/chemin/vers/chrome-headless-shell node tools/shoot-actions.mjs …
-//
-// Par outil : deux planches de 8 images (7 pendant le travail, 1 au retour,
-// panier plein), l'une à la taille du jeu (390×844, colon ~50 px de haut,
-// agrandie ×2 au plus proche voisin), l'autre en gros plan ; et un GIF du
-// travail en gros plan si ffmpeg est là. La boucle du jeu est figée
-// (requestAnimationFrame), le colon avance à pas fixes de 1/30 s : les images
-// ne dépendent pas de la vitesse de SwiftShader.
 
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -49,8 +36,6 @@ try {
     const watch = watchConsole(page)
     await page.goto(`${server.url}?nomenu=1&h=0.25&act=gather:${tool}`, { waitUntil: 'domcontentloaded', timeout: 120000 })
     await page.waitForFunction(() => window.__tribu?.ready === true, null, { timeout: 120000 })
-    // Modèles (faune, colon) en différé, puis quelques images de la vraie
-    // boucle pour que l'outil et le geste forcés soient posés.
     await page.waitForTimeout(10000)
 
     const info = await page.evaluate(() => {
@@ -58,7 +43,6 @@ try {
       const t = window.__tribu
       const s = t.settler()
       const isl = t.island()
-      // Le buisson debout le plus proche du colon, et le colon posé à 1 u de lui.
       const at = s.group.position
       let bush = null
       for (const m of isl.pickables) {
@@ -71,7 +55,6 @@ try {
       }
       s.setNight(false)
       s.wake()
-      // Panier vide : la planche montre les quatre crans depuis le début.
       s.carryLevel = 0
       s.refreshCarry()
       s.group.position.set(bush.x + 1, s.group.position.y, bush.z + 0.3)
@@ -81,11 +64,6 @@ try {
     })
     if (info.phase !== 'work' || !info.clip) throw new Error(`${tool} : le colon ne joue pas de geste Blender (${JSON.stringify(info)})`)
 
-    // Une image : le rendu complet de la scène par une caméra posée sur le
-    // colon, puis recadrée autour de lui.
-    // `view` : 'jeu' = l'axe de la caméra du jeu (ce que voit le joueur),
-    // 'droite' / 'gauche' = de profil, caméra basse, pour juger le geste ;
-    // 'haut' = en plongée.
     const shot = (px, crop, view) =>
       page.evaluate(
         ({ px, crop, view, W, H }) => {
@@ -103,9 +81,6 @@ try {
           let dir
           if (view === 'jeu') dir = st.camera.position.clone().sub(st.target).normalize()
           else {
-            // De profil, un peu de face : côté main droite pour la faucille et
-            // la faux, côté gauche pour le panier ; en plongée (`haut`) pour le
-            // retour, qui passe entre les maisons.
             const side = view === 'gauche' ? -1 : 1
             const yaw = s.group.rotation.y + side * (Math.PI / 2 - 0.35)
             dir = new look.constructor(Math.sin(yaw), view === 'haut' ? 1.6 : 0.42, Math.cos(yaw)).normalize()
@@ -113,9 +88,6 @@ try {
           const d = (H * 1.85) / (2 * px * Math.tan((cam.fov * Math.PI) / 360))
           cam.position.copy(look).addScaledVector(dir, d)
           cam.lookAt(look)
-          // Gros plan : on étudie le geste ; bâtiments, véhicules, bêtes et
-          // villageois ne doivent pas le cacher. L'île (sol, buissons, arbres)
-          // reste.
           const hide = view === 'jeu' ? [] : [t.village().group, t.fauna().group, t.villagers().group].filter((g) => g.visible)
           for (const g of hide) g.visible = false
           st.renderer.render(st.scene, cam)
@@ -136,7 +108,6 @@ try {
       }, Math.round(seconds * 30))
     const write = (name, url) => writeFile(join(out, name), Buffer.from(url.split(',')[1], 'base64'))
 
-    // 7 instants du travail, puis le retour panier plein.
     const frames = []
     let e = 0
     for (let k = 0; k < 7; k++) {
@@ -152,13 +123,10 @@ try {
     await write(`${tool}-jeu-7.png`, await shot(50, 160, 'jeu'))
     await write(`${tool}-gros-7.png`, await shot(260, 380, 'haut'))
 
-    // GIF : le travail suivant, en entier, à 10 i/s (un tour de retour au feu
-    // puis un nouveau départ prendrait trop de temps sous SwiftShader).
     let gif = null
     if (ffmpeg) {
       await page.evaluate(() => {
         const s = window.__tribu.settler()
-        // Retour au buisson pour un nouveau travail complet.
         s.wake()
         s.carryLevel = 0
         s.refreshCarry()

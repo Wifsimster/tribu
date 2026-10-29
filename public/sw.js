@@ -1,8 +1,3 @@
-/* Service worker de Tribu : jouable hors-ligne.
- * - navigations : réseau d'abord (pour attraper chaque nouvelle version),
- *   repli sur le cache quand la mer est coupée ;
- * - /assets/ hachés par Vite : cache d'abord, ils sont immuables ;
- * - le nom de cache tourne à l'activation, l'ancien est balayé. */
 const CACHE = 'tribu-v1'
 
 self.addEventListener('install', (e) => {

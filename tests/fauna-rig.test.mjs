@@ -1,20 +1,11 @@
-// Squelette procédural de la faune (v3.61.0). La copie TS du shader (`rigPose`)
-// sert de banc : ce qu'elle calcule, le vertex shader le dessine.
-// Depuis la v3.66.0, les bêtes sont les modèles Blender (src/assets/models),
-// lus comme le jeu les lit, et le volume de référence des jonctions est le
-// maillage de leur corps (tests/fauna-body.mjs).
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { adoptAll, bodyDepth, model, uniqueVerts } from './fauna-body.mjs'
 
 const { rigPose, legCycle, gaitUniform, DEER_GAIT, PART } = await import('../src/render/fauna-rig.ts')
-// Toute faune construite dans ce fichier est modelée, comme en jeu une fois
-// les glb chargés.
 adoptAll()
 const deerGeo = () => model('deer')
 
-/** Profondeur d'un point DANS le corps du chevreuil (positive dedans). */
 const depthInBody = bodyDepth(deerGeo())
 
 test('pièce 0 : rigPose rend le point tel quel, quelle que soit la pose', () => {
@@ -45,7 +36,6 @@ test('cerf : pattes et cou pivotent DANS le corps, à 0,02 u au moins de sa surf
   const seen = new Map()
   for (let i = 0; i < piv.count; i++) {
     const id = Math.round(piv.getW(i))
-    // La tête (HEAD) tourne à la nuque, hors du corps : elle suit le cou.
     if (id === PART.RIGID || id === PART.HEAD) continue
     seen.set(id, [piv.getX(i), piv.getY(i), piv.getZ(i)])
   }
@@ -56,12 +46,6 @@ test('cerf : pattes et cou pivotent DANS le corps, à 0,02 u au moins de sa surf
   }
 })
 
-// ── A1 : pas de patinage ───────────────────────────────────────────────────
-// On rejoue le vrai `Fauna.update` (hors cadastre, loin de tout obstacle, cap
-// déjà sur la cible : une ligne droite), puis on pose le dessous de chaque
-// sabot comme le shader (`rigPose` + matrice d'instance). Pendant l'appui
-// (cycle < β), sa position au SOL ne doit presque pas bouger.
-
 const { Island } = await import('../src/render/island.ts')
 const { Fauna } = await import('../src/render/fauna.ts')
 const { Matrix4, Vector3 } = await import('three')
@@ -69,13 +53,6 @@ const { Matrix4, Vector3 } = await import('three')
 const FAR = new Vector3(1e4, 0, 1e4)
 const TAU = Math.PI * 2
 
-/** Le centre du dessous de chaque sabot : à l'aplomb de la hanche, à la
- *  hauteur du point le plus bas de la patte. C'est le point que le squelette
- *  garde planté. La silhouette avait un sommet là (centre du disque du
- *  cylindre) ; le sabot modelé n'en a pas forcément — son sommet le plus bas
- *  est un coin, jusqu'à 4 cm du centre, qui bascule avec la patte. On vérifie
- *  donc que l'aplomb tombe bien SOUS le sabot (dans l'emprise de sa semelle,
- *  à 2 mm près), puis on suit ce point-là. */
 function hoofSoles(geo) {
   const pos = geo.getAttribute('position')
   const piv = geo.getAttribute('aPivot')
@@ -103,8 +80,6 @@ function hoofSoles(geo) {
   return soles
 }
 
-/** Les quatre espèces à pattes : troupeau, mesh et allure, par leur nom
- *  dans `Fauna`. */
 const LAND = {
   cerf: { herd: 'deer', mesh: 'deerMesh', gait: 'DEER_GAIT' },
   mouton: { herd: 'sheep', mesh: 'sheepMesh', gait: 'SHEEP_GAIT' },
@@ -113,8 +88,6 @@ const LAND = {
 }
 const RIG = await import('../src/render/fauna-rig.ts')
 
-/** Une île, sa faune, et une bête de l'espèce lancée en ligne droite (vers
- *  +x, hors cadastre, loin de tout). */
 function lone(species, fields) {
   const s = LAND[species]
   const island = new Island(7, 2, [])
@@ -133,7 +106,6 @@ function runGait(gait, flee, species = 'cerf') {
   const out = []
   const v = new Vector3()
   const DT = 1 / 60
-  // Une seconde de mise en route : les poids lissés atteignent leur régime.
   for (let k = 0; k < 60; k++) f.update(DT, k * DT, FAR, false)
   const kRad = flee ? g.kTrot : g.kWalk
   const beta = flee ? { 1: u[3], 2: u[3], 3: u[5], 4: u[5] } : { 1: u[1], 2: u[1], 3: u[1], 4: u[1] }
@@ -170,10 +142,6 @@ function runGait(gait, flee, species = 'cerf') {
   return { worst, stride, stances, cadence: turned / dist, kRad, state: b.state }
 }
 
-// Mouton, poule, cheval (v3.62.0). Le trot du mouton et du cheval n'a
-// aujourd'hui aucun déclencheur en jeu (rien ne les fait fuir) : on le force
-// ici par l'état 3, comme la fuite du cerf, pour qu'il soit juste le jour où
-// il servira.
 for (const [species, flee] of [['mouton', false], ['mouton', true], ['cheval', false], ['cheval', true], ['poule', false]])
   for (const gait of [0.85, 1.15])
     test(`A1 : ${species} ${flee ? 'au trot' : 'au pas'}, gait ${gait} — le pied en appui glisse ≤ 0,002 u, cadence liée à la distance`, () => {
@@ -194,11 +162,6 @@ for (const [gait, flee] of [[0.85, false], [1.15, false], [0.85, true], [1.15, t
     assert.ok(Math.abs(r.cadence / r.kRad - 1) <= 0.05, `cadence ${r.cadence.toFixed(2)} rad/u, attendu ${r.kRad}`)
   })
 }
-
-// ── A5 : pas de pièce détachée ─────────────────────────────────────────────
-// Ce qui, au repos, est caché DANS le corps (le haut des pattes, la base du
-// cou) doit y rester dans toutes les poses extrêmes : sinon un jour s'ouvre à
-// la jonction. Tolérance 0,01 u, mesurée contre le maillage du corps.
 
 test('A5 : jonctions du cerf fermées au pas, au trot de fuite et au broutage', () => {
   const u = gaitUniform(DEER_GAIT)
@@ -225,13 +188,6 @@ test('A5 : jonctions du cerf fermées au pas, au trot de fuite et au broutage', 
   assert.ok(worst >= -0.01, `un sommet de jonction sort de ${(-worst).toFixed(3)} u`)
 })
 
-// ── A5 étendu : toutes les espèces à pattes, et le sommeil ─────────────────
-// Le corps de référence est le maillage du corps du modèle (pièce 0), toison,
-// croupe et queue comprises. Jusqu'à la 3.65, c'étaient des ellipsoïdes et
-// des capsules inscrits (×0,85–0,92) ; le maillage est plus juste, pas plus
-// indulgent : dedans, `bodyDepth` est une borne basse. Les tolérances sont
-// celles de la 3.62.0 ; le pivot minimal passe à 0,02 u pour toutes les
-// espèces (0,01 pour le mouton et la poule avant) : les modèles le tiennent.
 const BODIES = {
   cerf: { geo: () => model('deer'), pivotMin: 0.02, tol: 0.01 },
   mouton: { geo: () => model('sheep'), pivotMin: 0.02, tol: 0.006 },
@@ -240,22 +196,6 @@ const BODIES = {
 }
 for (const B of Object.values(BODIES)) B.depth = bodyDepth(B.geo())
 
-/** Pièces dispensées du « caché au repos, caché toujours » (v3.66.0) — la
- *  règle visait les moignons de la silhouette (haut d'un cylindre de patte,
- *  base d'un cou) : un bout ouvert qui sort du corps fait un jour. Les
- *  pièces modelées sont des volumes fermés, et trois d'entre elles cachent
- *  au repos une partie PLEINE qui, en sortant, montre la pièce et non un
- *  trou (rendus des poses fautives au vrai shader dans la PR) :
- *  - poule, cou : à 143° de picorage (110° + houle 30 %) et tête rentrée au
- *    sommeil, la nuque roule sur le poitrail et dépasse de 1,1 cm ;
- *  - mouton, tête : le sommet du crâne est enfoncé dans la toison au repos
- *    et en sort de 3,9 cm quand la tête plonge dans l'herbe.
- *  Elles gardent le contrôle de détachement (même tolérance) et leur pivot
- *  à 0,02 u au moins dans le corps.
- *  Les pattes de la poule, elles, restent jugées — mais contre le corps SANS
- *  les deux cuisses emplumées (coques rigides sous la hanche, que la
- *  silhouette n'avait pas) : le tibia sort de la cuisse au pas (1,9 cm),
- *  c'est le geste ; le haut de la patte, lui, ne doit pas sortir du ventre. */
 const EMERGE = { poule: [PART.NECK], mouton: [PART.NECK] }
 {
   const hip = RIG.HEN_GAIT.leg
@@ -263,8 +203,6 @@ const EMERGE = { poule: [PART.NECK], mouton: [PART.NECK] }
   BODIES.poule.pieceDepth = { [PART.FL]: noThighs, [PART.FR]: noThighs }
 }
 
-/** Toutes les poses extrêmes d'une espèce : 64 phases au pas et au trot,
- *  broutage ± houle, couchée et à mi-chemin, battement d'ailes. */
 function posesOf(g) {
   const poses = []
   for (let s = 0; s < 64; s++) {
@@ -305,10 +243,6 @@ for (const [species, B] of Object.entries(BODIES)) {
     let roots = 0
     let worst = Infinity
     let worstAt = ''
-    // Une pièce qui touche le corps au repos (plus petit écart ≤ 0) doit le
-    // toucher dans toutes les poses : sinon elle se détache. L'aile de la
-    // poule est un volet : en s'ouvrant, sa face interne sort du flanc (c'est
-    // le geste), seule sa charnière doit rester collée.
     const gap0 = new Map()
     const gapMax = new Map()
     for (const { p, pv, id } of uniqueVerts(B.geo())) {
@@ -354,10 +288,6 @@ test('A5 : cerf couché — jonctions fermées', () => {
   assert.ok(worst >= -0.01, `un sommet de jonction sort de ${(-worst).toFixed(3)} u`)
 })
 
-// ── Sommeil ────────────────────────────────────────────────────────────────
-
-/** Toute la bête `i` posée dans le monde, comme le GPU : `rigPose` puis la
- *  matrice d'instance. */
 function worldPose(mesh, i, u, into) {
   const geo = mesh.geometry
   const pos = geo.getAttribute('position')
@@ -384,8 +314,6 @@ for (const species of Object.keys(LAND))
   test(`sommeil : ${species} — se couche et se relève sans saut de pose, sans bouger, chacun à son heure`, () => {
     const { f, mesh, g, u } = lone(species, { state: 1 })
     const herd = f[LAND[species].herd]
-    // Toutes les bêtes du troupeau à l'écart, en pause : seule la nuit agit.
-    // (La poule ne bat pas des ailes ici : ce serait un geste vif.)
     herd.forEach((b, i) => Object.assign(b, { x: 200 + i * 5, z: 200, tx: 200 + i * 5, tz: 200, state: 1, timer: 1e9, path: [], fade: 1, warp: null, sleep: 0, flapIn: 1e9 }))
     const DT = 1 / 60
     const n = mesh.geometry.getAttribute('position').count
@@ -418,7 +346,6 @@ for (const species of Object.keys(LAND))
     const b = herd[0]
     assert.equal(b.sleep, 1, 'couchée au bout de 15 s')
     assert.ok(b.x === 200 && b.z === 200, 'elle n’a pas bougé')
-    // Couchée : le corps est descendu de `drop`, rien ne passe sous le sol.
     let low = Infinity
     for (let k = 1; k < prev.length; k += 3) low = Math.min(low, prev[k])
     assert.ok(low > -0.01, `un sommet passe ${(-low).toFixed(3)} u sous le sol`)
@@ -434,14 +361,9 @@ for (const species of Object.keys(LAND))
     let back = 0
     for (let k = 0; k < prev.length; k++) back = Math.max(back, Math.abs(prev[k] - rest0[k]))
     assert.ok(back < 1e-3, `de retour à la pose du jour (écart ${back.toFixed(4)} u)`)
-    // Pas de saut : à 60 i/s, aucun sommet ne bouge de plus de 0,02 u d'une
-    // image à l'autre (la descente du cheval, 0,6 u, prend 1,8 s), et sa
-    // vitesse ne change jamais d'un coup (différence seconde ≤ 0,001 u) : un
-    // saut de pose, même petit, y ferait un pic.
     if (process.env.A1_LOG) console.error(`sommeil ${species} vitesse=${speed.toFixed(4)} à-coup=${jerk.toFixed(5)} couchers=${bedAt.map((x) => (x - 1).toFixed(2))} levers=${upAt.map((x) => (x - 16).toFixed(2))} dos=${(top0 - top1).toFixed(3)}`)
     assert.ok(speed < 0.02, `un sommet parcourt ${speed.toFixed(4)} u en une image`)
     assert.ok(jerk < 0.001, `à-coup de ${jerk.toFixed(5)} u en une image`)
-    // Déphasage : les bêtes ne se couchent ni ne se lèvent toutes ensemble.
     assert.ok(new Set(bedAt.map((x) => x.toFixed(2))).size === herd.length, `couchers : ${bedAt.map((x) => x.toFixed(2))}`)
     assert.ok(new Set(upAt.map((x) => x.toFixed(2))).size === herd.length, `levers : ${upAt.map((x) => x.toFixed(2))}`)
     for (const x of bedAt) assert.ok(x - 1 >= 0 && x - 1 <= RIG.SLEEP.fallMax + 0.05, `coucher à ${(x - 1).toFixed(2)} s de la nuit`)
@@ -456,7 +378,6 @@ test('sommeil : le dormeur respire (le dos monte et descend lentement)', () => {
   for (let k = 0; k < 10 * 60; k++) f.update(DT, k * DT, FAR, true)
   let lo = Infinity
   let hi = -Infinity
-  // Deux périodes de souffle.
   for (let k = 0; k < 8 * 60; k++) {
     f.update(DT, 10 + k * DT, FAR, true)
     worldPose(mesh, 0, u, buf)
@@ -468,15 +389,11 @@ test('sommeil : le dormeur respire (le dos monte et descend lentement)', () => {
   assert.ok(hi - lo > 0.004, `souffle de ${(hi - lo).toFixed(4)} u`)
 })
 
-// ── Poule : la tête fixe pendant le pas, le battement d'ailes ──────────────
-
 test('poule : pendant la tenue, la tête reste fixe dans l’espace (≤ 0,002 u), puis rattrape le corps', () => {
   const { f, b, mesh, g, u } = lone('poule', { state: 0, gait: 1 })
   const geo = mesh.geometry
   const pos = geo.getAttribute('position')
   const piv = geo.getAttribute('aPivot')
-  // Le sommet le plus haut de la tête (sommet de la sphère, sous la crête) :
-  // entièrement cisaillé.
   let head = -1
   for (let i = 0; i < pos.count; i++)
     if (Math.round(piv.getW(i)) === PART.NECK && Math.abs(pos.getZ(i) - 0.08) < 0.02 && (head < 0 || pos.getY(i) > pos.getY(head)) && pos.getY(i) < 0.29) head = i
@@ -534,11 +451,8 @@ test('poule : quelques battements d’ailes, espacés, jamais endormie, ailes re
     for (let j = 1; j < s.length; j++) assert.ok(s[j] - s[j - 1] >= RIG.HEN_FLAP.waitMin, `écart ${(s[j] - s[j - 1]).toFixed(1)} s`)
   }
   assert.notDeepEqual(starts[0], starts[1], 'les poules ne battent pas ensemble')
-  // Au repos, la phase vaut un nombre entier de battements : aile au corps.
   for (let i = 0; i < 3; i++) assert.ok(0.5 - 0.5 * Math.cos(re.getY(i)) < 1e-4)
 })
-
-// ── Mouette : vol battu et plané ───────────────────────────────────────────
 
 const gullGeo = () => model('gull')
 const { GULL_WING, wingUniform } = await import('../src/render/fauna-rig.ts')
@@ -549,16 +463,12 @@ test('mouette : épaules dans le corps, coude commun au bras et à la main dans 
   const ids = new Set()
   for (let i = 0; i < piv.count; i++) ids.add(Math.round(piv.getW(i)))
   assert.deepEqual([...ids].sort((a, b) => a - b), [PART.RIGID, PART.ARM_L, PART.ARM_R, PART.HAND_L, PART.HAND_R])
-  // L'épaule, mesurée contre le maillage du corps (une capsule de rayon 0,05
-  // jusqu'à la 3.65) : à 0,02 u au moins dedans, des deux côtés.
   const [sx, sy] = GULL_WING.shoulderAt
   const inGull = bodyDepth(geo)
   for (const s of [1, -1]) {
     const d = inGull(s * sx, sy, GULL_WING.shoulderAt[2])
     assert.ok(d >= 0.02, `épaule à ${d.toFixed(4)} u dans le corps`)
   }
-  // Les pivots du modèle sont ceux du squelette : épaules à `shoulderAt`,
-  // coudes à `elbowAt`.
   for (let i = 0; i < piv.count; i++) {
     const id = Math.round(piv.getW(i))
     if (id === PART.RIGID) continue
@@ -588,8 +498,6 @@ test('mouette : épaules dans le corps, coude commun au bras et à la main dans 
 
 test('mouette : ailes en miroir ; le battu monte à +45° et descend à −45°, le plané tient le dièdre', () => {
   const u = wingUniform(GULL_WING)
-  // Le bout de l'aile gauche du modèle (le sommet de main le plus loin du
-  // corps), et son miroir.
   const geo = gullGeo()
   const pos = geo.getAttribute('position')
   const piv = geo.getAttribute('aPivot')
@@ -613,8 +521,6 @@ test('mouette : ailes en miroir ; le battu monte à +45° et descend à −45°,
     lo = Math.min(lo, pl[1])
     hi = Math.max(hi, pl[1])
   }
-  // Une aile de 0,6 u qui balaie ±45° (+ la main) : le bout monte et descend
-  // d'au moins 0,4 u de part et d'autre (0,25 u à ±30° en 3.61.0).
   assert.ok(hi > y0 + 0.4 && lo < y0 - 0.4, `bout d'aile de ${lo.toFixed(2)} à ${hi.toFixed(2)}`)
   rigPose(pl, tipL, [L[1], L[2], L[3], L[0]], [1.7, 0, 0, 0], u)
   const glide = pl[1]
@@ -632,7 +538,6 @@ test('mouette : en 40 s de vol, des battus de 2–3 s et des planés de 3–5 s,
   const runs = [[], [], []]
   const cur = [null, null, null]
   let jump = 0
-  // `aAnim` n'est rempli qu'à la première image : le saut se mesure ensuite.
   f.update(DT, 0, FAR, false)
   const prev = [anim.getW(0), anim.getW(1), anim.getW(2)]
   for (let k = 1; k < 40 * 60; k++) {

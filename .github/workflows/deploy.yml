@@ -1,11 +1,5 @@
 name: Deploy — homelab
 
-# Chaque release GitHub publiée part en production. Le runner auto-hébergé
-# tourne sur l'hôte Docker : il construit les deux images à partir du tag
-# de la release, puis recrée les conteneurs de la pile /opt/docker/tribu.
-# Les images restent locales (tribu:local, tribu-api:local), comme avant :
-# pas de registre, pas de secret.
-
 on:
   release:
     types: [published]
@@ -33,7 +27,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
@@ -45,15 +39,11 @@ jobs:
           docker build --pull -t tribu-api:local -f Dockerfile.api .
 
       - name: Reconcile stack
-        # --no-build : le compose garde ses sections build (contexte d'origine),
-        # mais les images viennent d'être construites ici, depuis le tag.
         run: |
           docker compose --project-directory "$STACK_DIR" -f "$STACK_DIR/compose.yml" \
             up -d --no-build --force-recreate tribu api
 
       - name: Wait for containers to become healthy
-        # Dépôt public : les logs Actions sont lisibles par tous. On garde les
-        # logs des conteneurs sur le runner et on n'affiche qu'un pointeur.
         run: |
           set -euo pipefail
           save_logs() {
@@ -83,7 +73,6 @@ jobs:
           done
 
       - name: Check served version
-        # La version de package.json doit se retrouver dans le bundle servi.
         run: |
           set -euo pipefail
           version=$(node -p "require('./package.json').version" 2>/dev/null \

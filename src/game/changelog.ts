@@ -1,7 +1,3 @@
-/** Nouveautés, de la plus récente à la plus ancienne. Une entrée par version
- *  publiée — le panneau du menu les affiche telles quelles, et la version
- *  courante vient de package.json (define Vite). À tenir à jour à CHAQUE
- *  correctif ou fonctionnalité. */
 export interface Release {
   version: string
   title: string

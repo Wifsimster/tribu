@@ -1,10 +1,3 @@
-// Le décor dégagé (v3.59.0) : aucun rocher, buisson ni tronc de sapin dans ce
-// qui est posé. L'audit des collisions du 2026-10-13 trouvait un rocher dans
-// un bâtiment dans 22 villages sur 24, un buisson dans 24 sur 24, jusqu'à
-// 1,9 u de profondeur. Les distances se mesurent ici contre les TRIANGLES des
-// emprises (ceux que le cadastre lit), calculées exactement, sans la grille
-// du cadastre : une erreur de rastérisation ne passerait pas.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Matrix4, Quaternion, Vector3 } from 'three'
@@ -36,8 +29,6 @@ const builtFor = (age) =>
   livingBuildings(new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building))), age)
 const toolsFor = (age) => TOOLS.filter((t) => t.age <= age).map((t) => t.id)
 
-/** Un village complet, comme main.ts le monte : plan, Merveille, ateliers,
- *  musée, quai, faune visible, puis le cadastre. */
 function town(seed, age, land = []) {
   seeded(seed * 7 + age)
   const island = new Island(seed, age, land)
@@ -53,8 +44,6 @@ function town(seed, age, land = []) {
   return { island, village, fauna, ground }
 }
 
-/** Les triangles en plan de tout ce qui est posé, avec le seuil de hauteur
- *  de chaque emprise, et une fonction de distance signée exacte. */
 function solids(sources) {
   const tris = []
   for (const s of sources)
@@ -76,7 +65,6 @@ function solids(sources) {
     const u = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L))
     return Math.hypot(px - ax - u * dx, pz - az - u * dz)
   }
-  /** Distance du point au plein le plus proche, négative dedans (bornée à 3). */
   return (x, z) => {
     let best = 3
     for (const [ax, az, bx, bz, cx, cz] of tris) {
@@ -95,7 +83,6 @@ function solids(sources) {
 }
 
 const R = { wood: 0.16, stone: 0.42, food: 0.34 }
-/** Le décor encore debout : position, rayon au sol, nature. */
 function decor(island) {
   const m = new Matrix4(), p = new Vector3(), q = new Quaternion(), s = new Vector3()
   const out = []
@@ -111,7 +98,6 @@ function decor(island) {
   return out
 }
 
-/** Le décor le plus serré contre une emprise : écart bord à bord. */
 function worstGap(island, sd) {
   let worst = { gap: Infinity }
   for (const d of decor(island)) {
@@ -138,7 +124,6 @@ test('aucun rocher, buisson ni tronc dans un bâtiment, la Merveille, le quai, l
 
 test('un atelier posé en cours de partie efface le décor qu’il recouvre, et seulement lui', () => {
   for (const [seed, age] of [[42, 7], [99, 10]]) {
-    // La partie de l'âge précédent, puis les ateliers de l'âge qui arrivent.
     seeded(seed)
     const island = new Island(seed, age, [])
     const village = new Village(island, age, false, false)
@@ -154,16 +139,12 @@ test('un atelier posé en cours de partie efface le décor qu’il recouvre, et 
     assert.ok(after < before, `graine ${seed} : du décor pris sous les nouveaux ateliers (${before} → ${after})`)
     const worst = worstGap(island, solids([village, fauna]))
     assert.ok(worst.gap >= DECOR_GAP, `graine ${seed} âge ${age} : ${worst.kind} à ${worst.gap.toFixed(2)} u`)
-    // Plus rien n'est sous une emprise : le cadastre ne voit plus de tronc ni
-    // de rocher effacé (un rocher retiré ne bloque plus le passage).
     for (const d of decor(island)) assert.ok(ground.clearAt(d.x, d.z) < 0 || d.kind === 'food', 'le décor debout reste un obstacle')
   }
   Math.random = random
 })
 
 test('le décor d’une terre gagnée ne chevauche pas le décor déjà là', () => {
-  // Graine 11, troisième ancre proposée : sur la 3.58.0, un bloc de parcelle
-  // y venait à 0,22 u d'un buisson.
   const kinds = ['foret', 'carriere', 'prairie', 'affleurement', 'crique']
   for (const [seed, pick] of [[11, 2], [42, 0], [99, 1]]) {
     let land = []
@@ -185,7 +166,6 @@ test('le décor d’une terre gagnée ne chevauche pas le décor déjà là', ()
         worst = Math.min(worst, Math.hypot(A.x - B.x, A.z - B.z) - A.r - B.r)
       }
     assert.ok(worst >= DECOR_GAP, `graine ${seed} : décor de parcelle à ${worst.toFixed(2)} u d'un autre décor`)
-    // On ne retire que le décor de la parcelle : celui de l'île reste.
     const kept = all.filter((d) => d.src === null)
     assert.equal(kept.length, base.length, `graine ${seed} : le décor de l'île de base reste entier`)
   }
@@ -219,8 +199,6 @@ test('effacer le décor ne déplace rien de ce qui est sauvegardé', () => {
   const after = JSON.parse(JSON.stringify({ l: village.layout, g: village.goodsAt }))
   const prev = JSON.parse(before)
   assert.deepEqual(after.g, prev.g)
-  // Un âge remplace certains ateliers (la forge cède la place) : on compare
-  // ceux qui restent, chacun à sa place au millième près.
   let same = 0
   for (const p of prev.l) {
     const a = after.l.find((x) => x.id === p.id)

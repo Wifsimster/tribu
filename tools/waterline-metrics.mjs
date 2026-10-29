@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-// Mesure OBJECTIVE du contact avec l'eau sur une capture PNG.
-//
-//   NODE_PATH=/tmp/node_modules node tools/waterline-metrics.mjs <image.png> [--json]
-//
-// Sept rounds ont perdu parce que l'amplitude du contact était réglée à l'œil.
-// Ce script remplace l'œil par trois chiffres, mesurés de la même façon sur la
-// référence (Townscaper) et sur notre capture :
-//
-//   RIDE    delta MAX de luminance entre la couronne de ride et l'eau libre
-//           voisine, le long du pourtour (rows flottaison ± 2 % de hauteur).
-//   MASSE   delta MOYEN |L - L_eau| dans la bande 0-4 % de hauteur d'image sous
-//           la flottaison, sous l'objet (colonnes centrales de l'empreinte).
-//   REFLET  delta MOYEN |L - L_eau| dans la bande 4-12 % sous la flottaison.
-//
-// L_eau est la luminance médiane de l'eau libre DE LA MÊME LIGNE (bandes 5-10 %
-// et 90-95 % de largeur), donc la brume verticale ne fausse rien. La flottaison
-// est détectée comme la ligne la plus large de l'objet : sur une île posée sur
-// l'eau, les points extrêmes gauche/droite de la silhouette sont au niveau de
-// l'eau. Luminance en 0-255 (Rec. 709 sur les octets sRGB du PNG).
 
 import { chromium } from 'playwright'
 import { readFile } from 'node:fs/promises'
@@ -28,15 +9,11 @@ if (!imgPath) {
   process.exit(1)
 }
 const asJson = rest.includes('--json')
-// --overlay <out.png> : la capture avec le contour détecté (rouge) et les
-// limites des bandes 0-4 % (vert) et 4-12 % (bleu) — pour vérifier À L'ŒIL que
-// les chiffres mesurent bien la flottaison et pas de l'herbe.
 const oi = rest.indexOf('--overlay')
 const overlayPath = oi >= 0 ? rest[oi + 1] : null
 
 const browser = await chromium.launch()
 const page = await browser.newPage()
-// L'image passe en data:URL : un file:// taint le canvas et bloque getImageData.
 const dataUrl = 'data:image/png;base64,' + (await readFile(imgPath)).toString('base64')
 
 const result = await page.evaluate(async ({ src, withOverlay }) => {
@@ -64,11 +41,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
     return s[s.length >> 1]
   }
 
-  // --- Eau libre : l'eau des deux jeux porte un vignettage RADIAL — un fond
-  // par ligne seule fait passer tout le centre de l'image pour de l'objet.
-  // Par ligne et par canal, une parabole est ajustée (moindres carrés) sur
-  // quatre bandes d'eau franche des deux côtés de l'île ; c'est elle qui donne
-  // « l'eau libre à même hauteur » sous l'objet.
   const BANDS = [
     [0.05, 0.1],
     [0.13, 0.19],
@@ -87,11 +59,8 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
     }
     return [median(rs), median(gs), median(bs)]
   }
-  // Coefficients [a, b, c] de a + b·u + c·u² (u = x/W), par ligne et canal.
   const coef = new Float32Array(H * 9)
   const us = BANDS.map(([a, b]) => (a + b) / 2 / W)
-  // Normales du système 4 points → 3 inconnues, identiques pour toutes les
-  // lignes : inversée une fois.
   const S = [0, 0, 0, 0, 0]
   for (const u of us) for (let p = 0; p < 5; p++) S[p] += u ** p
   const M = [
@@ -136,7 +105,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
   }
   const bgLum = (x, y) => 0.2126 * bg(x, y, 0) + 0.7152 * bg(x, y, 1) + 0.0722 * bg(x, y, 2)
 
-  // --- Masque objet : écart couleur franc à l'eau libre au même endroit.
   const T = 14
   const isObj = (x, y) => {
     const i = (y * W + x) * 4
@@ -148,8 +116,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
       ) > T
     )
   }
-  // Étendue [xl, xr] du masque sur une ligne (runs d'au moins 3 px, colonnes
-  // centrales 12-88 % pour ignorer l'UI des deux jeux).
   const X0 = Math.floor(W * 0.12)
   const X1 = Math.floor(W * 0.88)
   const extent = (y) => {
@@ -170,10 +136,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
     return xl >= 0 && xr > xl ? [xl, xr] : null
   }
 
-  // --- Flottaison : sur une île posée sur l'eau, la silhouette (couronne de
-  // ride comprise) est LA PLUS LARGE au niveau de l'eau — au-dessus, l'objet
-  // rentre ; en dessous, reflet et masse immergée rétrécissent. L'ancre est la
-  // médiane du plateau des lignes à ≥ 99 % de la largeur max.
   const yA = Math.floor(H * 0.15)
   const yB = Math.floor(H * 0.88)
   const widths = new Int32Array(H)
@@ -191,14 +153,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
   const eW = extent(yWater)
   const span = eW[1] - eW[0]
 
-  // --- Ligne de flottaison PAR COLONNE, le long du contour bas de l'île.
-  // L'ancre ne vaut qu'aux pointes gauche/droite : au centre, la caméra
-  // plongeante garde l'objet émergé bien en dessous de cette ligne, et une
-  // bande « 0-4 % sous l'ancre » y mesurerait de l'herbe. Le repère fiable est
-  // la couronne de ride : dans les deux jeux, le contact eau/objet est le pic
-  // de luminance POSITIVE le plus franc du bas de la silhouette. On le cherche
-  // par colonne puis on médian-filtre le contour (les colonnes où la ride est
-  // hachée héritent de leurs voisines).
   const cx0 = Math.floor(eW[0] + span * 0.05)
   const cx1 = Math.floor(eW[1] - span * 0.05)
   const sY0 = Math.max(0, Math.floor(yWater - H * 0.01))
@@ -207,10 +161,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
   for (let x = cx0; x <= cx1; x += 2) {
     let peak = 0
     for (let y = sY0; y <= sY1; y++) peak = Math.max(peak, lum(x, y) - bgLum(x, y))
-    // Le contour est le pixel clair LE PLUS PROFOND encore franc (≥ 70 % du pic
-    // de la colonne) : au-dessus il y a l'objet (sable, maçonnerie — clairs eux
-    // aussi), en dessous il n'y a plus que reflet et masse noyée, toujours plus
-    // sourds que la couronne. Le pic global, lui, dérivait dans l'objet.
     const bar = Math.max(peak * 0.7, 25)
     let yc = -1
     let crest = 0
@@ -234,11 +184,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
     return median(win)
   })
 
-  // --- RIDE : delta max entre la couronne et l'eau libre voisine, le long du
-  // pourtour — mesuré sur les POINTES (25 % du span de chaque côté), la seule
-  // zone où la couronne borde de l'eau libre sans que l'objet (fenêtres,
-  // maçonnerie claire) puisse contaminer le pic. Pics posés sur le contour
-  // lissé (± 1 % H) uniquement.
   let ride = 0
   const tipN = Math.floor(cols.length * 0.25)
   cols.forEach((c, i) => {
@@ -246,7 +191,6 @@ const result = await page.evaluate(async ({ src, withOverlay }) => {
     if (c.valid && Math.abs(c.y - contour[i]) <= H * 0.01) ride = Math.max(ride, c.peak)
   })
 
-  // --- Bandes sous la flottaison, par colonne, en % de hauteur d'image.
   const bandDelta = (f0, f1) => {
     let sum = 0
     let signed = 0

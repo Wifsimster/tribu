@@ -34,73 +34,32 @@ import { AGES } from '../game/content'
 import { ISLAND_RADIUS } from './island'
 import { AGE_HAZE_MIX, AGE_SKY_MIX, LIGHT, PALETTE, SUN_DIR, rampTexture, smoothstep } from './palette'
 
-/** Phones get one pixel of DPR headroom, not three. This single clamp is the
- *  difference between 60 fps and 25 fps on a mid-range Android. */
 function targetPixelRatio(): number {
   const dpr = window.devicePixelRatio || 1
   const coarse = window.matchMedia('(pointer: coarse)').matches
   return Math.min(dpr, coarse ? 1.75 : 2)
 }
 
-/** Champ étroit et caméra très reculée : la perspective s'aplatit, l'île se lit
- *  comme une maquette. Un grand angle proche donnait un point de vue de joueur
- *  posé dans l'herbe. */
 const FOV = 27
-/** Mode photo : focale encore plus longue et plongée plus franche — l'œil
- *  d'un photographe penché sur une maquette, pas celui d'un joueur. */
 const PHOTO_FOV = 13
 const PHOTO_POLAR = Math.PI * 0.27
-/** En portrait, la plongée se redresse encore : vue de biais, l'île se
- *  projette en ellipse aplatie, et un écran haut et étroit n'en montrait
- *  qu'un quart de sa hauteur — le reste, de la mer. Plus à la verticale,
- *  l'ellipse s'allonge et remplit le cadre. */
 const PHOTO_POLAR_PORTRAIT = Math.PI * 0.2
-/** Part de LARGEUR que l'île occupe en mode photo portrait : c'est la largeur
- *  qui borne le cadrage sur un téléphone, et 76 % y laissait l'île minuscule
- *  au milieu d'un écran d'eau. */
 const PHOTO_FILL_WIDTH = 0.94
 
-/** Hauteur de la voûte d'étoiles : 30 unités pour un rayon de 320, soit 5,4°
- *  de ciel au-dessus de l'horizon. C'est EXACTEMENT la bande visible : à 27°
- *  de champ vertical et l'horizon aux deux tiers de l'écran, le ciel tient en
- *  quatre ou cinq degrés. Une voûte plus haute étale sa texture d'étoiles
- *  au-dessus du cadre et n'en laisse voir aucune.
- */
 const STAR_H = 130
-/** Altitude de la voûte. MESURE (2026-08-21) : avec ce cadrage, l'horizon VRAI
- *  tombe au ras du bord haut de l'écran (NDC ≥ 0,95) — il n'y a, à proprement
- *  parler, pas de ciel visible. La voûte est donc peinte SOUS l'horizon, sur
- *  la mer lointaine, et c'est la seule façon d'avoir des étoiles du tout : la
- *  poser sur l'horizon vrai la réduit à une bande de dix pixels, vide.
- *  Ce qui est corrigé, c'est qu'elle ne descende plus jusqu'à l'île — le fondu
- *  du bas (dans la texture) éteint les étoiles basses bien avant. */
 const STAR_Y = -14
-/** Résolution de la texture de la voûte. */
 const STAR_TEX_W = 256
-/** Valeur historique de `distance` : le zoom du doigt reste un multiplicateur
- *  autour du cadrage nominal, sans jamais sortir des bornes d'orbit.ts. */
 const BASE_ZOOM = ORBIT.baseZoom
-/** Part de l'écran que l'île a le droit d'occuper. Le reste, c'est de l'eau. */
 const FILL_WIDTH = 0.76
 const FILL_HEIGHT = 0.5
 
-/** Trajet du soleil : un arc de haute latitude. Il se lève au col d'horizon
- *  arrière-gauche — pile dans le cadrage par défaut, même en portrait —, monte
- *  jusqu'à SUN_DIR à midi (la direction cuite dans les ombres de contact, et
- *  tous les dosages des rounds), puis redescend au même col. Un cercle complet
- *  faisait se coucher le soleil derrière la caméra : personne ne le voyait. */
 const NOON_AZ = Math.atan2(SUN_DIR.x, SUN_DIR.z)
 const ARC = 1.45
-/** Vecteurs de travail pour la projection de l'horizon : appelée à chaque
- *  image, elle n'a pas à allouer. */
 const tmpDir = new Vector3()
 const tmpHorizon = new Vector3()
 const tmpRim = new Vector3()
 const tmpUp = new Vector3()
 
-/** Une pièce teintée puis posée, pour les silhouettes du ciel. Le matériau y
- *  est basique (aucune lumière la nuit ne les éclairerait) : la couleur est
- *  donc cuite dans les sommets. */
 function skyPart(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
   const geo = source.index ? source : source.toNonIndexed()
   geo.translate(x, y, z)
@@ -119,9 +78,6 @@ const NIGHT_SKY = new Color('#16283f')
 const NIGHT_HAZE = new Color('#1c3247')
 const SUN_DAY = LIGHT.sunDay
 const SUN_LOW = new Color('#ffb36b')
-/** Ciel et brume de temps couvert. Depuis la v3.60.0, le ciel ne prend plus la
- *  teinte d'âge, qui le grisait aussi par beau temps : sans ce gris, la pluie
- *  tombait d'un ciel bleu franc. */
 const STORM_SKY = new Color('#8d9eab')
 const STORM_HAZE = new Color('#b9c4cb')
 
@@ -135,10 +91,8 @@ export class Stage {
   private readonly vignette: Mesh
   private sky: DataTexture
 
-  /** Rayon de l'île courante — mis à jour quand elle grandit avec les âges. */
   islandRadius = ISLAND_RADIUS
 
-  // Orbit state, driven by the custom touch controller in controls.ts.
   azimuth = Math.PI * 0.25
   polar = Math.PI * 0.38
   distance: number = BASE_ZOOM
@@ -153,9 +107,6 @@ export class Stage {
     })
     this.renderer.setPixelRatio(targetPixelRatio())
     this.renderer.shadowMap.enabled = true
-    // PCF simple. En three r185, le rendu WebGL n'a plus de PCFSoftShadowMap :
-    // WebGLShadowMap.js le remplace par PCFShadowMap au premier rendu, avec un
-    // avertissement de dépréciation dans la console. Même rendu, sans le bruit.
     this.renderer.shadowMap.type = PCFShadowMap
     this.renderer.toneMapping = ACESFilmicToneMapping
     this.renderer.toneMappingExposure = LIGHT.exposure
@@ -169,16 +120,9 @@ export class Stage {
 
     this.camera = new PerspectiveCamera(FOV, 1, 8, 2600)
 
-    // Moins de ciel diffus, plus de soleil : c'est le rapport entre les deux qui
-    // creuse les contre-marches. À 0,82 l'ambiante remplissait tous les creux et
-    // les paliers se lisaient comme un aplat.
-    // v3.60.0 : sol chaud (#7d7d5c) au lieu de bleu-gris — les ombres tirent
-    // vers le vert doré au lieu de ternir l'herbe.
     this.hemi = new HemisphereLight(LIGHT.hemiSky, LIGHT.hemiGround, LIGHT.hemiIntensity)
     this.scene.add(this.hemi)
 
-    // Le soleil vient de la gauche et de derrière l'épaule gauche : sur le
-    // cadrage par défaut, une face est éclairée, l'autre tombe dans l'ombre.
     this.sun = new DirectionalLight(SUN_DAY, LIGHT.sunIntensity)
     this.sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z)
     this.sun.castShadow = true
@@ -194,13 +138,10 @@ export class Stage {
     this.scene.add(this.sun)
     this.scene.add(this.sun.target)
 
-    // Vignettage en une passe : un quad multiplicatif accroché à la caméra
-    // coûte un draw call, là où un post-process coûterait une cible de rendu.
     this.vignette = new Mesh(
       new PlaneGeometry(1, 1),
       new MeshBasicMaterial({
         map: rampTexture(96, 96, (u, v, out) => {
-          // Un peu plus lourd en bas : c'est là que se posent les boutons.
           const k =
             smoothstep(0.42, 1.3, Math.hypot(u - 0.5, v - 0.5) * 2) + smoothstep(0.45, 0, v) * 0.35
           out.setRGB(1 - k * 0.2, 1 - k * 0.15, 1 - k * 0.12)
@@ -220,9 +161,6 @@ export class Stage {
     this.camera.add(this.vignette)
     this.scene.add(this.camera)
 
-    // Le soleil visible : un halo chaud et un disque posés sur l'horizon dans
-    // la direction réelle de l'azimut. C'est lui qui fait EXISTER le lever et
-    // le coucher — sans lui, l'aube n'était qu'un fondu global de lumière.
     const glowMat = new MeshBasicMaterial({
       map: rampTexture(64, 64, (u, v, out) => {
         const d = Math.hypot(u - 0.5, v - 0.5) * 2
@@ -253,19 +191,11 @@ export class Stage {
     this.sunDisc = new Mesh(new PlaneGeometry(13, 13), discMat)
     this.sunDisc.position.z = 1
     this.sunGlow.add(this.sunDisc)
-    // Enfant de la caméra, comme le vignettage : le vrai horizon est HORS
-    // CADRE avec cette caméra plongeante (NDC y ≈ 1,3) — celui que le joueur
-    // voit est le dégradé de fond. Le soleil se place donc en espace écran,
-    // sur l'horizon perçu, à l'azimut réel près.
     glowMat.depthTest = false
     discMat.depthTest = false
     this.sunGlow.renderOrder = 990
     this.camera.add(this.sunGlow)
 
-    // La lune : même système que le soleil — espace écran, horizon perçu —
-    // en froid et en discret. Elle culmine la nuit là où le soleil culmine à
-    // midi, décalée d'un quart de radian pour ne pas se superposer aux
-    // transitions de l'aube et du crépuscule.
     const moonGlowMat = new MeshBasicMaterial({
       map: rampTexture(64, 64, (u, v, out) => {
         const d = Math.hypot(u - 0.5, v - 0.5) * 2
@@ -284,7 +214,6 @@ export class Stage {
     const moonDiscMat = new MeshBasicMaterial({
       map: rampTexture(48, 48, (u, v, out) => {
         const d = Math.hypot(u - 0.5, v - 0.5) * 2
-        // Légères mers lunaires : deux creux plus sombres cuits dans le disque.
         const m1 = Math.hypot(u - 0.38, v - 0.42) * 3.2
         const m2 = Math.hypot(u - 0.6, v - 0.62) * 4.2
         const shade = 1 - 0.16 * Math.max(0, 1 - m1) - 0.12 * Math.max(0, 1 - m2)
@@ -303,17 +232,8 @@ export class Stage {
     this.moonDisc.position.z = 1
     this.moonGlow.add(this.moonDisc)
     this.moonGlow.renderOrder = 989
-    // Enfant de la caméra, comme le soleil. Elle vivait dans le monde à
-    // y = −60 : sous la hauteur de l'œil, donc SOUS l'horizon — peinte sur la
-    // mer, devant l'île. Remontée au-dessus de l'horizon en coordonnées
-    // monde, elle sortait du cadre par le haut (la bande de ciel visible ne
-    // fait que quelques degrés à 27° de champ). Elle se place donc à l'écran,
-    // sur l'horizon perçu, à son azimut réel près — comme le soleil.
     this.camera.add(this.moonGlow)
 
-    // La traînée de lumière sur l'eau : le chemin scintillant vers l'astre —
-    // soleil le jour (embrasé aux heures basses), lune la nuit. Un quad posé
-    // sur la mer, strie longitudinale + scintillements cuits, additif.
     const glintHash = (n: number): number => {
       const s = Math.sin(n) * 43758.5453
       return s - Math.floor(s)
@@ -338,8 +258,6 @@ export class Stage {
     this.glint.renderOrder = 2
     this.scene.add(this.glint)
 
-    // Houle : des vaguelettes qui naissent, dérivent sous le vent des nuages
-    // et se dissolvent. Un seul draw call, la respiration de la mer.
     const waveMat = new MeshBasicMaterial({
       map: rampTexture(64, 16, (u, v, out) => {
         const across = Math.pow(Math.max(0, 1 - Math.abs(v - 0.5) * 2), 1.8)
@@ -373,19 +291,11 @@ export class Stage {
     }
     this.scene.add(this.waves)
 
-    // Étoiles : un semis déterministe cuit dans une texture, sur un quad qui
-    // ne couvre que la bande de ciel au-dessus de l'île. Légères — elles
-    // habillent la nuit, elles ne la signent pas.
     const starHash = (n: number): number => {
       const s = Math.sin(n) * 43758.5453
       return s - Math.floor(s)
     }
     const starMat = new MeshBasicMaterial({
-      // Texture BASSE : la voûte ne couvre plus que 5° de ciel (sa base est
-      // posée sur l'horizon), et 256 texels étalés sur ces 5° font 0,4 pixel
-      // par texel — une étoile d'un texel et quart devenait SOUS-PIXEL, donc
-      // rendue mais invisible. À 32 texels de haut, un texel vaut trois
-      // pixels et une étoile se voit.
       map: rampTexture(STAR_TEX_W, STAR_TEX_W, (u, v, out) => {
         const cells = 22
         const cx = Math.floor(u * cells)
@@ -397,13 +307,6 @@ export class Stage {
         const sy = (cy + 0.2 + 0.6 * starHash(cx * 41.9 + cy * 73.1)) / cells
         const d = Math.hypot(u - sx, v - sy) * STAR_TEX_W
         const bright = 0.55 + 0.45 * starHash(cx * 13.7 + cy * 219.4)
-        // PLUS de fondu vers le bas : la base de la voûte est désormais posée
-        // SUR l'horizon (updateCamera la suit), donc rien n'est peint sous
-        // lui. L'ancien fondu (0,16 → 0,44) servait à cacher la partie qui
-        // tapissait la mer ; il éteindrait maintenant la seule bande de ciel
-        // que la caméra laisse voir.
-        // Fondu du bas RELEVÉ (0,16→0,44 à l'origine) : ce sont les étoiles
-        // basses qui tapissaient l'eau proche et la silhouette de l'île.
         return bright * Math.pow(Math.max(0, 1 - d / 2.6), 1.4) * smoothstep(0.52, 0.78, v)
       }),
       transparent: true,
@@ -414,26 +317,13 @@ export class Stage {
       toneMapped: false,
       opacity: 0,
     })
-    // Voûte ancrée au MONDE : un cylindre autour de la scène, vu de
-    // l'intérieur. Orbiter fait défiler les étoiles comme un vrai ciel — le
-    // quad écran d'avant les collait à la caméra. Répétition horizontale pour
-    // des cellules carrées, et une lente dérive sidérale.
     ;(starMat.map as DataTexture).wrapS = RepeatWrapping
     ;(starMat.map as DataTexture).repeat.set(7, 1)
     starMat.side = BackSide
     starMat.depthWrite = false
-    // Le rayon est bien plus grand que la scène : la base du cylindre, à la
-    // hauteur de l'œil, tombe pile sur la ligne d'horizon quel que soit le
-    // décentrage de la caméra. La hauteur (STAR_H) ne couvre que 22° de ciel,
-    // ce qui suffit largement : à 27° de champ vertical, la bande de ciel
-    // visible au-dessus de l'horizon fait quelques degrés.
     this.stars = new Mesh(new CylinderGeometry(320, 320, STAR_H, 48, 1, true), starMat)
     this.scene.add(this.stars)
 
-    // Nuages : des blobs facettés dans le style du jeu, une seule géométrie
-    // instanciée (un draw call), éclairés par la scène — blancs le jour,
-    // cuivrés au couchant, éteints la nuit — et qui PORTENT OMBRE : leur
-    // passage devant le soleil glisse sur l'île.
     const puff = (r: number, sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
       const g = new IcosahedronGeometry(r, 0)
       g.scale(sx, sy, sz)
@@ -451,15 +341,10 @@ export class Stage {
     this.clouds.castShadow = true
     this.clouds.frustumCulled = false
     for (let i = 0; i < 12; i++) {
-      // Semis déterministe : anneau large au-dessus de l'île, tailles variées.
       const h = (n: number) => {
         const s = Math.sin(i * 37.7 + n * 91.3) * 43758.5453
         return s - Math.floor(s)
       }
-      // Bas et proches : au-dessus de l'île ils restent dans le cadre de la
-      // caméra plongeante ET dans le frustum d'ombre — leurs ombres glissent.
-      // Chaque nuage vit : il naît quelque part au vent, grandit, traverse,
-      // se dissout et laisse la place — la population varie sans cesse.
       this.cloudState.push({
         x: (h(1) - 0.5) * 72,
         y: 16 + h(2) * 6,
@@ -475,13 +360,10 @@ export class Stage {
     }
     this.scene.add(this.clouds)
 
-    // Oiseaux : cinq silhouettes qui traversent par vols aléatoires, de jour
-    // seulement. Les ailes sont des instances SÉPARÉES du corps, pivotées en
-    // opposition autour de l'axe de vol : elles battent, elles ne balotent pas.
     const birdMat = new MeshToonMaterial({ color: '#39404a' })
     this.birdBody = new InstancedMesh(new BoxGeometry(0.24, 0.05, 0.09), birdMat, 5)
     const wingGeo = new BoxGeometry(0.1, 0.02, 0.36)
-    wingGeo.translate(0, 0, 0.2) // pivot au flanc du corps
+    wingGeo.translate(0, 0, 0.2)
     this.birdWingL = new InstancedMesh(wingGeo, birdMat, 5)
     this.birdWingR = new InstancedMesh(wingGeo.clone().scale(1, 1, -1), birdMat, 5)
     for (const m of [this.birdBody, this.birdWingL, this.birdWingR]) {
@@ -490,8 +372,6 @@ export class Stage {
       this.scene.add(m)
     }
 
-    // Pluie : un rideau de gouttes instanciées au-dessus de l'île, un draw
-    // call, visible seulement quand la météo l'appelle.
     this.rain = new InstancedMesh(
       new BoxGeometry(0.025, 0.55, 0.025),
       new MeshBasicMaterial({ color: '#a8bfd2', transparent: true, opacity: 0, fog: false }),
@@ -501,11 +381,6 @@ export class Stage {
     this.rain.visible = false
     this.scene.add(this.rain)
 
-    // ── Le monde habité, au loin ─────────────────────────────────────────────
-    // Le journal de bord le disait : « nous ne sommes pas seuls ». Des voiles
-    // qui passent à l'horizon, des feux qui s'allument la nuit sur la côte
-    // lointaine, une fumée qui monte de l'îlot voisin — trois signes de vie
-    // minuscules, chacun un draw call, la plupart du temps invisibles.
     const tintGeo = (g: import('three').BufferGeometry, c: Color): import('three').BufferGeometry => {
       const src = g.index ? g.toNonIndexed() : g
       const n = src.attributes.position!.count
@@ -533,7 +408,6 @@ export class Stage {
     for (let i = 0; i < 2; i++)
       this.sailState.push({ active: false, wait: 40 + i * 130, t: 0, dur: 0, x0: 0, z0: 0, x1: 0, z1: 0 })
 
-    // Feux de la côte lointaine : trois lueurs qui battent, la nuit seulement.
     this.shoreFires = new InstancedMesh(
       new PlaneGeometry(1.7, 1.7),
       new MeshBasicMaterial({
@@ -555,7 +429,6 @@ export class Stage {
     this.shoreFires.visible = false
     this.scene.add(this.shoreFires)
 
-    // Fumée de l'îlot voisin : quelqu'un y vit aussi.
     this.isletSmoke = new InstancedMesh(
       new IcosahedronGeometry(0.6, 0),
       new MeshBasicMaterial({ color: '#dfe6ea', transparent: true, opacity: 0.15, depthWrite: false, fog: false }),
@@ -569,7 +442,6 @@ export class Stage {
     window.addEventListener('orientationchange', () => this.resize())
   }
 
-  /** Assombrissement d'éclipse : 1 = plein jour normal, piloté par la boucle. */
   eclipseK = 1
 
   private farSails!: InstancedMesh
@@ -590,10 +462,6 @@ export class Stage {
   private auroraLife = 0
   private auroraDur = 0
 
-  /** LE TRAÎNEAU. Une silhouette qui traverse la bande de ciel, d'un bord du
-   *  cadre à l'autre, une fois par passage. Elle vit en espace écran comme le
-   *  soleil et la lune : c'est le seul endroit où il reste de la place au-
-   *  dessus de l'horizon avec ce cadrage. Construite une fois, réutilisée. */
   private sleighMesh: Mesh | null = null
   private sleighLife = 0
   private sleighDur = 0
@@ -607,11 +475,6 @@ export class Stage {
       const red = new Color('#c0392b')
       const cream = new Color('#f3ece0')
       const iron = new Color('#4a4038')
-      // Le traîneau file vers les x POSITIFS : l'attelage doit donc occuper ce
-      // côté-là, museaux en avant, et le traîneau traîner derrière. Posé
-      // l'inverse, les rennes suivaient le traîneau en le regardant.
-      // Six rennes en file, deux par deux décalées : de profil, la file lit
-      // comme un attelage même à quarante pixels de large.
       for (let i = 0; i < 6; i++) {
         const bx = 1.3 + i * 1.45
         const dy = i % 2 === 0 ? 0.12 : -0.12
@@ -631,20 +494,16 @@ export class Stage {
           p.push(skyPart(new BoxGeometry(0.11, 0.46, 0.11), furDark, bx + sgn * 0.3, dy - 0.44, 0))
         }
       }
-      // Les traits, du timon au premier renne.
       p.push(skyPart(new BoxGeometry(9.4, 0.07, 0.07), furDark, 5.1, -0.05, 0))
-      // Le traîneau : patin recourbé À L'AVANT, caisse, dossier en arrière.
       p.push(skyPart(new BoxGeometry(2.9, 0.12, 0.12), iron, -1.3, -0.42, 0))
       p.push(skyPart(new ConeGeometry(0.32, 0.7, 4).rotateZ(1.9), iron, 0.32, -0.3, 0))
       p.push(skyPart(new BoxGeometry(2.3, 0.8, 0.9), red, -1.3, 0.1, 0))
       p.push(skyPart(new BoxGeometry(0.5, 0.9, 0.9), red, -2.35, 0.5, 0))
-      // Le personnage, tourné vers l'avant : manteau, ceinture, barbe, bonnet.
       p.push(skyPart(new BoxGeometry(0.62, 0.8, 0.6), red, -1.25, 0.85, 0))
       p.push(skyPart(new BoxGeometry(0.66, 0.14, 0.64), cream, -1.25, 0.7, 0))
       p.push(skyPart(new BoxGeometry(0.3, 0.34, 0.4), cream, -1.0, 1.05, 0))
       p.push(skyPart(new ConeGeometry(0.32, 0.5, 6), red, -1.32, 1.5, 0))
       p.push(skyPart(new BoxGeometry(0.2, 0.2, 0.2), cream, -1.5, 1.72, 0))
-      // La hotte, derrière lui, débordant de paquets.
       p.push(skyPart(new BoxGeometry(0.9, 0.7, 0.7), furDark, -2.1, 0.7, 0))
       p.push(skyPart(new BoxGeometry(0.3, 0.3, 0.3).rotateY(0.5), cream, -2.0, 1.1, 0))
       p.push(skyPart(new BoxGeometry(0.26, 0.26, 0.26).rotateY(1.1), bone, -2.32, 1.14, 0))
@@ -674,13 +533,10 @@ export class Stage {
     return this.sleighLife > 0
   }
 
-  /** La course du traîneau avance au temps RÉEL, pas au nombre d'images : sur
-   *  une machine lente il traversait le ciel en six minutes. */
   tickSleigh(dt: number): void {
     if (this.sleighLife > 0) this.sleighLife = Math.max(0, this.sleighLife - dt)
   }
 
-  /** Une aurore : un voile vert qui ondule au-dessus de l'horizon nocturne. */
   aurora(dur = 45): void {
     if (!this.auroraMesh) {
       const tex = rampTexture(96, 128, (u, v, out) => {
@@ -703,10 +559,6 @@ export class Stage {
         opacity: 0,
       })
       this.auroraMesh = new Mesh(new CylinderGeometry(298, 298, 120, 48, 1, true), mat)
-      // Même règle que la voûte d'étoiles : le « ciel » visible de la caméra
-      // plongeante est BAS en monde (la bande étoilée vit à y −79..51). À +26
-      // puis −20 l'aurore restait au-dessus du cadre — son pic d'alpha doit
-      // tomber vers y ≈ −70 pour onduler au milieu des étoiles.
       this.auroraMesh.position.y = -55
       this.scene.add(this.auroraMesh)
     }
@@ -731,18 +583,15 @@ export class Stage {
   private readonly birdWingR: InstancedMesh
   private readonly rain: InstancedMesh
   private skyTime = 0
-  /** La météo : des humeurs qui se succèdent, jamais un réglage figé. */
   private weather = { state: 'voile', next: 45 }
   private wTarget = { clouds: 5, grey: 0.2, sun: 0.92, rain: 0 }
   private wCur = { clouds: 5, grey: 0.2, sun: 0.92, rain: 0 }
   private flock = { active: false, t: 0, cooldown: 6, dir: 0.9, y: 18, side: 1 }
 
-  /** Intensité de pluie courante (0..1) — l'ambiance sonore s'y accroche. */
   get rainLevel(): number {
     return this.wCur.rain
   }
 
-  /** La navette du comptoir : une voile part de l'îlot vers notre rive. */
   outpostRun(): void {
     const sl = this.sailState[0]
     if (!sl || sl.active) return
@@ -755,12 +604,10 @@ export class Stage {
     sl.z1 = Math.cos(3.95) * 26
   }
 
-  /** Les signes de vie lointains : voiles, feux de côte, fumée d'îlot. */
   private tickFarWorld(dt: number): void {
     const dummy = this.cloudDummy
     const day = this.lastDaylight
 
-    // Voiles : chacune traverse un segment du large, puis se repose.
     let anySail = false
     for (let i = 0; i < this.sailState.length; i++) {
       const sl = this.sailState[i]!
@@ -807,11 +654,9 @@ export class Stage {
     this.farSails.visible = anySail
     if (anySail) {
       this.farSails.instanceMatrix.needsUpdate = true
-      // La voile s'éteint avec le jour : la nuit on ne voit que les feux.
       ;(this.farSails.material as MeshToonMaterial).color.setRGB(1, 1, 1).multiplyScalar(0.35 + 0.65 * day)
     }
 
-    // Feux de côte : sur la longue échine à l'azimut 4,7 — la nuit seulement.
     const nightK = 1 - day
     this.shoreFires.visible = nightK > 0.15
     if (this.shoreFires.visible) {
@@ -833,7 +678,6 @@ export class Stage {
       ;(this.shoreFires.material as MeshBasicMaterial).opacity = Math.min(1, nightK * 1.2)
     }
 
-    // Fumée de l'îlot : une colonne paresseuse, le jour.
     this.isletSmoke.visible = day > 0.2
     if (this.isletSmoke.visible) {
       const ix = Math.sin(3.95) * 85
@@ -851,7 +695,6 @@ export class Stage {
     }
   }
 
-  /** Vie du ciel : dérive des nuages, vols d'oiseaux. Appelé chaque frame. */
   private tickAurora(dt: number): void {
     if (!this.auroraMesh || this.auroraLife <= 0) return
     this.auroraLife -= dt
@@ -878,7 +721,6 @@ export class Stage {
   private updateWaves(dt: number): void {
     const wx = 0.82
     const wz = 0.44
-    // Plus marquées par vent couvert, presque lisses la nuit calme.
     const mat = this.waves.material as MeshBasicMaterial
     mat.opacity = (0.07 + 0.1 * this.wCur.grey) * (0.45 + 0.55 * this.lastDaylight)
     this.waves.visible = mat.opacity > 0.015
@@ -926,7 +768,6 @@ export class Stage {
       }
       this.weather.next = 70 + Math.random() * 90
     }
-    // Transitions douces : la météo glisse, elle ne claque pas.
     const k = Math.min(1, dt / 9)
     this.wCur.clouds += (this.wTarget.clouds - this.wCur.clouds) * k
     this.wCur.grey += (this.wTarget.grey - this.wCur.grey) * k
@@ -936,7 +777,6 @@ export class Stage {
 
   private readonly rainDummy = new Object3D()
 
-  /** L'hiver change l'état de l'eau du ciel : la pluie devient neige. */
   winter = false
 
   private updateRain(dt: number): void {
@@ -954,13 +794,11 @@ export class Stage {
     for (let i = 0; i < 240; i++) {
       const r = Math.sqrt(h(i, 1)) * 26
       const a = h(i, 2) * Math.PI * 2
-      // La neige tombe quatre fois plus lentement et dérive un peu.
       const speed = this.winter ? 3.5 + h(i, 3) * 2 : 16 + h(i, 3) * 6
       const y = 24 - ((this.skyTime * speed + h(i, 4) * 40) % 26)
       const drift = this.winter ? Math.sin(this.skyTime * 1.3 + i) * 0.6 : 0
       this.rainDummy.position.set(Math.cos(a) * r + drift, y, Math.sin(a) * r)
       this.rainDummy.rotation.set(0, 0, this.winter ? 0 : 0.08)
-      // Un flocon est court et rond, une goutte est un trait.
       this.rainDummy.scale.set(this.winter ? 2.4 : 1, this.winter ? 0.16 : 1, this.winter ? 2.4 : 1)
       this.rainDummy.updateMatrix()
       this.rain.setMatrixAt(i, this.rainDummy.matrix)
@@ -973,7 +811,6 @@ export class Stage {
     if (!f.active) {
       f.cooldown -= dt
       this.birdBody.visible = this.birdWingL.visible = this.birdWingR.visible = false
-      // Ils ne décollent qu'en plein jour.
       if (f.cooldown <= 0 && this.lastDaylight > 0.6) {
         f.active = true
         f.t = 0
@@ -998,14 +835,11 @@ export class Stage {
     const yaw = -f.dir + Math.PI / 2
     this.cloudDummy.rotation.order = 'YXZ'
     for (let i = 0; i < 5; i++) {
-      // Formation en V lâche : décalés derrière et de part et d'autre du guide.
       const rank = Math.ceil(i / 2)
       const lateral = (i % 2 === 0 ? 1 : -1) * rank * 2.1 * f.side
       const back = rank * 2.6
       const px = cx * (along - back) - sx * lateral
       const pz = sx * (along - back) + cx * lateral
-      // Coup d'aile net vers le bas, remontée souple — et le corps ne fait que
-      // suivre d'un léger ressaut, sans tanguer.
       const beat = Math.sin(this.skyTime * 8 + i * 1.7)
       const flap = beat * 0.85
       const py = f.y + Math.sin(this.skyTime * 2.2 + i) * 0.3 + Math.max(0, beat) * 0.06
@@ -1031,16 +865,9 @@ export class Stage {
     return n
   }
 
-  /** Cycle de vie sous un vent diagonal constant : attente → naissance →
-   *  traversée → dissolution. La nuit, le ciel se vide (les nuages n'ont rien
-   *  à montrer sans soleil) et se repeuple à l'aube. */
   private driftClouds(dt: number): void {
     const wx = 0.82
     const wz = 0.44
-    // Opacité globale calée sur le jour : voiles pleins en journée, ciel
-    // dégagé la nuit pour la lune et les étoiles.
-    // La nuit vide le ciel clair, mais un temps couvert garde ses masses
-    // sombres — on voit qu'il fait mauvais même sans soleil.
     const dayFade = smoothstep(0.12, 0.55, this.lastDaylight)
     const vis = Math.max(dayFade, this.wCur.grey * 0.4)
     const mat = this.clouds.material as MeshToonMaterial
@@ -1056,7 +883,6 @@ export class Stage {
           if (c.wait <= 0 && this.activeClouds() < Math.round(this.wCur.clouds)) {
             c.phase = 'in'
             c.t = 0
-            // Naissance au vent, position et gabarit renouvelés.
             const r = (n: number) => {
               const s = Math.sin(i * 51.7 + this.skyTime * 0.13 + n * 97.3) * 43758.5453
               return s - Math.floor(s)
@@ -1077,7 +903,6 @@ export class Stage {
         case 'live':
           grow = 1
           c.life -= dt
-          // Le beau temps qui revient dissout les nuages en trop.
           if (this.activeClouds() > Math.round(this.wCur.clouds) + 1) c.life -= dt * 3
           if (c.life <= 0 || c.x > 40) {
             c.phase = 'out'
@@ -1099,11 +924,7 @@ export class Stage {
         if (c.z > 44) c.z = -44
       }
       this.cloudDummy.position.set(c.x, c.y, c.z)
-      // Rotation ENTIÈREMENT réinitialisée : le dummy est partagé avec les
-      // oiseaux, et sans ça les nuages héritaient de leur battement d'ailes.
       this.cloudDummy.rotation.set(0, c.rot, 0)
-      // Aplatis : des voiles, pas des cumulus. La naissance et la dissolution
-      // passent par l'échelle — l'alpha par instance n'existe pas.
       const s = Math.max(0.001, c.s * grow * (1 + this.wCur.grey * 0.7))
       this.cloudDummy.scale.set(s, s * 0.62, s)
       this.cloudDummy.updateMatrix()
@@ -1120,15 +941,10 @@ export class Stage {
   private moonDiscBase = 0
   private starsBase = 0
 
-  /** Le ciel n'apparaît qu'en vue rasante : un dégradé vertical suffit, et sa
-   *  base est exactement la couleur de brume pour que l'horizon disparaisse. */
   private paintSky(sky: number): DataTexture {
     const top = PALETTE.sky.clone().lerp(new Color(sky), AGE_SKY_MIX)
     const bottom = this.hazeFor(sky)
     return rampTexture(2, 64, (_u, v, out) => {
-      // v=0 est rendu EN HAUT de l'écran (convention DataTexture en fond de
-      // scène) : bleu profond au sommet, brume vers l'horizon, transition
-      // large pour ne jamais lire comme une barre.
       out.copy(top).lerp(bottom, smoothstep(0.12, 1, v))
       return 1
     })
@@ -1138,11 +954,9 @@ export class Stage {
     return PALETTE.haze.clone().lerp(new Color(fog), AGE_HAZE_MIX)
   }
 
-  /** Sky, fog and light temperature drift with the age so progress is visible
-   *  in the world itself, not only in the HUD. */
   applyAge(ageId: number): void {
     this.ageId = Math.min(ageId, AGES.length - 1)
-    this.lastDaylight = -1 // force la repeinture du ciel au prochain frame
+    this.lastDaylight = -1
   }
 
   private ageId = 0
@@ -1150,36 +964,22 @@ export class Stage {
   private lastWarmth = -1
   private lastStorm = -1
 
-  /** La course du soleil : u ∈ [0,1), lever à 0, zénith à 0,25, coucher à 0,5.
-   *  Tout le reste — couleur, intensité, ciel, brume — découle de l'élévation.
-   *  Retourne la part de jour, que l'île applique à ses matériaux non éclairés. */
   setDaylight(u: number): number {
     const age = AGES[this.ageId]!
     const elev = Math.sin(u * Math.PI * 2)
-    // cos² : période d'une demi-journée — le soleil se lève ET se couche au
-    // même col d'horizon arrière (cos simple l'envoyait se coucher dans le dos
-    // de la caméra), en passant par NOON_AZ au zénith.
     const az = NOON_AZ - ARC * Math.cos(u * Math.PI * 2) ** 2
 
-    // k : part de jour (0 la nuit, 1 en plein jour) ; w : chaleur d'horizon.
-    // eclipseK < 1 pendant une éclipse : toute la chaîne (soleil, ciel, HUD
-    // nuit) suit d'elle-même — c'est bien une lumière de fin du monde.
     const k = smoothstep(-0.06, 0.2, elev) * this.eclipseK
     const w = (1 - smoothstep(0.05, 0.42, elev)) * k
 
     const r = 52
     const cosE = Math.max(0.25, Math.cos(elev * 0.9))
-    // Plancher abaissé : aux heures basses le soleil rase vraiment, et les
-    // ombres s'allongent — c'est la moitié du spectacle du soir.
     this.sun.position.set(
       Math.sin(az) * r * cosE,
       6 + Math.max(0.03, elev) * 54,
       Math.cos(az) * r * cosE,
     )
 
-    // Halo et disque : visibles à l'aube et au crépuscule, fondus en plein
-    // jour, éteints la nuit noire. La POSITION se règle dans updateCamera —
-    // l'horizon à l'écran dépend de la caméra, pas du monde.
     this.sunAz = az
     this.sunElev = elev
     this.dayU = u
@@ -1187,34 +987,23 @@ export class Stage {
     const discA = smoothstep(-0.03, 0.05, elev) * (1 - smoothstep(0.28, 0.5, elev))
     this.glowBase = glowA * 0.5 * (1 - this.wCur.grey * 0.8)
     this.discBase = discA
-    // Blanc au zénith, cuivré à l'horizon — c'est la couleur qui dit l'heure.
     ;(this.sunDisc.material as MeshBasicMaterial).color
       .set('#fff3d2')
       .lerp(SUN_LOW, 1 - smoothstep(0.02, 0.35, elev))
 
-    // La lune monte quand le soleil descend : élévation opposée. Elle reste
-    // visible toute la nuit, s'efface à l'approche de l'aube.
     const moonElev = -elev
     this.moonDiscBase = smoothstep(-0.03, 0.1, moonElev) * 0.95
     this.moonGlowBase = smoothstep(0.0, 0.2, moonElev) * 0.3
-    // Les étoiles s'allument au crépuscule, pleines en nuit noire.
     this.starsBase = (1 - k) * 0.95
     this.sun.color.copy(SUN_DAY).lerp(SUN_LOW, w)
     this.sun.intensity = LIGHT.sunIntensity * k * this.wCur.sun
-    // Ombres coupées la nuit : une shadow map pour un soleil éteint est un
-    // rendu de profondeur payé pour rien.
     this.sun.castShadow = k > 0.02
     this.hemi.intensity = (0.16 + LIGHT.hemiDay * k) * (0.82 + 0.18 * this.wCur.sun)
 
-    // Le gris ne vient qu'avec le temps couvert et la pluie (grey de 0,65 à
-    // 0,85) : par temps clair (0,05) ou voilé (0,2), il vaut zéro et la
-    // palette validée reste intacte.
     const storm = smoothstep(0.25, 0.85, this.wCur.grey) * 0.6
     const haze = this.hazeFor(age.fog).lerp(STORM_HAZE, storm).lerp(NIGHT_HAZE, 1 - k)
     this.fog.color.copy(haze)
 
-    // Le ciel n'est repeint que quand l'ambiance change vraiment : une aube
-    // entière n'écrit la texture qu'une cinquantaine de fois.
     if (
       Math.abs(k - this.lastDaylight) > 0.02 ||
       Math.abs(w - this.lastWarmth) > 0.02 ||
@@ -1229,13 +1018,8 @@ export class Stage {
         .lerp(new Color(age.sky), AGE_SKY_MIX)
         .lerp(STORM_SKY, storm)
         .lerp(NIGHT_SKY, 1 - k)
-      // L'horizon s'embrase davantage aux heures basses : le halo directionnel
-      // fait le point chaud, le dégradé fait la nappe.
       const bottom = haze.clone().lerp(SUN_LOW, w * 0.62)
       this.sky = rampTexture(2, 64, (_u, v, out) => {
-        // v=0 est rendu EN HAUT de l'écran (convention DataTexture en fond de
-      // scène) : bleu profond au sommet, brume vers l'horizon, transition
-      // large pour ne jamais lire comme une barre.
       out.copy(top).lerp(bottom, smoothstep(0.12, 1, v))
         return 1
       })
@@ -1248,10 +1032,6 @@ export class Stage {
     const w = window.innerWidth
     const h = window.innerHeight
     this.renderer.setPixelRatio(targetPixelRatio())
-    // `#scene` est un canvas positionné : sans taille CSS explicite il s'affiche
-    // à la taille de son buffer, donc DPR fois trop grand — on ne voyait que le
-    // coin haut-gauche du rendu, ce qui donnait cette impression de caméra
-    // collée au sol sur mobile.
     this.renderer.setSize(w, h, true)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
@@ -1259,33 +1039,19 @@ export class Stage {
     this.photoFx?.resize()
   }
 
-  /** Le cadrage est calculé, pas réglé à la main : quel que soit l'écran, l'île
-   *  garde la même taille apparente et la même marge d'eau autour d'elle. */
   private frameDistance(): number {
     const vTan = Math.tan((this.camera.fov * Math.PI) / 360)
     const hTan = vTan * this.camera.aspect
-    // Vue de biais, un disque se projette en ellipse : sa hauteur écran suit
-    // l'élévation de l'oeil.
     const rise = Math.max(0.5, Math.sin(Math.PI / 2 - this.polar))
     const halfV = this.islandRadius * rise + 2.2
-    // En mode photo portrait, l'île s'autorise presque toute la largeur ;
-    // le glissement suit celui de la focale, sans saut de distance.
     const fillW = FILL_WIDTH + (PHOTO_FILL_WIDTH - FILL_WIDTH) * this.photoK() * (this.camera.aspect < 1 ? 1 : 0)
     return Math.max(halfV / (FILL_HEIGHT * vTan), this.islandRadius / (fillW * hTan))
   }
 
-  /** Avancement (0..1) du glissement vers le mode photo, lu sur la focale :
-   *  0 hors mode photo, 1 une fois la longue focale atteinte. */
   private photoK(): number {
     return Math.min(1, Math.max(0, (FOV - this.camera.fov) / (FOV - PHOTO_FOV)))
   }
 
-  /** Mode photo : centre l'île VRAIE à l'écran, pas le point visé. Le point
-   *  visé est au ras du sol ; vue en plongée, les arbres, le phare et les
-   *  toits débordent vers le haut, le pied de falaise vers le bas, et l'île
-   *  ne tombait pas au milieu de la bande nette du tilt-shift. On projette
-   *  son pourtour (au niveau de l'eau et à hauteur des cimes), puis on
-   *  incline le regard de l'écart mesuré. */
   private centerIsland(): void {
     const k = this.photoK()
     if (k === 0) return
@@ -1300,8 +1066,6 @@ export class Stage {
         if (tmpRim.y > hi) hi = tmpRim.y
       }
     }
-    // Écart NDC → décalage du point visé, dans le plan de l'écran, à la
-    // distance du point visé.
     const off = ((lo + hi) / 2) * k
     const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * this.camera.position.distanceTo(this.target)
     tmpUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion)
@@ -1309,10 +1073,6 @@ export class Stage {
     this.camera.lookAt(tmpRim)
   }
 
-  /** Où tombe l'HORIZON VRAI à l'écran, en coordonnées normalisées (1 = bord
-   *  haut). Mesuré, pas calculé de tête : on projette un point lointain à la
-   *  hauteur de l'œil — c'est la définition de l'horizon. Tout ce qui se pose
-   *  sous cette valeur est peint sur la mer, donc devant l'île. */
   private horizonNdc(): number {
     this.camera.getWorldDirection(tmpDir)
     tmpHorizon
@@ -1323,9 +1083,6 @@ export class Stage {
     return tmpHorizon.project(this.camera).y
   }
 
-  /** Zoom relatif le plus proche pour le cadrage courant (écran, inclinaison,
-   *  focale) : 8 sur un écran large, moins en portrait. Le doigt, la molette
-   *  et le clavier s'y arrêtent. */
   get zoomMin(): number {
     return zoomMin(this.frameDistance(), this.islandRadius)
   }
@@ -1333,9 +1090,6 @@ export class Stage {
   updateCamera(): void {
     this.easeLens()
     const frame = this.frameDistance()
-    // Le plancher dépend de l'écran et de la focale : s'il remonte sous un zoom
-    // déjà au plus près (téléphone passé en paysage), la caméra s'y arrête sans
-    // toucher à `distance` — revenu en portrait, on retrouve le zoom d'avant.
     const zoom = Math.max(this.distance, zoomMin(frame, this.islandRadius))
     const d = frame * (zoom / BASE_ZOOM)
     const sinP = Math.sin(this.polar)
@@ -1347,9 +1101,6 @@ export class Stage {
     this.camera.lookAt(this.target)
     this.centerIsland()
 
-    // Décalage horizontal = écart entre l'azimut du soleil et le centre de
-    // l'horizon arrière visible ; vertical = horizon perçu + montée avec
-    // l'élévation. Il glisse hors du cadre (et s'y fond) quand on orbite.
     const D = 30
     let dAz = this.sunAz - (this.azimuth + Math.PI)
     while (dAz > Math.PI) dAz -= Math.PI * 2
@@ -1357,35 +1108,18 @@ export class Stage {
     const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * D
     const halfW = halfH * this.camera.aspect
     const gx = D * Math.tan(Math.max(-1.2, Math.min(1.2, dAz)))
-    // Le soleil se lève DEPUIS l'horizon vrai, pas depuis une hauteur d'écran
-    // fixe. Le 0,52 d'avant était calibré sur une seule inclinaison : dès que
-    // le joueur redressait la caméra, l'horizon descendait sous lui et le
-    // soleil se retrouvait peint sur la mer, devant l'île. Plafonné à 0,95
-    // pour rester dans le cadre quand l'horizon sort par le haut.
     const hz = Math.min(this.horizonNdc(), 0.95)
     const gy = halfH * Math.min(hz + Math.max(0, this.sunElev) * 0.55, 0.92)
     this.sunGlow.position.set(gx, gy, -D)
-    // Taille relative au cadre, pas au monde : ~120 % de la demi-hauteur pour
-    // le halo, le disque suit (enfant). Sans ça, le quad de 72 unités à 30
-    // unités de la caméra avalait la scène entière.
     this.sunGlow.scale.setScalar((halfH * 1.7) / 72)
-    // Fondu quand le soleil sort du cadre en orbite.
     const edge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(gx))
     ;(this.sunGlow.material as MeshBasicMaterial).opacity = this.glowBase * edge
     ;(this.sunDisc.material as MeshBasicMaterial).opacity = this.discBase * edge
     this.sunGlow.visible = this.glowBase * edge > 0.01
 
-    // La lune traverse lentement le col d'horizon arrière pendant la nuit —
-    // l'azimut de midi du soleil est latéral, hors de la fenêtre visible, et
-    // son zénith (élévation 1) sortait du cadre par le haut : trajectoire
-    // écran propre, hauteur plafonnée.
     const nightPhase = this.dayU >= 0.5 ? (this.dayU - 0.5) * 2 : 0
     const moonAzWorld = NOON_AZ - ARC - 0.3 + nightPhase * 0.6
     const moonElev = Math.max(0, -this.sunElev)
-    // La lune vit dans le monde : elle se lève bas au col d'horizon, culmine,
-    // et l'orbite du joueur la déplace naturellement dans le cadre.
-    // Même géométrie d'écran que le soleil : décalage horizontal = écart entre
-    // son azimut et le centre de l'horizon visible, hauteur = horizon perçu.
     let mAz = moonAzWorld - (this.azimuth + Math.PI)
     while (mAz > Math.PI) mAz -= Math.PI * 2
     while (mAz < -Math.PI) mAz += Math.PI * 2
@@ -1393,9 +1127,6 @@ export class Stage {
     this.moonGlow.position.set(mx, halfH * Math.min(hz + moonElev * 0.42, 0.92), -D)
     this.moonGlow.scale.setScalar((halfH * 0.8) / 52)
     const mEdge = 1 - smoothstep(halfW * 1.1, halfW * 2.2, Math.abs(mx))
-    // Le traîneau traverse le cadre en ligne, avec une légère cloche : il
-    // monte au milieu de sa course. Il s'efface aux deux bouts pour ne pas
-    // apparaître d'un coup au bord de l'écran.
     const sl = this.sleighMesh
     if (sl && this.sleighLife > 0) {
       const t = 1 - this.sleighLife / this.sleighDur
@@ -1410,22 +1141,12 @@ export class Stage {
       sl.visible = false
     }
 
-    // La voûte d'étoiles s'ancre à l'HORIZON, pas à une altitude fixe. Elle
-    // vivait à y = −79..51 : avec cette caméra, l'horizon vrai tombe au ras du
-    // bord haut du cadre (mesuré : NDC ≥ 0,95), donc TOUT ce qui est sous la
-    // hauteur d'œil est peint sur la mer — et comme la voûte ignore la
-    // profondeur, elle tapissait l'eau et la silhouette de l'île.
-    // Sa base descend maintenant de STAR_DIP sous l'œil, soit 1,5° sous la
-    // ligne d'horizon : juste de quoi que la bande étoilée la touche, jamais
-    // de quoi atteindre l'île.
     this.stars.position.y = STAR_Y
     if (this.auroraMesh) this.auroraMesh.position.y = this.camera.position.y + 34
     ;(this.moonGlow.material as MeshBasicMaterial).opacity = this.moonGlowBase * mEdge
     ;(this.moonDisc.material as MeshBasicMaterial).opacity = this.moonDiscBase * mEdge
     this.moonGlow.visible = this.moonDiscBase * mEdge > 0.01
 
-    // Traînée sur l'eau : vers le soleil tant qu'il fait jour, vers la lune
-    // la nuit. Large et ardente aux heures basses, fine et froide sous la lune.
     const night = this.moonDiscBase > 0.05
     const gAz = night ? moonAzWorld : this.sunAz
     const gMat = this.glint.material as MeshBasicMaterial
@@ -1442,9 +1163,6 @@ export class Stage {
     this.glint.scale.set(gWidth, 1, gLen)
     this.glint.rotation.y = gAz
     this.glint.position.set(Math.sin(gAz) * (26 + gLen / 2), 0.06, Math.cos(gAz) * (26 + gLen / 2))
-    // Il scintille : une respiration lente, plus un glissement latéral des
-    // cellules cuites — le glitter dérive comme sur une vraie mer au lieu de
-    // battre sur place (l'idée du sun-glitter de poseidon, au prix d'un offset).
     gMat.opacity *= 0.86 + 0.14 * Math.sin(this.skyTime * 2.6)
     if (gMat.map) {
       gMat.map.offset.x = Math.sin(this.skyTime * 1.7) * 0.012
@@ -1452,20 +1170,13 @@ export class Stage {
     }
     this.glint.visible = gMat.opacity > 0.015
 
-    // La voûte tourne imperceptiblement : le ciel vit même sans orbiter.
     this.stars.rotation.y = this.skyTime * 0.006
     ;(this.stars.material as MeshBasicMaterial).opacity = this.starsBase
     this.stars.visible = this.starsBase > 0.02
-    // La brume ne commence qu'au-delà de l'île entière. À 0,95·d elle mordait
-    // sur le bord éloigné : les faces basses se dissolvaient exactement là où
-    // la ligne d'eau doit trancher.
     this.fog.near = d * 1.16
     this.fog.far = d * 2.05
   }
 
-  // ── Mode photo maquette ──────────────────────────────────────────────────
-  /** Hors mode photo, `photoFx` est nul et `render()` reste l'appel direct
-   *  d'avant : mêmes draw calls, aucune cible de rendu allouée. */
   photo = false
   private photoFx: PhotoFx | null = null
   private fovTarget = FOV
@@ -1473,21 +1184,15 @@ export class Stage {
   private beforePhoto = { polar: 0, distance: 0 }
   private lensAt = 0
 
-  /** Entre ou sort du mode photo. L'effet arrive à la première image où son
-   *  module est chargé ; d'ici là, la caméra a déjà commencé à reculer. */
   setPhoto(on: boolean): void {
     if (on === this.photo) return
     this.photo = on
     if (on) {
       this.beforePhoto = { polar: this.polar, distance: this.distance }
-      // Plongée et longue focale : la perspective s'écrase, l'île devient un
-      // objet posé sur une table. Le cadrage calculé (frameDistance) recule
-      // tout seul quand le champ se resserre.
       this.fovTarget = PHOTO_FOV
       this.polarTarget = this.camera.aspect < 1 ? PHOTO_POLAR_PORTRAIT : PHOTO_POLAR
       this.distance = BASE_ZOOM
       void import('./photo').then(({ PhotoFx }) => {
-        // Sorti entre-temps, ou déjà prêt (double entrée rapide) : rien à faire.
         if (!this.photo || this.photoFx) return
         this.photoFx = new PhotoFx(this.renderer, this.scene, this.camera)
       })
@@ -1495,19 +1200,12 @@ export class Stage {
       this.fovTarget = FOV
       this.polarTarget = this.beforePhoto.polar
       this.distance = this.beforePhoto.distance
-      // Libéré à la sortie : deux cibles plein écran en demi-flottant, c'est
-      // de la mémoire GPU qu'un téléphone n'a pas à garder pour rien.
       this.photoFx?.dispose()
       this.photoFx = null
     }
   }
 
-  /** Glisse le champ et l'inclinaison vers leur cible, à l'entrée et à la
-   *  sortie du mode photo. L'inclinaison n'est tenue que le temps du
-   *  glissement : ensuite le doigt la reprend. */
   private easeLens(): void {
-    // Au temps réel, pas à l'image : même glissement à 30 et à 120 Hz, et une
-    // demi-seconde environ pour arriver.
     const now = performance.now()
     const dt = Math.min(0.25, (now - this.lensAt) / 1000)
     this.lensAt = now

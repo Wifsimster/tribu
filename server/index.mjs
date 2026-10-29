@@ -1,15 +1,3 @@
-/** tribu-api — le voisinage.
- *
- *  Un service minuscule et SANS DÉPENDANCE (node:http + node:sqlite) dont le
- *  seul rôle est de faire circuler des « instantanés publics » de tribus : de
- *  quoi peupler l'horizon des autres joueurs. Il ne simule rien, ne détient
- *  aucune sauvegarde, et le jeu doit rester parfaitement jouable quand il est
- *  éteint — c'est une PWA hors-ligne d'abord.
- *
- *  La simulation vit dans le navigateur : un instantané n'est donc PAS
- *  vérifiable. C'est assumé — rien ne se gagne aux dépens d'autrui, il n'y a
- *  donc rien à voler en mentant. Pas de classement sérieux pour cette raison.
- */
 import { createServer } from 'node:http'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
@@ -18,10 +6,8 @@ import { dirname } from 'node:path'
 
 const PORT = Number(process.env.PORT ?? 8080)
 const DB_PATH = process.env.DB_PATH ?? '/data/tribu.sqlite'
-/** Au-delà, une tribu est considérée endormie et quitte l'horizon des autres. */
 const STALE_DAYS = 30
 const MAX_BODY = 8 * 1024
-/** Requêtes par minute et par IP : large pour un joueur, étroit pour un script. */
 const RATE = 60
 
 mkdirSync(dirname(DB_PATH), { recursive: true })
@@ -101,8 +87,6 @@ const countEvents = db.prepare('SELECT COUNT(*) AS n FROM events WHERE dest = ?'
 const trimEvents = db.prepare(
   'DELETE FROM events WHERE dest = ? AND seq NOT IN (SELECT seq FROM events WHERE dest = ? ORDER BY seq DESC LIMIT ?)',
 )
-/** Une boîte aux lettres a un fond : au-delà, les plus vieux messages sautent.
- *  Personne ne doit pouvoir remplir le disque d'un autre joueur. */
 const MAX_INBOX = 40
 
 const insertOffer = db.prepare(
@@ -118,26 +102,18 @@ const findOffer = db.prepare('SELECT * FROM offers WHERE id = ?')
 const dropOffer = db.prepare('DELETE FROM offers WHERE id = ?')
 const countOffers = db.prepare('SELECT COUNT(*) AS n FROM offers WHERE owner = ?')
 
-/** Les seules marchandises échangeables : le savoir ne se troque pas. */
 const TRADABLE = new Set(['food', 'wood', 'stone', 'fiber', 'clay', 'copper', 'iron'])
-/** Une offre vit une semaine, puis se périme (la marchandise reste reprenable). */
 const OFFER_DAYS = 7
-/** Trois offres ouvertes par tribu : un comptoir, pas un entrepôt. */
 const MAX_OFFERS = 3
-/** Plafond par offre, très large mais borné — il suit la croissance
- *  exponentielle d'un jeu idle sans laisser passer de nombre absurde. */
 const qtyCap = (age) => Math.pow(10, 3 + Math.min(9, Math.max(0, age)))
 
 const sha = (s) => createHash('sha256').update(s).digest('hex')
 
-/** Vérifie que l'appelant est bien la tribu qu'il prétend être. */
 function owner(id, secret) {
   const known = findSecret.get(id)
   return !!known && sameSecret(known.secret, sha(String(secret ?? '')))
 }
 
-/** Comparaison à temps constant : le secret d'une tribu ne se devine pas à la
- *  montre. Les deux côtés sont des hex de 64 caractères. */
 function sameSecret(a, b) {
   const x = Buffer.from(String(a))
   const y = Buffer.from(String(b))
@@ -150,7 +126,6 @@ function rateLimited(ip) {
   const b = buckets.get(ip)
   if (!b || now - b.start > 60_000) {
     buckets.set(ip, { start: now, n: 1 })
-    // Ménage opportuniste : la table ne doit pas grandir indéfiniment.
     if (buckets.size > 5000)
       for (const [k, v] of buckets) if (now - v.start > 120_000) buckets.delete(k)
     return false
@@ -164,11 +139,7 @@ const int = (v, min, max) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min
 }
 
-/** Un pseudo est du texte affiché chez les autres : ni contrôle, ni roman. */
 function cleanName(v) {
-  // Un nom qui n'est pas du TEXTE n'en est pas un. `String({})` rend
-  // « [object Object] » : le voisinage entier se serait mis à afficher ça,
-  // pour toujours, à cause d'une seule sauvegarde bricolée.
   if (typeof v !== 'string') return 'Tribu sans nom'
   const s = v
     .replace(/[\u0000-\u001f\u007f]/g, '')
@@ -207,7 +178,6 @@ function readBody(req) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost')
-  // Derrière Traefik : l'IP réelle arrive dans X-Forwarded-For.
   const ip = (req.headers['x-forwarded-for'] ?? '').toString().split(',')[0].trim() ||
     req.socket.remoteAddress || '?'
 
@@ -228,8 +198,6 @@ const server = createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)) || '{}')
       const id = String(body.id ?? '')
       const secret = String(body.secret ?? '')
-      // Identifiants fabriqués par le client : on exige juste de quoi ne pas
-      // se marcher dessus et de quoi ne pas se faire voler son nom.
       if (!/^[a-z0-9-]{8,64}$/.test(id)) return send(res, 400, { error: 'id invalide' })
       if (secret.length < 16) return send(res, 400, { error: 'secret trop court' })
 
@@ -257,9 +225,6 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
 
-    // Une barque étrangère a accosté chez quelqu'un : on le lui dira à son
-    // retour. Le message est écrit par le serveur, jamais par l'appelant —
-    // sinon n'importe qui écrirait n'importe quoi dans la Chronique d'autrui.
     if (req.method === 'POST' && url.pathname === '/api/visit') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const from = String(body.id ?? '')
@@ -273,9 +238,6 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
 
-    // ── Le comptoir ──────────────────────────────────────────────────────
-    // Déposer une offre. La marchandise a déjà quitté le camp côté client :
-    // ici, elle est simplement gardée jusqu'à preneur ou reprise.
     if (req.method === 'POST' && url.pathname === '/api/offer') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const id = String(body.id ?? '')
@@ -295,10 +257,6 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
 
-    // Le comptoir vu par une tribu : ses propres dépôts, et ceux des tribus
-    // d'une époque voisine. La bande d'âge est la seule vraie protection du
-    // jeu : sans elle, un surplus de fin de partie effacerait la courbe de
-    // progression d'un débutant.
     if (req.method === 'GET' && url.pathname === '/api/offers') {
       const id = String(url.searchParams.get('id') ?? '')
       const me = db.prepare('SELECT age FROM tribes WHERE id = ?').get(id)
@@ -310,8 +268,6 @@ const server = createServer(async (req, res) => {
       })
     }
 
-    // Accepter : l'offre disparaît, le déposant reçoit son dû par la boîte
-    // aux lettres, et le preneur emporte la marchandise gardée.
     if (req.method === 'POST' && url.pathname === '/api/accept') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const id = String(body.id ?? '')
@@ -339,8 +295,6 @@ const server = createServer(async (req, res) => {
       })
     }
 
-    // Reprendre son dépôt : la marchandise revient par la boîte aux lettres,
-    // jamais dans la réponse — le client peut très bien fermer l'onglet ici.
     if (req.method === 'POST' && url.pathname === '/api/withdraw') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const id = String(body.id ?? '')
@@ -357,9 +311,6 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
 
-    // Un présent d'une tribu à une autre. Le serveur ne vérifie pas que
-    // l'expéditeur possédait vraiment la relique — il ne connaît pas les
-    // musées, et un menteur ne peut ici que DONNER, jamais prendre.
     if (req.method === 'POST' && url.pathname === '/api/gift') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const from = String(body.id ?? '')
@@ -375,8 +326,6 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
 
-    // Relève du courrier : on lit ET on vide, dans la même requête. Un message
-    // lu ne doit pas revenir au prochain réveil.
     if (req.method === 'POST' && url.pathname === '/api/inbox') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const id = String(body.id ?? '')
@@ -388,8 +337,6 @@ const server = createServer(async (req, res) => {
       })
     }
 
-    // Quitter le voisinage EFFACE vraiment : personne ne doit rester exposé
-    // sur l'horizon des autres après avoir demandé à en sortir.
     if (req.method === 'POST' && url.pathname === '/api/leave') {
       const body = JSON.parse((await readBody(req)) || '{}')
       const id = String(body.id ?? '')

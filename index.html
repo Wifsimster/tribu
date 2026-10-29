@@ -13,7 +13,6 @@
     />
     <title>Tribu — du silex à l’aqueduc</title>
 
-    <!-- Aperçu de lien (Open Graph / Twitter) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Tribu" />
     <meta property="og:title" content="Tribu — un colon, un feu, 300 000 ans à traverser" />
@@ -42,13 +41,9 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16.6 1.2c2.6 6.4-2 8.6-2 12.6 0 2 1.3 3.3 3 3.3 1.9 0 3.2-1.6 3-3.9 3 2.7 4.4 5.7 4.4 8.7 0 5.6-4.3 9.6-9 9.6S7 27.5 7 21.9c0-7.9 7-10.5 9.6-20.7z' fill='%23e0873a'/%3E%3Cpath d='M16 30.8c-2.9 0-5-2.3-5-5.4 0-3.8 3.4-5 4.4-9.6 2 2.5 5.6 4.6 5.6 8.9 0 3.6-2 6.1-5 6.1z' fill='%23f5c059'/%3E%3C/svg%3E"
     />
-    <!-- Umami — mesure d'audience auto-hébergée, sans cookie. Les paramètres d'URL sont conservés : ils portent l'attribution UTM des campagnes. -->
     <script defer src="https://umami.battistella.ovh/stats.js"
       data-website-id="0e06e393-3d3a-419c-8bef-6ef4f9bfb828"></script>
 
-    <!-- Heatmaps. Script distinct du tracker : `stats.js` ne l'embarque pas.
-         `replayEnabled` est OFF côté serveur, donc la charge utile ne contient
-         que des coordonnées de clic et de scroll — aucun DOM, aucun texte. -->
     <script defer src="https://umami.battistella.ovh/recorder.js"
       data-website-id="0e06e393-3d3a-419c-8bef-6ef4f9bfb828"></script>
   </head>
@@ -68,7 +63,6 @@
         <div class="resources" id="resources"></div>
       </div>
 
-      <!-- Cadran d'horizon : où en est le soleil, quand tombe la nuit. -->
       <button class="daydial" id="daydial" type="button" aria-label="Cycle jour et nuit">
         <svg viewBox="0 0 48 28" width="48" height="28" fill="none" aria-hidden="true">
           <path d="M6 21 A 18 16 0 0 1 42 21" stroke="rgba(255,255,255,0.4)" stroke-width="1.3" stroke-dasharray="1.5 3.2" stroke-linecap="round"/>
@@ -81,8 +75,6 @@
         </svg>
       </button>
 
-      <!-- Cadran de l'année : le pendant du cadran du jour. Quatre arcs, une
-           saison chacun, et le repère qui fait le tour en 12 jours de jeu. -->
       <button class="seasondial" id="seasondial" type="button" aria-label="Saison">
         <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true">
           <path id="season-arc-0" d="M16 4 A 12 12 0 0 1 28 16" stroke="#8fd06a" stroke-width="2.4" stroke-linecap="round"/>
@@ -95,12 +87,10 @@
 
       <div class="bottom">
         <div class="dest-chooser" id="dest-chooser" hidden></div>
-        <!-- Les terres gagnées sur la mer qui attendent le choix du joueur. -->
         <button class="land-pill" id="land-pill" type="button" hidden>
           <span class="land-pill-label">La mer recule</span>
           <span class="badge" id="land-count">1</span>
         </button>
-        <!-- Pendant le choix de l'emplacement : la consigne, et deux issues. -->
         <div class="placing" id="placing" hidden>
           <p class="placing-text" id="placing-text">Touche une des terres en surbrillance</p>
           <div class="placing-actions">
@@ -125,7 +115,6 @@
       </div>
     </div>
 
-    <!-- Les étiquettes des ancres, accrochées au-dessus de chaque emplacement. -->
     <div class="anchor-tags" id="anchor-tags"></div>
 
     <div class="scrim" id="scrim"></div>
@@ -197,8 +186,6 @@
       </svg>
     </button>
 
-    <!-- Mode photo maquette : la scène seule, en plongée, bande nette au
-         centre et flou en haut et en bas. -->
     <button class="photo-fab" id="photo-open" type="button" aria-label="Mode photo" title="Mode photo">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true" focusable="false">
         <path d="M4 8.5a2 2 0 0 1 2-2h2.2l1.4-2h4.8l1.4 2H18a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
@@ -223,7 +210,6 @@
         <h1 class="menu-title" id="menu-title">Tribu</h1>
         <p class="menu-tag">Un colon. Un feu. 300 000 ans à traverser.</p>
 
-        <!-- Le nom du village : visible d'emblée, modifiable d'un tap. -->
         <button class="village-name" id="village-name" type="button">
           <span class="village-label" id="village-label">Nommer le village</span>
           <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -242,8 +228,6 @@
           <button class="btn" id="menu-new" type="button">
             <span class="label">Nouvelle partie</span>
           </button>
-          <!-- Le second rang tient en deux colonnes : la liste s'allongeait à
-               chaque version et débordait de l'écran d'un téléphone. -->
           <div class="menu-grid">
             <button class="btn ghost" id="menu-tuto-open" type="button">
               <span class="label">Comment jouer</span>

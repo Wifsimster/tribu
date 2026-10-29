@@ -1,34 +1,9 @@
-/** LE CADASTRE AU SOL : une seule carte de ce qui est plein, lue par tout ce
- *  qui marche (colon, villageois, faune).
- *
- *  Pourquoi une carte et pas des disques : l'audit des collisions (2026-10-13)
- *  a relevé quatre listes d'obstacles distinctes — `lots`, `obstaclePoints`,
- *  `CAMP_BLOCKERS`, le quai — chacune avec ses propres rayons, et aucun mobile
- *  ne les lisait toutes. Le colon traversait les bâtiments (42 parties sur 48),
- *  les poules la Merveille, le cerf les rochers. Ici, l'emprise est la forme
- *  RÉELLE au sol : les triangles des géométries posées, projetés en plan sur
- *  une grille de 0,1 u, plus les troncs, les rochers et l'eau. Une table de
- *  rayons ne peut pas dire qu'un aqueduc est long et étroit ; la géométrie, si.
- *
- *  La carte ne déplace rien : elle se contente de lire ce qui est posé. Une
- *  sauvegarde se charge donc à l'identique, et les mobiles s'y adaptent.
- *  Seule exception, le DÉCOR (v3.59.0) : un rocher, un buisson ou un sapin
- *  qui chevauche une emprise posée est retiré, à chaque reconstruction —
- *  au chargement comme quand un atelier se pose en cours de partie. Il
- *  n'est pas sauvegardé : l'île le retire de nouveau au chargement suivant.
- *
- *  Les buissons, les rues et la voie ferrée n'y sont pas : on les traverse à
- *  pied. Train et auto ne la lisent pas (lots suivants). */
 import type { BufferGeometry, InstancedMesh } from 'three'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 import { DECOR_GAP, type Island } from './island'
 
-/** Une emprise : des triangles en coordonnées monde (ou locales, avec une
- *  échelle et un décalage), dont seuls ceux qui dépassent `minY` comptent —
- *  une dalle au ras du sol se piétine, un mur non. */
 export interface Footprint {
   geo?: BufferGeometry
-  /** Triangles bruts, x,y,z par sommet, trois sommets par triangle. */
   tris?: readonly number[]
   minY: number
   scale?: number
@@ -37,8 +12,6 @@ export interface Footprint {
   oz?: number
 }
 
-/** Ce qui pose des choses au sol : le village, la faune (enclos, poulailler).
- *  `revision` change à chaque pose ; la carte se refait alors à la demande. */
 export interface GroundSource {
   readonly revision: number
   groundFootprints(): Footprint[]
@@ -50,27 +23,17 @@ export interface Pt {
 }
 
 export interface Route {
-  /** Points de passage, sans le point de départ, jusqu'au point atteint. */
   pts: Pt[]
-  /** Faux si le but est inaccessible : la route mène alors au plus près. */
   reached: boolean
   length: number
 }
 
-/** Pas de la grille fine (occupation + distance). */
 const RES = 0.1
-/** Les nœuds de recherche de chemin : un sur deux de la grille fine. */
 const STRIDE = 2
 const NODE = RES * STRIDE
-/** Borne basse de l'erreur de la grille : un point quelconque est à moins de
- *  0,071 du centre de sa case, un point de géométrie à moins de 0,096 du
- *  centre d'une case pleine (arêtes échantillonnées tous les 0,05). La
- *  distance vraie vaut donc au moins la distance entre centres moins 0,17 :
- *  c'est ce que rend `clearAt`, une valeur sûre, jamais optimiste. */
 const SLACK = 0.17
 const SQRT2 = Math.SQRT2
 
-/** Transformée de distance exacte en 1D (Felzenszwalb & Huttenlocher). */
 function dt1d(f: Float64Array, n: number, d: Float64Array, v: Int32Array, z: Float64Array): void {
   const INF = 1e20
   let k = 0
@@ -100,23 +63,16 @@ export class Ground {
   readonly z0: number
   readonly nx: number
   readonly nz: number
-  /** Incrémenté à chaque reconstruction : les mobiles y voient qu'une
-   *  emprise est apparue et revoient leur chemin. */
   revision = 0
-  /** Durée de la dernière reconstruction, en ms (mesure de coût). */
   lastBuildMs = 0
 
   private readonly island: Island
   private readonly sources: readonly GroundSource[]
   private seen = ''
   private readonly occ: Uint8Array
-  /** L'eau ne change pas tant que l'île est la même : relevée une fois. */
   private readonly water: Uint8Array
-  /** Distance sûre (borne basse) au plein le plus proche, en unités. */
   private readonly clr: Float32Array
 
-  // Recherche de chemin : tampons alloués une fois, remis à zéro par tampon
-  // de génération plutôt qu'en les effaçant — zéro allocation par requête.
   private readonly mx: number
   private readonly mz: number
   private readonly gScore: Float32Array
@@ -127,13 +83,9 @@ export class Ground {
   private heap: Int32Array
   private heapF: Float32Array
   private heapN = 0
-  /** Les composantes connexes des nœuds, une par rayon de corps : refaites
-   *  au besoin, après une pose (voir `components`). */
   private readonly comps = new Map<number, { label: Int32Array; main: number; rev: number }>()
   private stack: Int32Array
 
-  // Champs déclarés à la main, comme l'île : Node charge le module tel quel
-  // dans les tests.
   constructor(island: Island, sources: readonly GroundSource[]) {
     this.island = island
     this.sources = sources
@@ -148,7 +100,6 @@ export class Ground {
       maxz = Math.max(maxz, c.z)
     }
     if (!Number.isFinite(minx)) minx = minz = maxx = maxz = 0
-    // Deux unités de mer autour : la côte a de l'eau des deux côtés.
     this.x0 = minx - 2
     this.z0 = minz - 2
     this.nx = Math.ceil((maxx - minx + 4) / RES)
@@ -169,8 +120,6 @@ export class Ground {
     this.rebuild()
   }
 
-  /** Refait la carte si une source a posé quelque chose. Appelé à chaque
-   *  image par la boucle : une comparaison de chaîne courte, rien de plus. */
   refresh(): boolean {
     const key = this.sources.map((s) => s.revision).join(',')
     if (key === this.seen) return false
@@ -181,17 +130,10 @@ export class Ground {
   private rebuild(): void {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
     this.seen = this.sources.map((s) => s.revision).join(',')
-    // D'abord les seules emprises posées, sans l'eau ni le décor : c'est
-    // contre elles que le décor se mesure. Le rivage n'en fait pas partie —
-    // un rocher les pieds dans l'eau est un rocher de côte, pas un défaut.
     this.occ.fill(0)
     for (const s of this.sources) for (const f of s.groundFootprints()) this.stampFootprint(f)
     this.distance()
-    // `clearAt` est une borne basse (SLACK) : ce qui reste est donc à plus
-    // de DECOR_GAP du plein, jamais moins. Le prix : un peu de décor en trop
-    // retiré au ras des murs, compté dans `island.decorRemoved`.
     this.island.clearUnder((x, z, r) => this.clearAt(x, z) < r + DECOR_GAP)
-    // Puis la carte des mobiles : emprises, eau, troncs et rochers restants.
     const { occ, water } = this
     for (let i = 0; i < occ.length; i++) occ[i] = occ[i]! | water[i]!
     this.stampTrunksAndRocks()
@@ -201,9 +143,6 @@ export class Ground {
     this.lastBuildMs = t1 - t0
   }
 
-  /** L'eau : une case est mouillée dès qu'un de ses coins ou son centre
-   *  l'est. La faune reste sur la terre, et la marge du corps se mesure
-   *  aussi contre le rivage. */
   private waterMask(): Uint8Array {
     const { nx, nz } = this
     const out = new Uint8Array(nx * nz)
@@ -224,9 +163,6 @@ export class Ground {
     return out
   }
 
-  /** Troncs et rochers : les instances réelles de l'île, abattus exclus. Les
-   *  rayons sont ceux des maillages (tronc 0,16, rocher 0,42, à l'échelle de
-   *  l'instance). Les buissons se traversent : ils ne sont pas ici. */
   private stampTrunksAndRocks(): void {
     const m = new Matrix4()
     const p = new Vector3()
@@ -247,8 +183,6 @@ export class Ground {
 
   private stampDisc(cx: number, cz: number, r: number): void {
     const { nx, nz, occ } = this
-    // Une case est pleine si le disque touche le carré : on gonfle de la
-    // demi-diagonale plutôt que de tester les quatre coins.
     const rr = r + RES * 0.71
     const i0 = Math.max(0, Math.floor((cx - rr - this.x0) / RES))
     const i1 = Math.min(nx - 1, Math.floor((cx + rr - this.x0) / RES))
@@ -269,9 +203,6 @@ export class Ground {
     this.occ[j * this.nx + i] = 1
   }
 
-  /** Projette les triangles en plan : leurs arêtes échantillonnées au
-   *  demi-pas (un mur vertical n'a pas d'intérieur en plan, seulement une
-   *  arête), puis leur intérieur. */
   private stampFootprint(f: Footprint): void {
     const k = f.scale ?? 1
     const ox = f.ox ?? 0
@@ -325,7 +256,6 @@ export class Ground {
       }
   }
 
-  /** Distance de chaque case libre à la case pleine la plus proche. */
   private distance(): void {
     const { nx, nz, occ, clr } = this
     const INF = 1e20
@@ -347,8 +277,6 @@ export class Ground {
     }
   }
 
-  /** Place sûre autour du point : sa distance au plein (eau comprise), en
-   *  unités, jamais surestimée. Négative dedans ou hors de la carte. */
   clearAt(x: number, z: number): number {
     const i = Math.floor((x - this.x0) / RES)
     const j = Math.floor((z - this.z0) / RES)
@@ -356,12 +284,10 @@ export class Ground {
     return this.clr[j * this.nx + i]!
   }
 
-  /** Un corps de rayon r tient-il ici ? */
   free(x: number, z: number, r: number): boolean {
     return this.clearAt(x, z) >= r
   }
 
-  /** Le segment garde-t-il le corps hors de tout ? Échantillonné à 0,05. */
   lineClear(ax: number, az: number, bx: number, bz: number, r: number): boolean {
     const L = Math.hypot(bx - ax, bz - az)
     const n = Math.max(1, Math.ceil(L / (RES * 0.5)))
@@ -369,7 +295,6 @@ export class Ground {
     return true
   }
 
-  // ── nœuds ────────────────────────────────────────────────────────────────
   private nodeClear(n: number): number {
     const i = (n % this.mx) * STRIDE
     const j = ((n / this.mx) | 0) * STRIDE
@@ -388,7 +313,6 @@ export class Ground {
     return j * this.mx + i
   }
 
-  /** Le nœud praticable le plus proche (spirale de carrés), ou -1. */
   private nearestNode(x: number, z: number, r: number, maxDist: number): number {
     const need = r
     const c = this.nodeAt(x, z)
@@ -398,7 +322,6 @@ export class Ground {
     let best = -1
     let bd = Infinity
     for (let ring = 0; ring <= R; ring++) {
-      // Un anneau plus loin ne peut pas battre le meilleur trouvé.
       if (best >= 0 && (ring - 1) * NODE > bd) break
       for (let dj = -ring; dj <= ring; dj++)
         for (let di = -ring; di <= ring; di++) {
@@ -418,24 +341,12 @@ export class Ground {
     return best
   }
 
-  /** Le point libre le plus proche pour un corps de rayon r : le point
-   *  lui-même s'il est libre, sinon un nœud praticable. */
   nearestFree(x: number, z: number, r: number, maxDist = 6): Pt | null {
     if (this.clearAt(x, z) >= r) return { x, z }
     const n = this.nearestNode(x, z, r, maxDist)
     return n < 0 ? null : { x: this.nodeX(n), z: this.nodeZ(n) }
   }
 
-  // ── composantes connexes ───────────────────────────────────────────────────────────────
-  // Pourquoi : la QA de la PR #15 a trouvé des bêtes nées dans une poche
-  // (un nœud praticable isolé entre un arbre et un rocher, ou 91 nœuds près du
-  // campement) d'où aucun chemin ne sort : un cerf y restait figé 600 s.
-  // Savoir à quelle composante appartient un point permet de ne tirer les
-  // cibles que là où l'on peut aller, et de sortir un mobile d'une poche.
-
-  /** Étiquettes des composantes pour un corps de rayon r (mêmes règles de
-   *  passage que `route`), et la principale : la plus grande, celle du bourg.
-   *  Calculées à la première demande après chaque reconstruction. */
   private components(r: number): { label: Int32Array; main: number } {
     let c = this.comps.get(r)
     if (c && c.rev === this.revision) return c
@@ -483,21 +394,15 @@ export class Ground {
     return c
   }
 
-  /** La composante principale pour un corps de rayon r. */
   mainComponent(r: number): number {
     return this.components(r).main
   }
 
-  /** La composante où se trouve ce point (celle de son nœud praticable le
-   *  plus proche, à moins d'une unité), ou -1. */
   componentAt(x: number, z: number, r: number): number {
     const n = this.nearestNode(x, z, r, 1)
     return n < 0 ? -1 : this.components(r).label[n]!
   }
 
-  /** Le point le plus proche de (x, z) dans la composante `comp` : le point
-   *  lui-même s'il est libre et y appartient, sinon le nœud le plus proche
-   *  de cette composante (spirale de carrés), ou null au-delà de `maxDist`. */
   nearestIn(x: number, z: number, r: number, comp: number, maxDist = 6): Pt | null {
     if (comp < 0) return null
     const { label } = this.components(r)
@@ -531,7 +436,6 @@ export class Ground {
     return best < 0 ? null : { x: this.nodeX(best), z: this.nodeZ(best) }
   }
 
-  // ── tas binaire ──────────────────────────────────────────────────────────
   private push(n: number, f: number): void {
     if (this.heapN >= this.heap.length) {
       const h = new Int32Array(this.heap.length * 2)
@@ -571,15 +475,8 @@ export class Ground {
     return top
   }
 
-  /** Le chemin d'un corps de rayon r, de (x0,z0) à (x1,z1) : A* sur les
-   *  nœuds de 0,2 u, puis tendu (on saute les nœuds tant que le segment reste
-   *  dégagé). But inaccessible : la route mène au point atteignable le plus
-   *  proche — le mobile s'en approche au lieu de foncer dans un mur ou de
-   *  rester planté. Départ dans une emprise (un bâtiment vient de pousser
-   *  sous lui) : le premier pas l'en sort par le plus court. */
   route(x0: number, z0: number, x1: number, z1: number, r: number, maxExpand = 24000): Route {
     const need = r
-    // Ligne droite dégagée : le cas courant, sans recherche.
     if (this.clearAt(x0, z0) >= r && this.clearAt(x1, z1) >= r && this.lineClear(x0, z0, x1, z1, r)) {
       return { pts: [{ x: x1, z: z1 }], reached: true, length: Math.hypot(x1 - x0, z1 - z0) }
     }
@@ -639,11 +536,7 @@ export class Ground {
           const m = jj * mx + ii
           if (this.closed[m] === gen) continue
           if (this.nodeClear(m) < need) continue
-          // En diagonale, les deux voisins orthogonaux doivent passer : pas
-          // de coin coupé au ras d'un mur.
           if (di !== 0 && dj !== 0 && (this.nodeClear(j * mx + ii) < need || this.nodeClear(jj * mx + i) < need)) continue
-          // Le milieu du pas : un mur fin (une lisse, un piquet) entre deux
-          // nœuds libres ne se franchit pas.
           if (this.clearAt((this.nodeX(n) + this.nodeX(m)) / 2, (this.nodeZ(n) + this.nodeZ(m)) / 2) < r) continue
           const ng = g + (di !== 0 && dj !== 0 ? SQRT2 : 1) * NODE
           if (this.stamp[m] === gen && ng >= this.gScore[m]!) continue
@@ -653,22 +546,18 @@ export class Ground {
           this.push(m, ng + h(m))
         }
     }
-    // Remonte la chaîne de nœuds.
     const chain: Pt[] = []
     for (let n = best; n >= 0; n = this.parent[n]!) chain.push({ x: this.nodeX(n), z: this.nodeZ(n) })
     chain.reverse()
     const reached = found && goal >= 0
-    // Le but exact, s'il est libre et visible du dernier nœud.
     if (reached && goalFree) {
       const last = chain[chain.length - 1]!
       if (this.lineClear(last.x, last.z, gx, gz, r)) chain.push({ x: gx, z: gz })
     }
-    // Tendre le fil : depuis chaque point, le plus lointain encore visible.
     const pts: Pt[] = []
     let ax = x0
     let az = z0
     let k = 0
-    // Départ hors de toute place sûre : on rejoint d'abord le premier nœud.
     if (this.clearAt(x0, z0) < r) {
       pts.push(chain[0]!)
       ax = chain[0]!.x
@@ -700,9 +589,6 @@ export class Ground {
   }
 }
 
-/** Avance le long d'un chemin : déplace `pos` d'au plus `step` sur les points
- *  de passage, en consomme ceux qu'il atteint. Rend la direction du dernier
- *  pas (pour le cap) ou null s'il n'a pas bougé. */
 export function follow(pos: { x: number; z: number }, path: Pt[], step: number): { dx: number; dz: number } | null {
   let left = step
   let dir: { dx: number; dz: number } | null = null

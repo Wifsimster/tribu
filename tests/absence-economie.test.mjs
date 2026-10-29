@@ -1,6 +1,3 @@
-// 3.71.1 — l'absence et l'économie : les bugs de la passe QA/design du
-// 2026-10-21, un test par point (voir CHANGELOG 3.71.1).
-//   corepack pnpm test
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -25,8 +22,6 @@ beforeEach(() => {
   Math.random = realRandom
 })
 
-/** Une tribu à l'entrée de l'âge `age` : tous les savoirs et outils des âges
- *  d'avant (`all` : ceux de l'âge aussi), ni événement ni marchand en vue. */
 function gameAt(age, { all = false, tools, drop = [], patch = {} } = {}) {
   store.clear()
   const s = emptySave(NOW)
@@ -40,8 +35,6 @@ function gameAt(age, { all = false, tools, drop = [], patch = {} } = {}) {
   store.set(SAVE_KEY, JSON.stringify(s))
   const g = new Game(NOW)
   assert.equal(g.save.age, age, 'âge stable au chargement')
-  // Les savoirs de l'âge s'ajoutent après coup : chargés d'emblée, ils
-  // ouvriraient l'âge suivant.
   if (all) {
     g.save.techs.push(...TECHS.filter((t) => t.age === age && !drop.includes(t.id)).map((t) => t.id))
     g.recompute()
@@ -51,7 +44,6 @@ function gameAt(age, { all = false, tools, drop = [], patch = {} } = {}) {
 
 const materialSum = (g) => MATERIALS.reduce((a, r) => a + g.rates[r], 0)
 
-// ── 1. Le savoir des matériaux ne compte encourager, lumière et legs qu'une fois
 test('M1 : encourager double le savoir, la nuit le réduit d’autant, cinq Exodes font +40 %', () => {
   const g = gameAt(6)
   g.lightFactor = 1
@@ -92,7 +84,6 @@ test('M1 : sur un cycle jour-nuit entier, le savoir gagné est celui d’un tour
   }
 })
 
-// ── 2. Encourager au départ ne double pas l'absence
 test('M2 : encourager juste avant de partir ne change rien à l’absence', () => {
   const gains = []
   for (const enc of [false, true]) {
@@ -112,7 +103,6 @@ test('M2 : encourager juste avant de partir ne change rien à l’absence', () =
     assert.ok(Math.abs(gains[1][k] - gains[0][k]) < 1e-6 * gains[0][k], `${k} : ${gains[1][k]} contre ${gains[0][k]}`)
 })
 
-// ── 3. L'écart vu par la boucle de jeu est crédité, une seule fois
 test('M3 : un écart de 2 min est crédité et la sauvegarde datée du retour (pas de double crédit au rechargement)', () => {
   const g = gameAt(2)
   const food0 = g.amount('food')
@@ -126,12 +116,10 @@ test('M3 : un écart de 2 min est crédité et la sauvegarde datée du retour (p
   const food1 = g.amount('food')
   const reload = new Game(back)
   assert.equal(reload.amount('food'), food1, 'le rechargement ne recrédite pas l’écart')
-  // Les petits à-coups de la boucle ne sont pas des absences.
   g.creditGap(4, back + 4000)
   assert.equal(g.amount('food'), food1)
 })
 
-// ── 4. La Merveille avance pendant l'absence, et attend le colon parti
 test('Merveille : 8 h d’absence font avancer le chantier au débit du jeu, sans passer sous le plancher', () => {
   const g = gameAt(3, { patch: { res: { food: 1e5, wood: 1e5, stone: 1e5, fiber: 1e4, clay: 1e4, copper: 2e3, iron: 50, insight: 0 } } })
   assert.ok(g.startWonder())
@@ -146,11 +134,9 @@ test('Merveille : 8 h d’absence font avancer le chantier au débit du jeu, san
     const paid = w.paid[id] ?? 0
     assert.ok(paid <= total + 1e-9, `${id} payé ${paid} > ${total}`)
     if (paid > (paid0[id] ?? 0)) advanced++
-    // Ce qui est versé ne dépasse jamais ce qui était là ou a été produit.
     assert.ok(g.amount(id) >= Math.min(floor, res0[id] ?? 0) - 1e-6, `${id} sous le plancher : ${g.amount(id)}`)
   }
   assert.ok(advanced >= 2, `le chantier a avancé sur ${advanced} matériaux`)
-  // Le fer manque (50 < plancher) : rien n'est pris dessus.
   if (def.cost.iron) assert.equal(w.paid.iron ?? 0, 0)
 })
 
@@ -181,8 +167,6 @@ test('Merveille : en expédition, le chantier ne prélève rien', () => {
   assert.ok(d.lines.every((l) => l.flow === 0) && d.eta === Infinity, 'le détail dit « en pause »')
 })
 
-// ── 5. La saison de l'absence : la moyenne des quatre
-// Au Néolithique : pas encore de marchand pour troquer la nourriture du retour.
 test('Saison : une absence au cœur de l’été ou de l’hiver rapporte autant, la moyenne des quatre saisons', () => {
   const season = DAY_SECONDS * SEASON_DAYS
   const got = {}
@@ -191,12 +175,9 @@ test('Saison : une absence au cœur de l’été ou de l’hiver rapporte autant
     const f0 = g.amount('food')
     g.creditAbsence(8 * 3600)
     got[name] = g.amount('food') - f0
-    // La saison du retour reste celle du départ : seul le crédit change.
     assert.equal(g.season.id, idx)
   }
   assert.ok(Math.abs(got.été / got.hiver - 1) < 1e-9, `été ${got.été}, hiver ${got.hiver}`)
-  // L'automne vaut ×1 : le taux du retour (lumière moyenne) × la moyenne
-  // des quatre saisons.
   const g = gameAt(1, { patch: { totalPlaySeconds: season * 2 + 10 } })
   const f0 = g.amount('food')
   g.creditAbsence(8 * 3600)
@@ -207,9 +188,8 @@ test('Saison : une absence au cœur de l’été ou de l’hiver rapporte autant
   assert.ok(Math.abs(got.été / expected - 1) < 1e-9)
 })
 
-// ── 6. Le savoir des expéditions suit le savoir du camp
 test('M5 : vers la côte, le savoir rapporté vaut 1,3 fois celui du camp sur la même durée, à tous les âges', () => {
-  Math.random = () => 0.99 // ni revers, ni trouvaille
+  Math.random = () => 0.99
   for (let age = 2; age <= 10; age++) {
     const g = gameAt(age)
     g.lightFactor = meanLightFactor(g.nightFloor)
@@ -223,7 +203,6 @@ test('M5 : vers la côte, le savoir rapporté vaut 1,3 fois celui du camp sur la
     const ratio = (g.amount('insight') - i0) / (camp * d)
     assert.ok(Math.abs(ratio - 1.3) < 0.01, `âge ${age} : ×${ratio.toFixed(3)}`)
   }
-  // L'îlot : la même règle, au tempérament de la destination.
   const g = gameAt(1)
   g.lightFactor = meanLightFactor(g.nightFloor)
   g.refreshRates()
@@ -239,7 +218,6 @@ test('M5 : vers la côte, le savoir rapporté vaut 1,3 fois celui du camp sur la
   assert.ok(Math.abs((g.amount('insight') - i0) / (camp * d) - want) < 0.02)
 })
 
-// ── 7. Les récompenses fixes suivent la production après l'âge du bronze
 test('Récompenses fixes : inchangées aux âges 0 à 2, jamais dérisoires ensuite', () => {
   for (let age = 0; age <= 2; age++) {
     const g = gameAt(age)
@@ -256,7 +234,6 @@ test('Récompenses fixes : inchangées aux âges 0 à 2, jamais dérisoires ensu
     assert.ok(tribute.insight >= 9 * insight - 1, `comptoir âge ${age}`)
     assert.ok(wreck.wood >= 40 * (1 + age) && tribute.food >= 18 * (1 + age), 'jamais moins qu’avant')
   }
-  // À l'âge 10, l'épave vaut 14 s de savoir au lieu de ~0,1 s.
   const g = gameAt(10, { all: true })
   assert.ok(g.wreckLoot().insight > 50 * 88, `épave âge 10 : ${g.wreckLoot().insight}`)
 })
@@ -275,8 +252,6 @@ test('Récompenses fixes : le savoir du troc suit la production après l’âge 
   }
 })
 
-// ── 8 et 11. Le marchand propose le plus ancien outil qui manque, le joueur décide
-/** Midi : le marchand n'accoste pas de nuit, et une visite tient dans le jour. */
 const NOON = (() => {
   let best = 0
   for (let t = 0; t < DAY_SECONDS; t++) if (sunHeightAt(t) > sunHeightAt(best)) best = t
@@ -287,7 +262,6 @@ function merchantGame(res, tools = []) {
   g.save.caravan.nextIn = 0
   return g
 }
-/** Une visite entière du marchand, jouée en direct. */
 function visit(g) {
   const events = []
   g.on((e) => events.push(e))
@@ -318,7 +292,6 @@ test('M7 : refuser ne coûte rien, et le même outil revient au passage suivant'
   let ev = visit(g)
   const offer = ev.find((e) => e.type === 'caravanOffer')
   assert.equal(offer?.def.id, 'etain')
-  // Sans réponse, la barque repart avec : l'offre est retirée.
   assert.ok(ev.some((e) => e.type === 'caravanOfferGone'))
   assert.equal(g.toolOffer, null)
   assert.deepEqual(g.save.tools, [])
@@ -342,7 +315,6 @@ test('M7 : pendant l’absence, le marchand troque mais ne vend aucun outil', ()
 })
 
 test('Plus ancien qui manque : l’étain inabordable, le marchand attend au lieu de sortir le sel', () => {
-  // Assez pour le sel (âge 3), pas de cuivre pour l'étain (âge 2).
   const g = merchantGame({ food: 5000, wood: 5000, stone: 5000, fiber: 800, clay: 800, copper: 0 })
   const ev = visit(g)
   assert.ok(!ev.some((e) => e.type === 'caravanOffer'), 'aucune offre')
@@ -365,7 +337,6 @@ test('Outils : terres rares et caoutchouc valent enfin leur prix', () => {
   assert.match(TOOL_BY_ID.get('caoutchouc').boon, /\+6 à 10 %/)
 })
 
-// ── 9. Les effets annoncés sont les effets réels
 const SPEED_TECHS = TECHS.filter((t) => t.effects.some((e) => e.kind === 'expeditionSpeed'))
 
 test('Vitesse : chaque savoir de vitesse divise la durée par son facteur, à son âge', () => {
@@ -378,7 +349,7 @@ test('Vitesse : chaque savoir de vitesse divise la durée par son facteur, à so
     for (const dest of ['ilot', 'cote', 'large']) {
       const d0 = without.expeditionDuration(dest)
       const d1 = withIt.expeditionDuration(dest)
-      if (d0 / mult < 45) continue // plancher de 45 s
+      if (d0 / mult < 45) continue
       assert.ok(Math.abs(d0 / d1 - mult) < 1e-9, `${t.id} vers ${dest} : ÷${(d0 / d1).toFixed(3)} au lieu de ÷${mult}`)
     }
     void own
@@ -398,7 +369,6 @@ test('Vitesse : en fin d’arbre, les durées restent à ±20 % de la 3.71', () 
   const old = (g, dest) =>
     Math.max(45, (90 + g.save.age * 45) * (0.45 + 0.55 / g.expeditionSpeed) * DESTINATION_BY_ID.get(dest).durationK)
   const end = gameAt(10, { all: true, tools: TOOLS.map((t) => t.id) })
-  // Avec en plus quatre terres de vitesse : le pire cas raisonnable.
   const lands = gameAt(10, {
     all: true,
     tools: TOOLS.map((t) => t.id),
@@ -423,7 +393,6 @@ test('IA : son effet sur le savoir est réel, +10 % en plus de son apport', () =
   assert.ok(TECH_BY_ID.get('ai').effects.some((e) => e.kind === 'gatherRate' && e.resource === 'insight' && e.mult > 1))
 })
 
-// ── 10. L'Exode garde ce qui appartient à la tribu
 test('Exode : hauts faits et nom du village gardés, pas de « Première vitrine » rejouée, réserve à zéro', () => {
   const g = gameAt(10, {
     all: true,
@@ -446,11 +415,9 @@ test('Exode : hauts faits et nom du village gardés, pas de « Première vitrine
   assert.deepEqual(feats, ['exode'], `hauts faits annoncés : ${feats}`)
 })
 
-// ── Sauvegardes : une partie 3.71 se recharge sans perte
 test('Sauvegarde 3.71 (âge 10, neuf outils, réserve, chantier) : rechargée sans rien perdre', async () => {
   const { readFileSync } = await import('node:fs')
   const s = JSON.parse(readFileSync(new URL('../tools/saves/age10.json', import.meta.url), 'utf8'))
-  // Les champs de la 3.71 : la réserve de savoir, un chantier, un nom de village.
   Object.assign(s, {
     t: NOW,
     insightReserve: 4321.5,

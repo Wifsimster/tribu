@@ -1,11 +1,3 @@
-// Parité du squelette de la faune : le shader (`RIG_PARS`, ce que le GPU
-// dessine) et sa copie TS (`rigPose`, ce que les tests de patinage et de
-// jonctions mesurent) posent chaque sommet au même endroit. Sans ce test,
-// une branche GLSL modifiée sans sa copie passerait tous les autres tests :
-// ils ne lisent que la copie. La QA de la PR #24 (2026-10-20) l'avait prouvé
-// une fois dans un navigateur ; ici le GLSL est traduit en JS
-// (tests/glsl-subset.mjs) et le test tourne à chaque `pnpm test`.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -14,8 +6,6 @@ import { compileGlsl } from './glsl-subset.mjs'
 const RIG = await import('../src/render/fauna-rig.ts')
 const { faunaGeometry } = await import('../src/render/fauna-glb.ts')
 
-/** Écart toléré, en unités du monde : un millième. Les deux calculs sont en
- *  double précision ; un vrai écart de formule se compte en centièmes. */
 const TOL = 1e-3
 const GAITS = { deer: RIG.DEER_GAIT, sheep: RIG.SHEEP_GAIT, hen: RIG.HEN_GAIT, horse: RIG.HORSE_GAIT }
 const SPECIES = ['deer', 'sheep', 'hen', 'horse', 'gull']
@@ -27,8 +17,6 @@ function geometry(sp) {
   return faunaGeometry(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
 }
 
-/** Des poses tirées au hasard (graine fixe), plus les bornes : à l'arrêt,
- *  au pas pur, au trot pur, couchée, ailes battues. */
 function poses() {
   let s = 12345
   const rnd = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296
@@ -70,8 +58,6 @@ for (const sp of SPECIES) {
         moved = Math.max(moved, Math.hypot(ts[0] - p[0], ts[1] - p[1], ts[2] - p[2]))
       }
     assert.ok(worst.d <= TOL, `${sp} : écart ${worst.d} u au sommet ${worst.i} (pièce ${worst.part}, aAnim ${worst.anim}, aRest ${worst.rest})`)
-    // La comparaison n'est pas triviale : des pièces articulées, et des
-    // sommets qui bougent de plusieurs centièmes au moins.
     assert.ok(parts.size >= 3, `${sp} : pièces ${[...parts]}`)
     assert.ok(moved > 0.2, `${sp} : le plus grand déplacement ne fait que ${moved} u`)
   })

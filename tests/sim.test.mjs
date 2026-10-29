@@ -1,9 +1,6 @@
-// Tests de simulation des parcelles (« la mer recule »), sans DOM :
-//   corepack pnpm test
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 
-// La sauvegarde vit dans localStorage : une table en mémoire suffit.
 const store = new Map()
 globalThis.localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -20,7 +17,6 @@ const PALEO = ['flint', 'fire', 'shelter', 'spear', 'lamp', 'cordage']
 
 beforeEach(() => store.clear())
 
-/** Une partie neuve, graine fixée, qui découvre ses `n` premiers savoirs. */
 function freshWith(seed, n) {
   const g = new Game(NOW)
   g.save.seed = seed
@@ -51,10 +47,8 @@ test('tirage déterministe : même graine et même jalon, mêmes cartes', () => 
     assert.deepEqual(a, b)
     assert.equal(new Set(a).size, 3)
   }
-  // Et pas une constante déguisée : sur 21 jalons, plusieurs tirages diffèrent.
   const draws = new Set(Array.from({ length: 21 }, (_, n) => drawLands(1_337_042, n, 6, unlocked).join()))
   assert.ok(draws.size > 3, `tirages distincts : ${draws.size}`)
-  // Deux parties de même graine reçoivent la même première carte.
   assert.deepEqual(freshWith(7, 2).save.landPending[0].kinds, freshWith(7, 2).save.landPending[0].kinds)
 })
 
@@ -62,7 +56,6 @@ test('300 s sans choix : la carte attend toujours, aucune terre posée', () => {
   const g = freshWith(42, 2)
   g.setFocus('wood')
   const before = { ...g.rates }
-  // Les taux varient avec l'heure : on compare à une partie jumelle sans carte.
   const twin = freshWith(42, 2)
   twin.setFocus('wood')
   twin.save.landPending = []
@@ -85,16 +78,12 @@ test('choisir une terre : parcelle ajoutée, taux multiplié', () => {
   assert.deepEqual(g.save.land, [{ kind: 'foret', q: 3, r: -9 }])
   assert.equal(g.save.landPending.length, 0)
   assert.ok(Math.abs(g.rates.wood - wood * 1.08) < 1e-9, `${g.rates.wood} vs ${wood * 1.08}`)
-  // Et la parcelle survit à la sauvegarde.
   g.flush(NOW)
   const back = new Game(NOW)
   assert.deepEqual(back.save.land, [{ kind: 'foret', q: 3, r: -9 }])
   assert.ok(Math.abs(back.rates.wood - g.rates.wood) < 1e-9)
 })
 
-/** Une save d'âge 1, deux cartes en file, absente depuis 8 h. */
-/** Une absence compte la nourriture à la moyenne des quatre saisons (3.71.1) :
- *  le taux du retour, lui, est celui de la saison courante. */
 function seasonMeanRatio(g, id) {
   if (id !== 'food') return 1
   const now = g.rates.food
@@ -121,13 +110,11 @@ test('8 h hors ligne avec deux cartes en attente : gains exacts, cartes toujours
   const g = new Game(NOW)
   assert.equal(g.save.landPending.length, 2, 'les cartes attendent le retour du joueur')
   assert.equal(g.save.land.length, 0)
-  // Le savoir suit la règle de la réserve (tests/insight-reserve.test.mjs).
   for (const id of ['food', 'wood', 'stone', 'fiber']) {
     const expected = g.rates[id] * seasonMeanRatio(g, id) * OFFLINE_CAP_SECONDS
     const got = g.save.res[id] - save.res[id]
     assert.ok(Math.abs(got - expected) < 1e-6 * Math.max(1, expected), `${id} : ${got} vs ${expected}`)
   }
-  // Et exactement ce qu'aurait gagné la même tribu sans aucune carte.
   const gained = Object.fromEntries(['food', 'wood', 'stone', 'fiber', 'insight'].map((id) => [id, g.save.res[id]]))
   store.clear()
   absentSave(false)
@@ -137,8 +124,6 @@ test('8 h hors ligne avec deux cartes en attente : gains exacts, cartes toujours
 })
 
 test('save v3.47 avancée : tous les jalons franchis arrivent en file, sans erreur', () => {
-  // La sauvegarde Renaissance semée par tools/screenshot-readme.mjs, telle
-  // qu'une v3.47 l'écrivait : ni land, ni landPending, ni landN.
   const techs = [
     'flint', 'fire', 'shelter', 'spear', 'lamp', 'cordage',
     'agriculture', 'pottery', 'weaving', 'polished_axe', 'granary',
@@ -160,8 +145,6 @@ test('save v3.47 avancée : tous les jalons franchis arrivent en file, sans erre
   }
   store.set(SAVE_KEY, JSON.stringify(v347))
   const g = new Game(NOW)
-  // Âge 6 (Renaissance) : six âges révolus × 2 jalons, et 3 savoirs de la
-  // Renaissance sur 5 requis — le jalon de mi-âge (3) est franchi.
   assert.equal(g.save.age, 6)
   assert.equal(techs.filter((id) => TECH_BY_ID.get(id).age === 6).length, 3)
   assert.equal(g.save.landPending.length, 13)
@@ -169,7 +152,6 @@ test('save v3.47 avancée : tous les jalons franchis arrivent en file, sans erre
   assert.deepEqual(g.save.land, [])
   assert.deepEqual(g.save.landPending.map((p) => p.n), [...Array(13).keys()])
   for (const p of g.save.landPending) assert.equal(new Set(p.kinds).size, 3)
-  // Un rechargement ne redistribue rien.
   g.flush(NOW)
   assert.equal(new Game(NOW).save.landPending.length, 13)
 })
@@ -192,9 +174,6 @@ test('sauvegarde bricolée : terres inconnues ou coordonnées folles ignorées',
   assert.deepEqual(back.save.landPending, [{ n: 1, kinds: ['prairie'] }])
 })
 
-// ── Incrément 3 : l'emplacement choisi et le voisinage ──────────────────────
-
-/** Le taux de bois d'une partie dont les terres posées sont `land`. */
 function woodWith(land) {
   const g = freshWith(42, 2)
   g.setFocus('wood')
@@ -205,15 +184,12 @@ function woodWith(land) {
 
 test('voisinage : deux forêts adjacentes donnent bois ×1,12², ×1,08² sinon', () => {
   const bare = woodWith([])
-  // Centres à 3 cellules : les anneaux se touchent, bord contre bord.
   assert.equal(hexDistance(0, -12, 3, -12), 3)
   const near = woodWith([{ kind: 'foret', q: 0, r: -12 }, { kind: 'foret', q: 3, r: -12 }])
-  // À 4 cellules : une rangée d'eau les sépare.
   assert.equal(hexDistance(0, -12, 4, -12), 4)
   const far = woodWith([{ kind: 'foret', q: 0, r: -12 }, { kind: 'foret', q: 4, r: -12 }])
   assert.ok(Math.abs(near - bare * 1.12 ** 2) < 1e-9, `${near} vs ${bare * 1.12 ** 2}`)
   assert.ok(Math.abs(far - bare * 1.08 ** 2) < 1e-9, `${far} vs ${bare * 1.08 ** 2}`)
-  // Le voisinage ne vaut qu'entre terres du même type.
   const mixed = woodWith([{ kind: 'foret', q: 0, r: -12 }, { kind: 'prairie', q: 3, r: -12 }])
   assert.ok(Math.abs(mixed - bare * 1.08) < 1e-9)
   assert.deepEqual(landBonds([{ kind: 'foret', q: 0, r: 0 }, { kind: 'foret', q: 3, r: 0 }, { kind: 'foret', q: 9, r: 0 }]), [true, true, false])
@@ -243,19 +219,16 @@ test('annuler : la carte retourne dans la file, intacte, et rien ne se pose', ()
   assert.equal(g.pickLand('crique'), false, 'terre absente de la carte')
   assert.ok(g.pickLand('foret'))
   assert.equal(g.placing, 'foret')
-  // Pendant le choix, la carte ne rapporte toujours rien.
   for (let t = 0; t < 300; t += 0.5) g.tick(0.5, NOW + t * 1000)
   assert.deepEqual(g.save.land, [])
   g.cancelLand()
   assert.equal(g.placing, null)
   assert.deepEqual(g.save.landPending, queue)
   assert.equal(g.placeLand(3, -9), false, 'plus rien à poser après annulation')
-  // Et un rechargement rend la même carte.
   g.flush(NOW)
   const back = new Game(NOW)
   assert.deepEqual(back.save.landPending, queue)
   assert.deepEqual(back.save.land, [])
-  // On peut y revenir : choisir, puis poser à l'ancre touchée.
   const wood = back.rates.wood
   assert.ok(back.pickLand('foret'))
   assert.ok(back.placeLand(3, -9))
@@ -265,8 +238,6 @@ test('annuler : la carte retourne dans la file, intacte, et rien ne se pose', ()
   assert.ok(Math.abs(back.rates.wood - wood * 1.08) < 1e-9)
 })
 
-/** Les 21 parcelles d'une partie v3.50 d'âge 10, posées à l'ancre par défaut
- *  (save de mesure de l'incrément 2). */
 const LAND_V350 = [
   { kind: 'crique', q: -12, r: 1 }, { kind: 'carriere', q: 7, r: -14 }, { kind: 'roseliere', q: -14, r: 4 },
   { kind: 'crique', q: 11, r: -14 }, { kind: 'foret', q: 3, r: 10 }, { kind: 'crique', q: 6, r: 8 },
@@ -290,12 +261,10 @@ test('save v3.50 avec 21 parcelles : rechargée à l’identique, positions cons
   assert.deepEqual(back.save.land, LAND_V350)
   assert.deepEqual(back.save.landPending, [])
   assert.equal(back.save.landN, 21)
-  // Rien de neuf n'est écrit dans la sauvegarde : la pose en cours n'y vit pas.
   back.flush(NOW)
   const again = JSON.parse(store.get(SAVE_KEY))
   assert.deepEqual(again.land, LAND_V350)
   assert.equal('placing' in again, false)
-  // Les voisinages déjà présents sur cette île comptent, sans rien déplacer.
   assert.deepEqual(
     landBonds(LAND_V350).flatMap((b, i) => (b ? [i] : [])),
     LAND_V350.flatMap((a, i) =>
@@ -313,7 +282,6 @@ test('8 h hors ligne avec deux forêts voisines : gains exacts au taux majoré',
   g.flush(NOW - OFFLINE_CAP_SECONDS * 1000)
   const save = JSON.parse(store.get(SAVE_KEY))
   const back = new Game(NOW)
-  // Le savoir suit la règle de la réserve (tests/insight-reserve.test.mjs).
   for (const id of ['food', 'wood', 'stone', 'fiber']) {
     const expected = back.rates[id] * seasonMeanRatio(back, id) * OFFLINE_CAP_SECONDS
     const got = back.save.res[id] - save.res[id]

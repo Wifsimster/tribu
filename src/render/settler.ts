@@ -48,8 +48,6 @@ type Trip = 'none' | 'leaving' | 'away' | 'returning'
 
 const TAU = Math.PI * 2
 
-/** Rouge brique, crème et brun sombre: trois valeurs franches, parce qu'un
- *  personnage haut de cinquante pixels ne se lit que par ses contrastes. */
 const C = {
   tunic: PALETTE.cloth,
   tunicDark: new Color('#a1543a'),
@@ -65,31 +63,17 @@ const C = {
 } as const
 
 const OUTLINE = new MeshBasicMaterial({ color: 0x33261c, side: BackSide })
-// La couleur des éclats est par instance : silex blanc au bois et à la
-// pierre, feuilles vertes à la main, brins dorés à la faucille et à la faux.
 const SPARK = new MeshBasicMaterial({ color: 0xffffff })
 const CHIP = { flint: new Color(0xfff0cf), leaf: new Color('#79b04a'), straw: new Color('#ecd170') } as const
 const EMPTY = new BufferGeometry()
 
-/** Le colon est le seul objet mobile du campement: sa chaleur ne peut pas être
- *  cuite dans les sommets comme celle des abris. Elle passe donc par l'émissif
- *  de son matériau, remonté quand il approche du foyer et battu au rythme de la
- *  flamme — sinon il traverse la nappe de lumière sans jamais la recevoir. */
 const FIRE_WARM = new Color('#ff8a34')
 const FIRE_REACH = 5.4
 
-/** Il s'attarde au foyer au lieu d'y faire demi-tour: sur un arrêt sur image,
- *  c'est ce qui donne une chance au colon d'être vu chez lui plutôt qu'en train
- *  de traverser un bois. */
 const DEPOSIT = 2.1
 
-/** Demi-largeur du colon au sol (épaules, rig ×1,32) : c'est elle que le
- *  cadastre garde hors des murs, pas son seul centre. */
 const BODY_R = 0.3
 
-// Les pivots viennent de settler-rig.json, que lisent aussi les scripts
-// Blender (tools/blender/) : les gestes animés dans Blender tournent autour
-// des mêmes épaules et des mêmes hanches que le jeu.
 const PIVOT = Object.fromEntries(Object.entries(RIG.nodes).map(([k, v]) => [k, v.pivot])) as Record<NodeName, number[]>
 const REST = Object.fromEntries(
   NODES.map((n) => {
@@ -102,22 +86,14 @@ const SHOULDER_Y = PIVOT.armR[1]!
 const HEAD_Y = PIVOT.head[1]!
 const FINGERS = new Vector3().fromArray(RIG.points.fingers.at)
 
-/** Entrée et sortie d'un geste Blender : un fondu d'au moins 0,15 s depuis la
- *  pose courante, allongé pour qu'aucun membre ne tourne plus vite que ça
- *  (rad/s, avant le lissage) — sinon la silhouette saute d'une image à l'autre. */
 const FADE_MIN = 0.15
 const FADE_RATE = 1.6
-/** Distance au centre du buisson où il s'arrête pour un geste Blender. */
 const CLIP_REACH = 0.6
 
 const smooth = (x: number) => x * x * (3 - 2 * x)
 const MIX_Q = new Quaternion()
 
-/** Une pièce teintée puis posée. Tout un membre finit fondu en une seule
- *  géométrie: le détail devient gratuit, seul le nombre de mesh coûte. */
 function part(source: BufferGeometry, color: Color, x = 0, y = 0, z = 0): BufferGeometry {
-  // Les polyèdres de three sortent sans index et la fusion refuse alors le lot
-  // entier: un bâtiment disparaissait en silence.
   const geo = source.index ? source : mergeVertices(source)
   geo.translate(x, y, z)
   const n = geo.attributes.position!.count
@@ -140,8 +116,6 @@ interface Pair {
   hull: BufferGeometry[]
 }
 
-/** Coque inversée, gonflée le long des normales. C'est le seul trait graphique
- *  du jeu: il n'appartient qu'au colon, pour qu'aucun arbre ne l'avale. */
 function outlineOf(g: BufferGeometry, thickness: number): Mesh {
   const pos = g.attributes.position!
   const nor = g.attributes.normal!
@@ -159,8 +133,6 @@ function outlineOf(g: BufferGeometry, thickness: number): Mesh {
   return mesh
 }
 
-/** The settler is a mime: the economy is rate-based, and he acts it out. What he
- *  is doing always matches the current focus, so the world explains the numbers. */
 export class Settler {
   readonly group = new Group()
   private readonly rig = new Group()
@@ -179,7 +151,6 @@ export class Settler {
 
   private phase: Phase = 'walkOut'
   private trip: Trip = 'none'
-  /** Le point d'embarquement du voyage en cours : ponton, gare ou aérodrome. */
   private readonly board = new Vector3()
   private wantSleep = false
   private sleeping = false
@@ -194,39 +165,24 @@ export class Settler {
   private readonly shore = new Vector3(0, 0, 0)
   private destination = new Vector3(3, 0, 3)
   private speed = 2.9
-  /** Le cadastre au sol (ground.ts). Sans lui (tests anciens), le colon garde
-   *  l'ancienne poussée hors des abris. */
   private ground: Ground | null = null
-  /** Le chemin en cours : points de passage jusqu'au but `pathGoal`. */
   private path: Pt[] = []
   private readonly pathGoal = new Vector3(Number.NaN, 0, Number.NaN)
-  /** La carte sur laquelle le chemin a été tracé : une pose en cours de
-   *  partie la change, et le chemin se refait. */
   private pathRev = -1
-  /** Où mène le chemin tracé : s'il est épuisé loin d'ici (le colon a été
-   *  replacé, retour d'expédition), on retrace au lieu de croire être arrivé. */
   private readonly pathEnd = new Vector3()
   private pack!: Mesh
   private tool: Mesh | null = null
 
-  // ── Les gestes Blender ──────────────────────────────────────────────────
-  // Les quatre nœuds sans maillage du squelette (settler-rig.json) : la main
-  // droite et la main gauche, l'accessoire porté par le torse, ce qui part de
-  // la main (lancer, en 3.70). L'outil et les accessoires sont leurs enfants.
   private readonly toolR = new Object3D()
   private readonly toolL = new Object3D()
   private readonly prop = new Object3D()
   private readonly cast = new Object3D()
-  /** Panier ou gerbe dans la main gauche, gerbe sur le dos : sans ombre, ils
-   *  ne coûtent qu'un appel de dessin quand ils sont là. */
   private readonly leftMesh: Mesh
   private readonly propMesh: Mesh
   private readonly node: Record<NodeName, Object3D>
-  /** Le geste de l'action en cours, joué au prochain `work`. */
   private clipName: ClipName | null = null
   private play: { clip: Clip; e: number; from: Pose; fade: number } | null = null
   private out: { from: Pose; t: number; dur: number } | null = null
-  /** Cran du panier ou de la gerbe : 0 vide, 3 plein. */
   private carryLevel = 0
   private carryMesh: Mesh | null = null
   private readonly scratch = newPose()
@@ -263,19 +219,14 @@ export class Settler {
     this.chips.frustumCulled = false
     for (let i = 0; i < 8; i++) this.chips.setColorAt(i, CHIP.flint)
 
-    // Le colon est joué un tiers plus grand que l'échelle du village: à la
-    // taille d'un téléphone, la justesse d'échelle perd contre la lisibilité.
     this.rig.scale.setScalar(1.32)
     this.group.add(this.rig, this.chips)
     this.group.position.set(2.5, GROUND_Y, 2.5)
     this.home.set(CAMP_HOME.x, GROUND_Y, CAMP_HOME.z)
 
-    // La hotte d'expédition, accrochée au dos : un cône tressé et deux jarres
-    // débordantes. Invisible au camp — c'est l'attribut du voyage.
     this.pack = this.buildPack()
     this.body.add(this.pack)
 
-    // La plage la plus proche du camp : là où le colon quitte le monde et y revient.
     let best = Infinity
     for (const c of island.cells) {
       if (!c.beach) continue
@@ -294,7 +245,6 @@ export class Settler {
         part(new CylinderGeometry(0.2, 0.16, 0.09, 7), C.bone, 0, 0.3, -0.3),
         part(new SphereGeometry(0.07, 6, 5), C.tunicDark, -0.07, 0.4, -0.3),
         part(new SphereGeometry(0.06, 6, 5), C.flint, 0.08, 0.38, -0.28),
-        // Sangles en travers du torse.
         part(new BoxGeometry(0.05, 0.4, 0.03).rotateZ(0.5), C.leatherDark, 0.08, 0.22, -0.12),
         part(new BoxGeometry(0.05, 0.4, 0.03).rotateZ(-0.5), C.leatherDark, -0.08, 0.22, -0.12),
       ]),
@@ -304,28 +254,16 @@ export class Settler {
     return basket
   }
 
-  /** Départ en expédition : il charge la hotte, marche jusqu'à la plage la plus
-   *  proche et quitte l'île. hasPack = techno « cordage » connue. */
   departExpedition(hasPack: boolean, target?: { x: number; z: number }): void {
     this.pack.visible = hasPack
-    // Debout tout de suite pour la marche, mais en fondu depuis le geste ou
-    // le lit : la silhouette ne saute pas.
     const from = this.capture(newPose())
     this.wake()
     this.out = { from, t: 0, dur: -1 }
-    // On ne part pas toujours du ponton : le train se prend à la GARE, l'avion
-    // à l'aérodrome. Le point d'embarquement est retenu pour le retour — on
-    // revient d'où l'on est parti.
     this.board.set(target?.x ?? this.shore.x, this.shore.y, target?.z ?? this.shore.z)
     this.trip = 'leaving'
-    // La hotte prend le dos : panier et gerbe restent au camp.
     this.refreshCarry()
   }
 
-  /** Réveil net. `update` court-circuite le sommeil dès qu'un voyage commence,
-   *  mais personne ne remettait le squelette DEBOUT : un colon endormi envoyé
-   *  en expédition marchait jusqu'à la barque couché sur le flanc. On remet
-   *  donc la pose de repos à zéro au moment où on le tire du lit. */
   wake(): void {
     this.wantSleep = false
     this.sleeping = false
@@ -333,16 +271,12 @@ export class Settler {
     this.rig.rotation.z = 0
     this.rig.position.y = 0
     this.rig.scale.setScalar(RIG.scale)
-    // Un geste Blender en cours s'arrête net : sa pose ne doit pas survivre
-    // au réveil (même piège que le colon couché).
     this.play = null
     this.out = null
     this.restPose()
     this.phase = 'walkOut'
   }
 
-  /** Pose de repos : chaque nœud sur son pivot, rotation de repos (bras
-   *  légèrement écartés, settler-rig.json). */
   private restPose(): void {
     for (const n of NODES) {
       this.node[n].position.fromArray(PIVOT[n])
@@ -365,12 +299,9 @@ export class Settler {
     }
   }
 
-  /** Écrit dans `to` le mélange de `from` (w = 0) à `to` (w = 1). */
   private static mix(from: Pose, to: Pose, w: number): void {
     for (const n of NODES) {
       to[n].p.lerpVectors(from[n].p, to[n].p, w)
-      // Pas `to.q.slerpQuaternions(from.q, to.q, w)` : three copie `from` dans
-      // `to` avant de lire `to`, et le fondu restait figé sur `from` (QA PR #29).
       MIX_Q.slerpQuaternions(from[n].q, to[n].q, w)
       to[n].q.copy(MIX_Q)
     }
@@ -382,10 +313,6 @@ export class Settler {
     return g
   }
 
-  // ── Les gestes Blender : choix, lecture, événements ──────────────────────
-
-  /** Le geste de l'action en cours (null : geste procédural). Main.ts le
-   *  donne à chaque image avec l'outil. */
   setClip(name: ClipName | null): void {
     if (name === this.clipName) return
     this.clipName = name
@@ -394,15 +321,11 @@ export class Settler {
     this.refreshCarry()
   }
 
-  /** Les modèles Blender viennent d'arriver : l'outil se refait, l'accessoire
-   *  apparaît. Le geste en cours finit en procédural, le suivant est un clip. */
   useModels(): void {
     this.toolKey = ''
     this.refreshCarry()
   }
 
-  /** Pour les tests de parité : la pose du clip au temps `t` (temps du clip),
-   *  sans fondu. Rend false si le clip n'est pas chargé. */
   poseClip(name: ClipName, t: number): boolean {
     const clip = settlerClip(name)
     if (!clip) return false
@@ -422,15 +345,12 @@ export class Settler {
     this.play = { clip, e: 0, from, fade }
     this.out = null
     this.timer = clip.length
-    // Face au buisson : il a fini sa marche sur le cap de son dernier pas.
     const dx = this.destination.x - this.group.position.x
     const dz = this.destination.z - this.group.position.z
     if (Math.hypot(dx, dz) > 0.05) this.yaw = Math.atan2(dx, dz)
     return true
   }
 
-  /** Arrêt en douceur : la pose du geste se fond dans ce qui suit (marche,
-   *  sommeil, voyage). wake() est l'arrêt net. */
   private stopClip(): void {
     if (!this.play) return
     const from = this.capture(newPose())
@@ -455,8 +375,6 @@ export class Settler {
     }
   }
 
-  /** Après un geste : ce que la marche ou le sommeil viennent d'écrire est
-   *  mélangé à la dernière pose du geste. */
   private blendOut(dt: number): void {
     const o = this.out
     if (!o) return
@@ -472,16 +390,12 @@ export class Settler {
     this.applyPose(now)
   }
 
-  /** Bout de l'outil (ou des doigts) en espace du groupe : là où partent les
-   *  brins et les feuilles. */
   private tipPoint(tool: string): Vector3 {
     const tip = settlerTool(tool)?.tip ?? FINGERS
     this.group.updateMatrixWorld(true)
     return this.group.worldToLocal(this.toolR.localToWorld(tip.clone()))
   }
 
-  /** Le panier (main gauche) ou la gerbe (main gauche ou dos) au cran courant ;
-   *  rien sans modèles, rien en voyage. */
   private refreshCarry(): void {
     this.leftMesh.visible = this.propMesh.visible = false
     this.carryMesh = null
@@ -495,14 +409,10 @@ export class Settler {
     this.showCarry()
   }
 
-  /** Couché, le colon n'a ni panier à la main ni gerbe sur le dos (QA PR #29) :
-   *  l'accessoire reparaît quand il se relève. */
   private showCarry(): void {
     if (this.carryMesh) this.carryMesh.visible = !this.sleeping && this.lieDown === 0
   }
 
-  /** La nuit sans lampe, la tribu dort : le colon rentre se coucher près du feu.
-   *  Piloté par main.ts, qui sait s'il reste de la lumière découverte. */
   setNight(night: boolean): void {
     this.wantSleep = night
   }
@@ -522,15 +432,11 @@ export class Settler {
   returnFromExpedition(): void {
     if (this.trip === 'leaving' || this.trip === 'away') {
       this.group.visible = true
-      // On réapparaît là où l'on a embarqué.
       this.group.position.set(this.board.x, this.board.y, this.board.z)
       this.trip = 'returning'
     }
   }
 
-  /** Chaque membre porte sa propre coque en enfant: l'animation la suit sans
-   *  une ligne de code de plus. La coque est tirée d'une version grossière du
-   *  membre, sinon chaque œil et chaque lanière gagnerait son propre liseré. */
   private limb(pair: Pair, name: NodeName): Mesh {
     const mesh = new Mesh(weld(pair.detail), this.skin)
     mesh.position.fromArray(PIVOT[name])
@@ -540,8 +446,6 @@ export class Settler {
   }
 
   private torsoGeometry(): Pair {
-    // Torse large d'épaules et étroit de taille: la silhouette doit dire "humain"
-    // avant que le moindre détail ne soit lisible.
     const shell = part(new CylinderGeometry(0.28, 0.21, 0.5, 9).scale(1.14, 1, 0.82), C.tunic, 0, 0.25, 0)
     const collar = part(new CylinderGeometry(0.33, 0.28, 0.14, 11).scale(1.08, 1, 0.86), C.fur, 0, 0.49, 0)
     return {
@@ -560,8 +464,6 @@ export class Settler {
 
   private headGeometry(): Pair {
     const skull = part(new SphereGeometry(0.235, 12, 10).scale(1, 0.98, 0.94), C.skin)
-    // Calotte de cheveux + bandeau: la bande claire sous la masse sombre est ce
-    // qui sépare la tête du corps à distance.
     const hair = part(
       new SphereGeometry(0.247, 12, 8, 0, TAU, 0, Math.PI * 0.52).rotateX(-0.2),
       C.hair,
@@ -601,20 +503,13 @@ export class Settler {
       part(new CylinderGeometry(0.092, 0.092, 0.06, 8), C.bone, 0, -0.32, 0),
     ]
     const hull = [limb, hand]
-    void spear // l'outil n'est plus soudé au bras : il se change (setTool)
+    void spear
     return { detail, hull }
   }
 
-  // ── Outils ────────────────────────────────────────────────────────────────
-  // L'outil vit dans la main droite et se change selon la ressource travaillée
-  // et les savoirs : épieu ou faucille pour la nourriture, hache pour le bois,
-  // percuteur puis pic pour la pierre. La matière du tranchant suit les âges —
-  // silex, cuivre ou bronze, fer.
   private toolKey = ''
 
   setTool(kind: 'hand' | 'spear' | 'sickle' | 'scythe' | 'axe' | 'pick' | 'rod', tier: number): void {
-    // La faucille et la faux sont modelées dans Blender (settler-tools.glb) ;
-    // tant que le fichier n'est pas là, leur version procédurale les remplace.
     const model = kind === 'sickle' || kind === 'scythe' ? settlerTool(kind) : null
     const key = kind + tier + (model ? '+' : '')
     if (key === this.toolKey) return
@@ -647,7 +542,6 @@ export class Settler {
         break
       }
       case 'scythe': {
-        // Repli de la faux Blender : manche le long du bras, lame en haut.
         parts.push(part(new CylinderGeometry(0.026, 0.03, 1.35, 6).rotateX(-0.28), C.shaft, 0, 0.62, -0.19))
         parts.push(part(new BoxGeometry(0.6, 0.03, 0.09).rotateY(0.3), edge, -0.28, 1.28, -0.38))
         break
@@ -659,14 +553,12 @@ export class Settler {
         break
       }
       case 'rod': {
-        // Canne à pêche : une gaule inclinée vers l'avant, le fil qui plonge.
         parts.push(part(new CylinderGeometry(0.016, 0.026, 1.5, 5).rotateX(-0.85), C.shaft, 0, 0.32, 0.42))
         parts.push(part(new CylinderGeometry(0.006, 0.006, 0.72, 3), C.bone, 0, 0.32, 1.0))
         break
       }
       case 'pick': {
         if (tier === 0) {
-          // Simple percuteur : un galet en main.
           parts.push(part(new DodecahedronGeometry(0.09, 0), PALETTE.rock, 0, 0.02, 0))
         } else {
           parts.push(part(new CylinderGeometry(0.028, 0.034, 0.5, 6), C.shaft, 0, 0.1, 0))
@@ -694,16 +586,10 @@ export class Settler {
     }
   }
 
-  /** Le point que propose la boucle est le centre géométrique de l'île. Le colon,
-   *  lui, rentre au campement: c'est sa marche qui doit désigner le foyer comme
-   *  le lieu où l'on vit, pas une case vide au milieu du terrain. */
   setHome(_p: Vector3): void {
     this.home.set(CAMP_HOME.x, GROUND_Y, CAMP_HOME.z)
   }
 
-  /** Vrai si la cible du colon est un nœud qui n'existe plus : à moins de
-   *  1 cm d'aucun nœud relevé. Toutes les phases comptent : après le dépôt,
-   *  il repart vers la MÊME cible. En voyage, la cible est l'embarquement. */
   goalGone(nodes: ReadonlyMap<string, readonly { x: number; z: number }[]>): boolean {
     if (this.trip !== 'none') return false
     for (const spots of nodes.values())
@@ -711,12 +597,8 @@ export class Settler {
     return true
   }
 
-  /** Sent by a tap on a resource node, or by the focus buttons. */
   sendTo(p: Vector3): void {
     this.destination.set(p.x, 0, p.z)
-    // Une cible DANS une emprise (un buisson repoussé au bord du quai, un tap
-    // sur une caisse) est ramenée à son bord : sinon il piétinerait contre
-    // l'emprise sans jamais l'atteindre.
     for (const b of this.extra) {
       const dx = this.destination.x - b.x
       const dz = this.destination.z - b.z
@@ -729,22 +611,16 @@ export class Settler {
     this.phase = 'walkOut'
   }
 
-  /** Les emprises posées après le camp — le quai du marchand — et que le
-   *  colon contourne comme les abris. */
   private extra: readonly { x: number; z: number; r: number }[] = []
   setBlockers(extra: readonly { x: number; z: number; r: number }[]): void {
     this.extra = extra
   }
 
-  /** Branche le cadastre au sol : désormais tous les trajets le contournent. */
   setGround(ground: Ground | null): void {
     this.ground = ground
     this.pathRev = -1
   }
 
-  /** Un pas vers `goal` le long du chemin du cadastre. Rend la distance qui
-   *  reste (0 à l'arrivée) ; le cap suit le dernier pas. Sans cadastre :
-   *  ligne droite, comme avant. */
   private walkToward(goal: Vector3, step: number, arrive: number): number {
     const pos = this.group.position
     const g = this.ground
@@ -759,10 +635,6 @@ export class Settler {
       this.yaw = Math.atan2(dx, dz)
       return dist
     }
-    // Pris DANS une emprise (posé au chargement sur une gare, rendu à la
-    // gare au retour d'expédition, un atelier qui pousse sous ses pieds) : il
-    // en sort au point libre le plus proche avant de marcher, au lieu de
-    // traverser le mur pour s'en extraire.
     if (g.clearAt(pos.x, pos.z) < 0) {
       const out = g.nearestFree(pos.x, pos.z, BODY_R, 8)
       if (out) {
@@ -771,10 +643,6 @@ export class Settler {
         this.pathRev = -1
       }
     }
-    // La carte a changé : s'il se retrouve dans une poche (un recoin fermé
-    // par la pose), aucun chemin n'en sort — il serait condamné à travailler
-    // et rentrer sur place. Il est reposé sur le nœud le plus proche de la
-    // composante principale, un pas court (QA PR #15, B2).
     if (this.pathRev !== g.revision) {
       const main = g.mainComponent(BODY_R)
       if (g.componentAt(pos.x, pos.z, BODY_R) !== main) {
@@ -791,9 +659,6 @@ export class Settler {
       goal.z !== this.pathGoal.z ||
       (this.path.length === 0 && Math.hypot(this.pathEnd.x - pos.x, this.pathEnd.z - pos.z) > 0.6)
     if (stale) {
-      // Une cible DANS une emprise (le tronc qu'on abat, le rocher qu'on
-      // taille, l'aérodrome) se rejoint par son bord : le point libre le plus
-      // proche. On y va par le chemin, jamais à travers un mur.
       const at = g.nearestFree(goal.x, goal.z, BODY_R, 8) ?? { x: goal.x, z: goal.z }
       const r = g.route(pos.x, pos.z, at.x, at.z, BODY_R)
       this.path = r.pts
@@ -801,9 +666,6 @@ export class Settler {
       this.pathEnd.set(end ? end.x : pos.x, 0, end ? end.z : pos.z)
       this.pathGoal.set(goal.x, 0, goal.z)
       this.pathRev = g.revision
-      // But inaccessible (enclavé) : la route mène au plus près, et le bout
-      // du chemin vaut arrivée — il travaille au bord plutôt que de piétiner
-      // contre un mur.
     }
     const left = this.path.length === 0 ? 0 : Math.hypot(this.path[this.path.length - 1]!.x - pos.x, this.path[this.path.length - 1]!.z - pos.z)
     if (this.path.length === 0 || (this.path.length === 1 && left < arrive)) {
@@ -822,9 +684,6 @@ export class Settler {
   }
 
   update(dt: number, boost: number): void {
-    // Pendant le fondu de sortie, les gestes procéduraux repartent de la pose
-    // de repos : ils n'écrivent pas tous les axes (la marche ne touche ni la
-    // rotation latérale des jambes, ni l'écart des bras).
     if (this.out) this.restPose()
     this.advance(dt, boost)
     this.blendOut(dt)
@@ -841,9 +700,6 @@ export class Settler {
       this.stopClip()
       if (this.updateSleep(dt)) return
     }
-    // Un atelier ou un quai qui pousse sous lui pendant qu'il travaille ou
-    // dépose : il ne marche pas, `walkToward` ne l'en sortirait qu'à la fin
-    // du geste (2,6 s dans le mur, QA PR #15). Il en sort à l'image même.
     const g = this.ground
     if (g && g.clearAt(this.group.position.x, this.group.position.z) < 0) {
       const out = g.nearestFree(this.group.position.x, this.group.position.z, BODY_R, 8)
@@ -858,17 +714,12 @@ export class Settler {
       case 'walkOut':
       case 'walkHome': {
         const goal = this.phase === 'walkOut' ? this.destination : this.home
-        // Pour un geste Blender, il s'arrête à portée de bras du buisson au
-        // lieu d'y entrer : les clips visent un buisson à ~0,6 u devant lui.
         const reach = this.phase === 'walkOut' && this.clipName && settlerClip(this.clipName) ? CLIP_REACH : 0.35
         if (this.walkToward(goal, speed * dt, reach) === 0) {
           this.phase = this.phase === 'walkOut' ? 'work' : 'deposit'
           this.timer = this.phase === 'work' ? 2.6 : DEPOSIT
-          // Le geste Blender de l'action, s'il est chargé : sa durée devient
-          // celle du travail (l'économie n'en dépend pas, c'est un débit).
           if (this.phase === 'work') this.startClip()
           else {
-            // Il vide son panier au feu : le travail demandé est rendu.
             this.carryLevel = 0
             this.refreshCarry()
             this.onDeposit?.()
@@ -901,7 +752,6 @@ export class Settler {
       }
     }
 
-    // Virage amorti: un demi-tour instantané fait clignoter la silhouette.
     let d = this.yaw - this.group.rotation.y
     while (d > Math.PI) d -= TAU
     while (d < -Math.PI) d += TAU
@@ -924,8 +774,6 @@ export class Settler {
     this.group.position.y += (GROUND_Y - this.group.position.y) * Math.min(1, dt * 8)
   }
 
-  /** Un seul uniforme par image, pas une lumière de plus: la scène en compte
-   *  déjà trois et une quatrième coûterait un programme par matériau. */
   private takeFirelight(dt: number): void {
     this.clock += dt
     const d = Math.hypot(
@@ -937,8 +785,6 @@ export class Settler {
     this.skin.emissive.copy(FIRE_WARM).multiplyScalar(k * 0.15 * flicker)
   }
 
-  /** Sommeil : marche jusqu'au foyer, puis il s'allonge sur le côté, et la cage
-   *  thoracique respire lentement. Retourne true tant qu'il gère l'image. */
   private updateSleep(dt: number): boolean {
     this.clock += dt
 
@@ -957,7 +803,6 @@ export class Settler {
       this.sleeping = true
     }
 
-    // S'allonger (et se relever) en douceur plutôt que basculer d'un coup.
     const target = this.sleeping ? 1 : 0
     this.lieDown += (target - this.lieDown) * Math.min(1, dt * 3)
     if (!this.sleeping && this.lieDown < 0.02) {
@@ -971,7 +816,6 @@ export class Settler {
     const k = this.lieDown
     this.rig.rotation.z = (Math.PI / 2 - 0.12) * k
     this.rig.position.y = 0.1 * k
-    // Respiration lente ; membres repliés.
     const breath = 1 + Math.sin(this.clock * 1.4) * 0.02 * k
     this.rig.scale.set(1.32, 1.32 * breath, 1.32)
     this.legL.rotation.x = 0.5 * k
@@ -988,8 +832,6 @@ export class Settler {
     return true
   }
 
-  /** Aller-retour d'expédition : même marche que d'habitude, mais vers la plage,
-   *  et le monde ne le voit plus une fois embarqué. */
   private updateTrip(dt: number, boost: number): void {
     if (this.trip === 'away') return
     const goal = this.trip === 'leaving' ? this.board : this.home
@@ -1020,12 +862,7 @@ export class Settler {
     this.group.position.y += (GROUND_Y - this.group.position.y) * Math.min(1, dt * 8)
   }
 
-  /** Repoussé hors des abris à chaque pas plutôt que guidé par un chemin: il
-   *  glisse le long des peaux et les contourne, pour cinq comparaisons par
-   *  image. */
   private skirtCamp(): void {
-    // Le cadastre connaît déjà les abris et le quai, à leur forme réelle : la
-    // poussée radiale le ferait sortir d'un disque pour entrer dans un mur.
     if (this.ground) return
     for (const b of this.extra.length ? [...CAMP_BLOCKERS, ...this.extra] : CAMP_BLOCKERS) {
       const dx = this.group.position.x - b.x
@@ -1044,8 +881,6 @@ export class Settler {
     this.legL.rotation.x = s * 0.72
     this.legR.rotation.x = -s * 0.72
     this.armL.rotation.set(-s * 0.55, 0, 0.12)
-    // Le bras à l'épieu reste calme: une hampe qui bat au rythme des jambes
-    // devient une bouillie de pixels à cette taille.
     this.armR.rotation.set(-0.14 + s * 0.13, 0, -0.07)
     this.body.rotation.set(0.07, 0, s * 0.05)
     this.head.rotation.set(0.02, s * 0.09, -s * 0.06)
@@ -1059,7 +894,6 @@ export class Settler {
     const before = (this.swing / TAU) % 1
     this.swing += dt * 4.4
     const u = (this.swing / TAU) % 1
-    // Lever lent, frappe sèche: la brutalité de la fin est ce qui se voit de loin.
     const k = u < 0.62 ? 1 - (1 - u / 0.62) ** 2 : 1 - ((u - 0.62) / 0.38) ** 2.4
     this.armR.rotation.set(-0.15 - 2.15 * k, 0, -0.05)
     this.armL.rotation.set(-0.12 - 0.85 * k, 0, 0.22)
@@ -1075,9 +909,6 @@ export class Settler {
     if (u < before) this.strike()
   }
 
-  /** Il pose sa charge, puis reste au feu: mains tendues vers la flamme, un
-   *  balancement lent. Un colon qui repart aussitôt ne fait pas du foyer un
-   *  chez-soi. */
   private animateDeposit(): void {
     const t = (DEPOSIT - this.timer) * 9
     const drop = Math.min(1, t / 6)
@@ -1095,12 +926,7 @@ export class Settler {
     this.legR.rotation.x = 0.1
   }
 
-  /** Éclats de silex à l'impact: la seule chose qui prouve que le colon frappe
-   *  quelque chose plutôt que de mimer dans le vide. */
-  /** Branché par main.ts : chaque coup porté doit s'entendre. Le son est
-   *  ainsi lié au GESTE, pas à une boucle de fond qui tournerait sans fin. */
   onStrike: (() => void) | null = null
-  /** Branché par main.ts : il arrive au feu et dépose ce qu'il rapporte. */
   onDeposit: (() => void) | null = null
 
   private strike(color: Color = CHIP.flint, at: Vector3 | null = null): void {

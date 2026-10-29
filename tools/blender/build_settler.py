@@ -1,16 +1,3 @@
-# Rejoue toute la chaîne Blender du colon : armature + proxy, outils, clips,
-# export des deux glb. Rien n'est fait à la main dans Blender : ce script
-# reconstruit tout, dans une scène « Colon » à part (la scène ouverte n'est pas
-# touchée, le fichier n'est pas enregistré).
-#
-# Entrées : src/render/settler-rig.json et le proxy du colon, produit par
-#   node --import ./tests/resolve-ts.mjs tools/export-settler-proxy.mjs proxy.json
-# Sorties : settler-clips.glb, settler-tools.glb et report.json dans <sortie>.
-#
-# En ligne de commande (Blender 5.2) :
-#   blender --background --factory-startup --python tools/blender/build_settler.py -- <dépôt> <proxy.json> <sortie>
-# Depuis un Blender déjà ouvert (MCP, poste « PC fixe ») : voir mcp_bridge.py.
-
 import hashlib
 import importlib
 import json
@@ -22,7 +9,6 @@ def run(repo, proxy_path, out_dir):
     here = os.path.join(repo, 'tools', 'blender')
     if here not in sys.path:
         sys.path.insert(0, here)
-    # Rechargés à chaque passe : un Blender ouvert garde ses modules en cache.
     import tribu_io, settler_rig, settler_tools, settler_clips, export_settler
     for mod in (tribu_io, settler_rig, settler_tools, settler_clips, export_settler):
         importlib.reload(mod)

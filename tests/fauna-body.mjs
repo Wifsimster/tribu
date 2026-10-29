@@ -1,16 +1,9 @@
-// Banc commun des tests de faune (v3.66.0) : les modèles Blender lus comme le
-// jeu les lit, et le CORPS de chaque bête comme volume de référence des
-// jonctions. Jusqu'à la 3.65, ce volume était une capsule ou un ellipsoïde
-// recopié à la main de la silhouette ; c'est désormais le maillage du corps
-// lui-même (pièce 0 du modèle), sans approximation.
 import { readFileSync } from 'node:fs'
 
 const { adoptFaunaModel, faunaModel } = await import('../src/render/fauna.ts')
 
 export const SPECIES = ['deer', 'sheep', 'hen', 'horse', 'gull']
 
-/** Lit les cinq glb livrés et les confie à la faune, comme `loadFaunaModels`
- *  dans le navigateur. Toute faune construite ensuite est modelée. */
 export function adoptAll() {
   for (const sp of SPECIES) {
     const b = readFileSync(new URL(`../src/assets/models/${sp}.glb`, import.meta.url))
@@ -18,28 +11,16 @@ export function adoptAll() {
   }
 }
 
-/** Le modèle d'une espèce (lève si le fichier n'a pas été adopté). */
 export function model(sp) {
   const g = faunaModel(sp)
   if (!g) throw new Error(`modèle ${sp} absent`)
   return g
 }
 
-/** Profondeur signée d'un point dans le corps (pièce 0) du modèle : positive
- *  dedans, négative dehors, en unités objet. Le corps est une union de
- *  volumes fermés qui se chevauchent (tronc, croupe, toison…) : on sépare ces
- *  coques (triangles reliés par un sommet commun), on mesure le point contre
- *  chacune — distance exacte à sa surface, dedans/dehors par son nombre
- *  d'enroulement — et on garde la plus grande. Dehors, c'est exactement la
- *  distance à l'union ; dedans, une borne BASSE : un pivot jugé assez
- *  profond l'est au moins autant en vrai, une jonction jugée fermée aussi.
- *  `skip(coque)` écarte des coques (`top` : leur point le plus haut). */
 export function bodyDepth(geo, skip = () => false) {
   const pos = geo.getAttribute('position')
   const piv = geo.getAttribute('aPivot')
   const idx = geo.index.array
-  // Sommets soudés par position (le modèle est en ombrage plat : chaque face
-  // a ses propres sommets), puis coques par union-find.
   const key = (i) => `${pos.getX(i).toFixed(5)},${pos.getY(i).toFixed(5)},${pos.getZ(i).toFixed(5)}`
   const ids = new Map()
   const parent = []
@@ -69,9 +50,6 @@ export function bodyDepth(geo, skip = () => false) {
     const a = shells.get(r)
     for (let k = 0; k < 3; k++) a.push(pos.getX(idx[t + k]), pos.getY(idx[t + k]), pos.getZ(idx[t + k]))
   }
-  // Chaque coque tient dans sa sphère englobante : la profondeur dans la
-  // coque ne dépasse jamais r − |p − c|. Une coque qui ne peut pas battre le
-  // meilleur score n'est pas mesurée.
   const S = [...shells.values()].map((a) => {
     const T = Float64Array.from(a)
     let cx = 0, cy = 0, cz = 0
@@ -113,7 +91,6 @@ function shellDepth(T, px, py, pz) {
     const ax = T[o], ay = T[o + 1], az = T[o + 2]
     const bx = T[o + 3], by = T[o + 4], bz = T[o + 5]
     const cx = T[o + 6], cy = T[o + 7], cz = T[o + 8]
-    // Angle solide du triangle vu du point (Van Oosterom & Strackee).
     const rax = ax - px, ray = ay - py, raz = az - pz
     const rbx = bx - px, rby = by - py, rbz = bz - pz
     const rcx = cx - px, rcy = cy - py, rcz = cz - pz
@@ -124,12 +101,9 @@ function shellDepth(T, px, py, pz) {
     const d = pointTri(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz)
     if (d < best) best = d
   }
-  // |enroulement| : une coque exportée à l'envers compte quand même.
   return Math.abs(wind) / (4 * Math.PI) > 0.5 ? Math.sqrt(best) : -Math.sqrt(best)
 }
 
-/** Carré de la distance d'un point à un triangle (Ericson, « Real-Time
- *  Collision Detection », 5.1.5). */
 function pointTri(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) {
   const abx = bx - ax, aby = by - ay, abz = bz - az
   const acx = cx - ax, acy = cy - ay, acz = cz - az
@@ -167,9 +141,6 @@ function pointTri(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) {
   return sq(px - (ax + abx * v + acx * w), py - (ay + aby * v + acy * w), pz - (az + abz * v + acz * w))
 }
 
-/** Les sommets distincts d'une bête, avec leur pivot : en ombrage plat, un
- *  même coin est répété par chaque face qui le touche, et se pose pareil.
- *  Mesurer chaque coin une fois ne change aucun résultat, seulement le temps. */
 export function uniqueVerts(geo) {
   const pos = geo.getAttribute('position')
   const piv = geo.getAttribute('aPivot')

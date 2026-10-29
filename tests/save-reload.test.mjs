@@ -1,16 +1,3 @@
-// Un lot de sauvegardes rechargé trois fois de suite : rien ne bouge, rien ne
-// disparaît. La re-QA de la PR #14 (v3.57.0, refusée le 2026-10-13) avait
-// trouvé à la main ce qu'aucun test ne voyait : le moulin de la graine 7 à
-// l'âge 10 quittait le plan au 2ᵉ chargement et ne revenait plus, et onze
-// villages sur vingt-quatre bougeaient encore au 2ᵉ chargement. Ce test refait
-// ce parcours à chaque `pnpm test`.
-//
-// Chaque sauvegarde est produite par une partie jouée âge par âge (le plan
-// s'accumule comme chez un joueur), parcelles comprises, puis relue par le
-// chemin de chargement du jeu (tests/save-play.mjs). Le hasard change à
-// chaque chargement, comme d'une session à l'autre : la stabilité ne doit pas
-// en dépendre.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -18,7 +5,6 @@ import { readFileSync } from 'node:fs'
 const { play, reload } = await import('./save-play.mjs')
 
 const r3 = (v) => Math.round(v * 1000) / 1000
-/** Ce qui ne doit plus bouger d'un chargement à l'autre, au millième. */
 function snapshot(game, village) {
   const s = game.save
   return {
@@ -34,12 +20,8 @@ function snapshot(game, village) {
   }
 }
 
-// Graines prises dans la re-QA de la PR #14 (7 : le moulin perdu ; 1337042 :
-// la vitrine du README ; 3333 : l'île la plus serrée), trois âges (avant le
-// moulin, Moyen Âge, fin de partie) et deux régimes de parcelles.
 const SEEDS = [7, 1_337_042, 3333]
 const AGES_ = [4, 7, 10]
-// 12 parcelles demandées : l'âge 4 n'en offre que 9, d'où l'étiquette réelle.
 const PARCELS = [0, 12]
 const CASES = SEEDS.flatMap((seed) => AGES_.flatMap((age) => PARCELS.map((parcels) => ({ seed, age, parcels }))))
 
@@ -48,8 +30,6 @@ test(`lot de ${CASES.length} sauvegardes : trois chargements, rien ne bouge ni n
   for (const { seed, age, parcels } of CASES) {
     const { saved: before, played } = play(seed, age, parcels)
     const tag = `graine ${seed} âge ${age} ${before.land.length} parcelles`
-    // La sauvegarde garde ce que la partie a écrit : savoirs, âge, reliques,
-    // outils et ressources (aucune absence n'est créditée, même instant).
     const kept = snapshot({ save: before }, null), wrote = snapshot({ save: { ...before, ...played } }, null)
     for (const k of ['techs', 'age', 'relics', 'tools', 'res'])
       if (JSON.stringify(kept[k]) !== JSON.stringify(wrote[k]))
@@ -58,14 +38,11 @@ test(`lot de ${CASES.length} sauvegardes : trois chargements, rien ne bouge ni n
     for (let n = 1; n <= 3; n++) {
       const { game, village } = reload(seed * 13 + n * 1009)
       const now = snapshot(game, village)
-      // Aucun bâtiment perdu ni gagné par rapport à la sauvegarde.
       const ids = (l) => l.map((p) => p.id).sort().join(',')
       if (ids(game.save.layout) !== ids(before.layout))
         faults.push(`${tag}, chargement ${n} : plan ${before.layout.length} → ${game.save.layout.length} (${ids(before.layout)} → ${ids(game.save.layout)})`)
       const ref = prev ?? snapshot({ save: before }, village)
       for (const k of Object.keys(now)) {
-        // La Merveille n'est pas dans la sauvegarde : seule sa constance entre
-        // chargements se compare.
         if (k === 'wonder' && !prev) continue
         const a = JSON.stringify(ref[k]), b = JSON.stringify(now[k])
         if (a !== b) faults.push(`${tag}, chargement ${n} : ${k} a changé\n    avant ${a}\n    après ${b}`)
@@ -81,15 +58,11 @@ test("l'ordre de load() suit buildWorld et placeGoods (src/main.ts)", () => {
   const body = src.slice(src.indexOf('function buildWorld('), src.indexOf('function surveyNodes('))
   const goods = src.slice(src.indexOf('function placeGoods('))
   const calls = (s) => [...s.matchAll(/village\.(setCargo|adoptLayout|adoptGoods|setWonder|sync|setRelics|setTools)\(|village\.goodsAvoid =|(?<!function )placeGoods\(\)|(?<!function )raiseWorld\(/g)].map((m) => m[1] ?? m[0])
-  // Le plan se lève dans `raiseWorld` (src/render/plan.ts, partagé avec les
-  // tests depuis la ceinture ferrée) : ses appels prennent la place du sien.
   const plan = readFileSync(new URL('../src/render/plan.ts', import.meta.url), 'utf8')
   const raise = plan.slice(plan.indexOf('export function raiseWorld('))
   const lifted = calls(raise.slice(0, raise.indexOf('\n}\n')))
   const world = calls(body).flatMap((c) => (c === 'raiseWorld(' ? lifted : [c]))
   const at = world.indexOf('placeGoods()')
   const order = [...world.slice(0, at), ...calls(goods.slice(0, goods.indexOf('\n}\n'))), ...world.slice(at + 1)]
-  // Un seul setWonder : `shownWonder()` choisit entre chantier et dernière
-  // Merveille achevée (deux branches dans main.ts avant la ceinture).
   assert.deepEqual(order, ['setCargo', 'adoptLayout', 'adoptGoods', 'setWonder', 'sync', 'setRelics', 'village.goodsAvoid =', 'setTools'])
 })

@@ -1,8 +1,3 @@
-// La boucle ferrée et ses voisins (incrément 2) : la rame ne touche jamais le
-// campement (critère repris du correctif A, PR #14 : 0,3 u de jour au moins),
-// et l'auto ne se trouve jamais sur la voie avec elle — elle attend avant la
-// barrière du passage à niveau, la rame ne s'arrête qu'en gare.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -23,10 +18,8 @@ const atAge = (age) =>
   new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
 const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
 const HEARTH = { x: -1.15, z: 1.15 }
-/** Demi-largeur d'une caisse au modèle (loco.glb : 0,83 u), à l'échelle. */
 const HALF_W = 0.42 * TRAIN_SCALE
 
-/** `n` parcelles posées à l'ancre par défaut, comme « Pose-la pour moi ». */
 function plots(seed, n) {
   const land = []
   for (let i = 0; i < n; i++) {
@@ -45,16 +38,11 @@ function village(seed, age, nPlots) {
   return v
 }
 
-/** Une partie jouée de l'âge 0 à `age`, rechargée à chaque âge comme le fait
- *  le jeu (plan, ceinture et rues gardés dans la sauvegarde) : c'est ainsi
- *  que la route du ponton de la graine 31337 longe la voie. */
 function played(seed, age, nPlots) {
   let save = { seed, age: 0, land: plots(seed, nPlots), layout: [], layoutV: 4, goods: null, belt: null, streets: null, wonderAt: null, museumAt: null }
   let v = null
   for (let a = 0; a <= age; a++) {
     save = { ...save, age: a }
-    // La Merveille de l'âge achevée, les reliques du musée : ils prennent
-    // leur place avant les rues.
     const wonder = a >= 1 && WONDER_BY_AGE.get(a) ? { age: a, stage: 4 } : null
     const relics = a >= 3 ? ['amphore', 'astrolabe'].slice(0, a >= 6 ? 2 : 1) : []
     const r = raiseWorld(save, { electric: a >= 8, yule: false, rates: { wood: 3, stone: 2, food: 1 }, ageChanged: a > 0, wonder, relics })
@@ -68,9 +56,6 @@ function played(seed, age, nPlots) {
   return v
 }
 
-/** La matière du campement, lue sur le mesh du foyer (arêtes des triangles
- *  qui dépassent le dallage, tous les 5 cm) : distance au point le plus
- *  proche. */
 function campMatter(v) {
   const fire = v.group.children.find((c) => c.isGroup && c.children.length >= 5)
   const g = fire.children[0].geometry
@@ -88,8 +73,6 @@ function campMatter(v) {
         pts.push(HEARTH.x + (P[a] + ((P[b] - P[a]) * s) / m) * 1.2, HEARTH.z + (P[a + 2] + ((P[b + 2] - P[a + 2]) * s) / m) * 1.2)
     }
   }
-  // Le campement tient dans un disque : un point loin de son centre est loin
-  // de sa matière (borne inférieure), on ne mesure finement que près de lui.
   let reach = 0
   for (let i = 0; i < pts.length; i += 2) reach = Math.max(reach, Math.hypot(pts[i] - HEARTH.x, pts[i + 1] - HEARTH.z))
   return (x, z) => {
@@ -101,14 +84,12 @@ function campMatter(v) {
   }
 }
 
-/** Les quatre coins d'un rectangle orienté (avant = (sin, cos) du cap). */
 function corners(c, yaw, hl, hw) {
   const s = Math.sin(yaw)
   const co = Math.cos(yaw)
   return [[hl, hw], [hl, -hw], [-hl, -hw], [-hl, hw]].map(([l, w]) => ({ x: c.x + s * l + co * w, z: c.z + co * l - s * w }))
 }
 
-/** Deux rectangles convexes se recouvrent-ils (axes séparateurs) ? */
 function overlap(A, B) {
   for (const P of [A, B])
     for (let i = 0; i < 4; i++) {
@@ -148,9 +129,6 @@ test('la rame longe le campement à 0,3 u au moins, sur tout le tour (âges 7 et
 })
 
 test('l’auto et la rame ne se recouvrent jamais : l’auto attend à la barrière', () => {
-  // Graines et parcelles où les premières versions de la zone d'attente
-  // laissaient l'auto sur la voie : route en biais (5 et 99), route qui longe
-  // la voie après la traversée (31337, partie jouée) ; et une graine ordinaire.
   for (const [seed, nPlots, play] of [[5, 6], [99, 6], [5, 12], [31337, 12, true], [42, 0]]) {
     const v = play ? played(seed, 8, nPlots) : village(seed, 8, nPlots)
     assert.ok(v.train && v.car, `graine ${seed} : rame et auto`)
@@ -158,19 +136,16 @@ test('l’auto et la rame ne se recouvrent jamais : l’auto attend à la barri�
     const mesh = v.car.children[0]
     mesh.geometry.computeBoundingBox()
     const box = mesh.geometry.boundingBox
-    // La caisse à sa taille de jeu : le mesh est mis à l'échelle (3.66).
     const hl = ((box.max.x - box.min.x) / 2) * mesh.scale.x
     const hw = ((box.max.z - box.min.z) / 2) * mesh.scale.z
     let hits = 0
     let waits = 0
     let prev = null
-    // Trois tours de rame et autant d'allers-retours de l'auto.
     for (let f = 0; f < 3 * 60 * (v.beltLength / 2.2 + 5); f++) {
       v.tickTrain(1 / 60)
       v.tickCar(1 / 60)
       const p = v.car.position
       const yaw = v.car.rotation.y
-      // Le capot est l'axe +X local de l'auto (headingYaw).
       const co = Math.cos(yaw)
       const si = Math.sin(yaw)
       const car = [[hl, hw], [hl, -hw], [-hl, -hw], [-hl, hw]].map(([lx, lz]) => ({ x: p.x + co * lx + si * lz, z: p.z - si * lx + co * lz }))
@@ -183,7 +158,6 @@ test('l’auto et la rame ne se recouvrent jamais : l’auto attend à la barri�
   }
 })
 
-/** Le hasard de la faune rejoué à l'identique (mulberry32). */
 function seeded(seed, fn) {
   const random = Math.random
   let a = seed >>> 0
@@ -202,9 +176,6 @@ function seeded(seed, fn) {
 }
 
 test('comme en jeu (faune, cadastre, auto calée) : enclos hors de la voie, auto jamais sous la rame, rame à quai au-delà de la traversée', () => {
-  // Avant ce correctif, sur la graine 42 à douze parcelles, l'enclos coupait
-  // la route au milieu du passage à niveau : la portion de l'auto finissait
-  // sur la voie, où elle marquait ses cinq secondes d'arrêt sous la rame.
   for (const [seed, nPlots, age] of [[42, 12, 8], [42, 0, 10], [99, 12, 8], [5, 6, 10], [31337, 12, 8]]) {
     const label = `graine ${seed}, ${nPlots} parcelles, âge ${age}`
     const v = played(seed, age, nPlots)
@@ -217,7 +188,6 @@ test('comme en jeu (faune, cadastre, auto calée) : enclos hors de la voie, auto
     const ground = new Ground(v.island, [v, fauna])
     v.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
     for (let i = 0; i < 3 && ground.refresh(); i++) v.fitMovers((x, z) => ground.clearAt(x, z), [fauna])
-    // La palissade et le poulailler hors du gabarit de la rame (0,72 u).
     for (const f of fauna.groundFootprints()) {
       const k = f.scale ?? 1
       const P = f.geo ? f.geo.getAttribute('position').array : f.tris

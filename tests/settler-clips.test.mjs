@@ -1,7 +1,3 @@
-// Les gestes du colon animés dans Blender (v3.69.0, la cueillette) : le
-// contrat des deux glb, le sol, l'impact, la continuité, le panier qui se
-// remplit, et le repli sans modèles.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, statSync } from 'node:fs'
@@ -21,20 +17,16 @@ const island = new Island(7, 0, [])
 const S = RIG.scale
 const DT = 1 / 60
 
-/** Glb → JSON, pour lire ce que le fichier promet (pas ce que le lecteur en fait). */
 function gltf(name) {
   const b = readFileSync(file(name))
   return JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'))
 }
 
-/** Les rotations des dix nœuds, pour mesurer un saut d'une image à l'autre. */
 function quats(s) {
   return CLIPS.NODES.map((n) => s[n].quaternion.clone())
 }
 const jump = (a, b) => Math.max(...a.map((q, i) => q.angleTo(b[i])))
 
-/** Un colon posé à côté d'un buisson, envoyé dessus : il arrive en quelques
- *  images et se met au travail. */
 function settlerAt(clip) {
   const s = new Settler(island)
   s.setTool(clip === 'gather_scythe' ? 'scythe' : clip === 'gather_sickle' ? 'sickle' : 'hand', 0)
@@ -44,7 +36,6 @@ function settlerAt(clip) {
   return s
 }
 
-/** Avance jusqu'à ce que `until` soit vrai (ou lève une erreur). */
 function run(s, until, max = 4000, each = () => {}) {
   for (let i = 0; i < max; i++) {
     s.update(DT, 1)
@@ -53,8 +44,6 @@ function run(s, until, max = 4000, each = () => {}) {
   }
   throw new Error('jamais atteint')
 }
-
-// ── Le repli d'abord, avant toute adoption : le colon naît sans modèles ──────
 
 test('repli : sans glb chargé, le geste procédural joue et rien ne lève d’exception', () => {
   assert.equal(CLIPS.settlerClip('gather_hand'), null)
@@ -91,10 +80,8 @@ test('contrat : les nœuds, les pivots de settler-rig.json, les clips et leurs �
     const names = clip.events.map((e) => e.name)
     for (const ev of ['strike', 'fill', 'loop_in', 'loop_out']) assert.ok(names.includes(ev), `${name} : événement ${ev}`)
     assert.ok(g.animations.find((a) => a.name === name).samplers.every((s) => s.interpolation === 'LINEAR'))
-    // Trois crans à remplir : le panier passe par vide, un tiers, deux tiers, plein.
     assert.equal(clip.timeline.filter((e) => e.name === 'fill').length, 3, `${name} : trois « fill » par travail`)
   }
-  // Budgets de la spec (§5) : poids des fichiers, triangles par outil.
   assert.ok(statSync(file('settler-clips.glb')).size <= 60 * 1024, 'settler-clips.glb ≤ 60 Ko')
   assert.ok(statSync(file('settler-tools.glb')).size <= 40 * 1024, 'settler-tools.glb ≤ 40 Ko')
   const tris = (geo) => geo.index.count / 3
@@ -129,7 +116,6 @@ test('lecture : boucles dépliées, événements franchis une seule fois', () =>
   let strikes = 0
   for (let e = 0; e < clip.length; e += DT) strikes += CLIPS.eventsBetween(clip, e, e + DT).filter((x) => x.name === 'strike').length
   assert.equal(strikes, 6, 'deux picorages par boucle, trois boucles')
-  // La boucle se referme sur elle-même : pas de saut au retour à loop_in.
   for (const name of CLIPS.CLIP_NAMES) {
     const c = CLIPS.settlerClip(name)
     const a = CLIPS.sampleClip(c, c.loopIn, CLIPS.newPose())
@@ -152,7 +138,6 @@ test('sol : aucun pied sous le sol, aucun pied qui glisse pendant un geste', () 
       first ??= f
       for (let k = 0; k < 2; k++) {
         assert.ok(f[k].y >= -0.02, `${name} t=${t.toFixed(2)} : pied ${f[k].y.toFixed(3)} sous le sol`)
-        // Ces gestes ne prévoient pas de pas : le pied reste où il s'est posé.
         const slide = Math.hypot(f[k].x - first[k].x, f[k].z - first[k].z)
         assert.ok(slide <= 0.02, `${name} t=${t.toFixed(2)} : pied qui glisse de ${slide.toFixed(3)} u`)
       }
@@ -161,8 +146,6 @@ test('sol : aucun pied sous le sol, aucun pied qui glisse pendant un geste', () 
 })
 
 test('impact : à chaque coup, le bout de l’outil est dans le buisson, à mi-hauteur', () => {
-  // island.ts, addBushes : centre à 0,22·s au-dessus du sol, s de 1,05 à
-  // 1,575 ; mi-hauteur ≈ 0,29 u.
   const MID = 0.22 * ((1.05 + 1.575) / 2)
   const s = new Settler(island)
   const o = s.group.position.clone()
@@ -179,15 +162,12 @@ test('impact : à chaque coup, le bout de l’outil est dans le buisson, à mi-h
   }
 })
 
-/** La plus grande rotation d'un membre entre deux instants du clip (temps de
- *  jeu, boucles dépliées) : ce que le geste parcourt de lui-même. */
 function clipOwn(clip, e0, e1) {
   const a = CLIPS.sampleClip(clip, CLIPS.clipTime(clip, e0), CLIPS.newPose())
   const b = CLIPS.sampleClip(clip, CLIPS.clipTime(clip, e1), CLIPS.newPose())
   return Math.max(...CLIPS.NODES.map((n) => a[n].q.angleTo(b[n].q)))
 }
 
-/** La plus grande rotation d'un membre en une image de marche, sans geste. */
 function walkOwn() {
   const s = new Settler(island)
   s.group.position.set(-6, s.group.position.y, -6)
@@ -204,16 +184,9 @@ function walkOwn() {
   return most
 }
 
-// Le fondu ajoute au plus ça par image à ce que le geste ou la marche font
-// d'eux-mêmes : 1,6 rad/s lissé (≤ 0,04 rad à 60 i/s), plus une marge.
 const FADE_SLACK = 0.05
 
-/** Suit `s` image par image et vérifie, sur TOUT fondu (entrée et sortie) et
- *  les 30 images qui suivent, que le saut d'un membre reste dans ce que le
- *  geste (ou la marche) parcourt de lui-même + FADE_SLACK. Rend le nombre
- *  d'images de fondu vues, pour s'assurer que le contrôle n'est pas vide. */
 function watchFades(s, label, frames, until, WALK, shown = quats(s)) {
-  // `shown` : la dernière pose rendue (avant une interruption, celle du geste).
   let prev = shown
   let after = 0
   let fading = 0
@@ -228,8 +201,6 @@ function watchFades(s, label, frames, until, WALK, shown = quats(s)) {
       fading++
       after = 30
     } else if (after > 0) after--
-    // L'arrivée au feu (dépôt) et le coucher sont des poses procédurales
-    // d'avant cette PR, sans fondu : hors du contrôle.
     const watched = (fadeIn || fadeOut || after > 0) && s.phase !== 'deposit' && phase0 !== 'deposit' && !s.isSleeping
     if (watched) {
       const own = s.play && e0 !== null ? clipOwn(s.play.clip, e0, s.play.e) : WALK
@@ -246,7 +217,6 @@ test('continuité : entrée, sortie, fête, nuit et départ en expédition sans 
   const WALK = walkOwn()
   assert.ok(WALK > 0.02 && WALK < 0.2, `marche : ${WALK.toFixed(3)} rad par image`)
   for (const name of CLIPS.CLIP_NAMES) {
-    // Un cycle complet : marche, geste, retour, dépôt.
     const s = settlerAt(name)
     const crossed = []
     let phase = s.phase
@@ -257,7 +227,6 @@ test('continuité : entrée, sortie, fête, nuit et départ en expédition sans 
     }, WALK)
     assert.deepEqual(crossed, ['walkOut→work', 'work→walkHome', 'walkHome→deposit'])
     assert.ok(fading >= 2 * 9, `${name} : ${fading} images de fondu vues (entrée + sortie ≥ 0,15 s chacune)`)
-    // Les interruptions en plein geste.
     for (const cut of ['celebrate', 'night', 'expedition']) {
       const t = settlerAt(name)
       run(t, () => t.phase === 'work' && t.play && t.play.e > 1.2)
@@ -268,7 +237,6 @@ test('continuité : entrée, sortie, fête, nuit et départ en expédition sans 
       const seen = watchFades(t, `${name} ${cut}`, 240, null, WALK, shown)
       assert.ok(seen >= 9, `${name} ${cut} : ${seen} images de fondu vues`)
     }
-    // wake() en plein geste : debout, pose de repos exacte.
     const w = settlerAt(name)
     run(w, () => w.phase === 'work' && w.play && w.play.e > 1)
     w.wake()
@@ -327,7 +295,6 @@ test('réussite : le panier passe ses quatre crans pendant le travail, reste ple
     assert.equal(s.carry.visible, true, `${name} : plein et visible au retour`)
     run(s, () => s.phase === 'deposit', 6000, () => s.phase === 'walkHome' && assert.equal(s.carry.level, 3, `${name} : plein pendant tout le retour`))
     assert.equal(s.carry.level, 0, `${name} : vidé au dépôt`)
-    // Le panier vide reste à la main ; la gerbe vide n'existe pas.
     assert.equal(s.carry.visible, name === 'gather_hand')
   }
 })

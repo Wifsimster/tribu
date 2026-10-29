@@ -1,10 +1,3 @@
-// Aucun son de public/audio ne doit être quasi muet. Un fichier silencieux se
-// charge et se décode sans erreur : le jeu coupe alors son repli synthétisé et
-// joue… du silence (c'est arrivé : oiseaux.mp3 à -91 dB jusqu'à la 3.61.0).
-// La mesure passe par ffmpeg (volumedetect), déjà requis par tools/. Sans
-// ffmpeg, le test est sauté en local ; en CI il échoue, pour ne jamais passer
-// en silence.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync } from 'node:fs'
@@ -14,9 +7,7 @@ import { fileURLToPath } from 'node:url'
 const dir = fileURLToPath(new URL('../public/audio/', import.meta.url))
 const sounds = readdirSync(dir).filter((f) => f.endsWith('.mp3')).sort()
 
-/** Sonie moyenne en dBFS. */
 function meanVolume(file) {
-  // volumedetect écrit sa mesure sur stderr.
   const r = spawnSync('ffmpeg', ['-nostats', '-hide_banner', '-i', file, '-af', 'volumedetect', '-f', 'null', '-'], {
     encoding: 'utf8',
   })

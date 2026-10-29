@@ -1,6 +1,3 @@
-// Tout savoir nommé en dur doit exister dans content.ts : `knows('farming')`
-// compile et renvoie false pour toujours, sans un mot.
-//   npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'

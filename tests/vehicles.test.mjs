@@ -1,7 +1,3 @@
-// Les dix véhicules Blender, et le cap qu'on leur donne.
-// En v3.55.0, mesuré en jeu : l'auto, la barque marchande et la barque
-// d'expédition avançaient proue à 180° de leur route, l'avion nez à 90°.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -14,7 +10,6 @@ const { headingYaw, vehicleGeometry, BOAT_MODELS } = await import('../src/render
 const { adoptModel } = await import('../src/render/models.ts')
 const { asPart } = await import('../src/render/model-geo.ts')
 
-/** Nom, triangles, et boîte englobante livrée (base à 0, centré en x/z). */
 const VEHICLES = [
   ['raft', 276, [1.296, 1.39, 1.57]],
   ['canoe', 218, [2.4, 1.121, 0.74]],
@@ -38,7 +33,6 @@ async function load(name) {
   return geo
 }
 
-/** La direction, en monde, du +X local d'un objet tourné de `yaw`. */
 function nose(yaw) {
   const o = new Object3D()
   o.rotation.y = yaw
@@ -58,7 +52,6 @@ test('headingYaw met le nez (+X local) dans le sens de la route, dans toutes les
 })
 
 test("l'ancienne règle (atan2 + π/2) envoyait bien la proue à reculons", () => {
-  // Garde-fou : si quelqu'un remet « + π/2 », ce test dit pourquoi c'est faux.
   const n = nose(Math.atan2(1, 0) + Math.PI / 2)
   assert.ok(n.x < -0.9999, 'route +X, proue vers −X')
 })
@@ -80,7 +73,6 @@ for (const [name, tris, size] of VEHICLES) {
 }
 
 test('sans modèle, vehicleGeometry rend null : la primitive reste', () => {
-  // Rien n'a encore été adopté pour l'avion dans ce processus.
   assert.equal(vehicleGeometry('plane'), null)
 })
 
@@ -88,9 +80,7 @@ test('la barque marchande ne prend pas deux fois son ×1,5', async () => {
   assert.ok(adoptModel('merchant', await load('merchant')))
   const g = vehicleGeometry('merchant', 1.5)
   g.computeBoundingBox()
-  // Dans le groupe ×1,5, la longueur en monde reste celle du fichier (4,29).
   assert.ok(Math.abs((g.boundingBox.max.x - g.boundingBox.min.x) * 1.5 - 4.286) < 0.01)
-  // Et la vergue retombe au-dessus de la voile, à 2,88–2,96 en monde.
   assert.ok(Math.abs(g.boundingBox.min.y * 1.5 - 0.04) < 1e-3)
 })
 

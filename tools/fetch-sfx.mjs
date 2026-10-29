@@ -1,30 +1,4 @@
 #!/usr/bin/env node
-/**
- * fetch-sfx.mjs — les sons de Tribu, gratuitement et sans risque de licence.
- *
- * POURQUOI PAS DE GÉNÉRATION IA : les modèles hébergés (ElevenLabs et
- * consorts) ne donnent la licence commerciale qu'à partir d'un plan payant,
- * et les modèles ouverts qui tourneraient ici sont soit non commerciaux
- * (AudioGen, AudioLDM 2), soit trop lourds pour cette machine sans GPU.
- * Une banque CC0 donne un meilleur résultat, pour zéro euro et zéro doute :
- * le CC0 est un abandon de droits, il n'y a rien à respecter ensuite.
- *
- * Source : Freesound, filtré sur `license:"Creative Commons 0"`. La clé API
- * est gratuite (simple inscription, aucun moyen de paiement) :
- *   https://freesound.org/apiv2/apply/
- *
- * Sans clé du tout : Kenney (kenney.nl, tout en CC0) et les bundles GDC de
- * Sonniss (libres de droits) se téléchargent à la main — voir --sources.
- *
- *   node tools/fetch-sfx.mjs --dry-run
- *   FREESOUND_API_KEY=... node tools/fetch-sfx.mjs
- *   FREESOUND_API_KEY=... node tools/fetch-sfx.mjs --only=toc,carillon --force
- *
- * Chaque son est post-traité par ffmpeg : les nappes deviennent des BOUCLES
- * SANS COUTURE (la queue est fondue sur la tête), les sons d'interaction sont
- * détourés et normalisés. Tout atterrit dans public/audio/, avec un
- * CREDITS.md qui trace l'origine de chaque fichier.
- */
 import { mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,22 +12,15 @@ const OUT = join(ROOT, 'public', 'audio')
 const TMP = '/tmp/tribu-sfx'
 const API = 'https://freesound.org/apiv2/search/text/'
 
-/** Une nappe : longue, bouclée, jouée en fond. Un débit modeste suffit, et
- *  chaque kilo-octet se paie au chargement de la PWA.
- *  Un son d'interaction : court, au premier plan, plus de définition. */
 const BED = { rate: 22050, bitrate: '32k' }
 const SHOT = { rate: 44100, bitrate: '96k' }
-/** Durée du fondu tête/queue qui rend une nappe bouclable. */
 const CROSSFADE = 1.5
 
 const SOUNDS = [
-  // ── Nappes ──────────────────────────────────────────────────────────────
   { id: 'mer', kind: 'bed', seconds: 12, query: 'calm sea waves small shore', dur: [10, 90] },
   { id: 'feu', kind: 'bed', seconds: 10, query: 'campfire crackling close', dur: [8, 90] },
   { id: 'pluie', kind: 'bed', seconds: 12, query: 'light rain leaves no thunder', dur: [10, 90] },
-  // `nuit` et `oiseaux` : prises épinglées et vérifiées, voir tools/fetch-cc-sfx.mjs.
   { id: 'bourdon', kind: 'bed', seconds: 8, query: 'electric hum lamp buzz', dur: [5, 60] },
-  // ── Sons d'interaction ──────────────────────────────────────────────────
   { id: 'toc', kind: 'shot', seconds: 1, query: 'knock wood single', dur: [0.2, 3] },
   { id: 'carillon', kind: 'shot', seconds: 2, query: 'soft chime bell single', dur: [0.3, 5] },
   { id: 'piece', kind: 'shot', seconds: 1.2, query: 'coins clink small', dur: [0.2, 4] },
@@ -104,9 +71,6 @@ if (!key) {
 await mkdir(OUT, { recursive: true })
 await mkdir(TMP, { recursive: true })
 
-/** Le meilleur candidat CC0 : on trie par téléchargements — sur Freesound
- *  c'est le signal de qualité le plus fiable, la note moyenne étant souvent
- *  portée par deux votes. */
 async function pick(s) {
   const url = new URL(API)
   url.searchParams.set('query', s.query)
@@ -124,9 +88,6 @@ async function pick(s) {
   return json.results?.[0] ?? null
 }
 
-/** Post-traitement. Une nappe est bouclée en fondant sa tête sur sa queue :
- *  le fichier obtenu se rejoue à l'infini sans clic. Un son d'interaction est
- *  détouré (silence de tête coupé) puis normalisé. */
 async function postProcess(inFile, outFile, s) {
   const p = s.kind === 'bed' ? BED : SHOT
   if (s.kind === 'bed') {
@@ -189,8 +150,6 @@ for (const s of wanted) {
   }
 }
 
-// Fusion, jamais réécriture : les autres sons du dossier (Commons, ElevenLabs,
-// ou sautés par --only) gardent leur ligne.
 if (Object.keys(credits).length > 0) {
   const file = join(OUT, 'CREDITS.md')
   const existing = await readFile(file, 'utf8').catch(() => null)

@@ -1,9 +1,3 @@
-// Le phare et la boucle ferrée. Sa place est entre la voie et la mer ; sur un
-// cap trop étroit pour son socle (3,9 u exigés de l'axe, 2,6 à 3,4 u
-// disponibles), il passe côté terre, contre la voie, sur le cap (plan de
-// l'île organique, risques de l'incrément 2). Avant ce repli, il était reposé
-// dans le bourg : 69 phares sur 104 sauvegardes 3.62 finissaient dans l'île.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -22,7 +16,6 @@ const atAge = (age) =>
   new Set(TECHS.filter((t) => t.age <= age).flatMap((t) => t.effects.filter((e) => e.kind === 'building').map((e) => e.building)))
 const tools = (age) => TOOLS.filter((t) => t.age <= age).map((t) => t.id)
 
-/** Un plan v3, posé comme le posait la 3.61 (île de base 1,45, sans ceinture). */
 function v3(seed, age, land = []) {
   const island = new Island(seed, age, land, BASE_GROWTH)
   const v = new Village(island, age, age >= 8, false, { legacy: true })
@@ -33,7 +26,6 @@ function v3(seed, age, land = []) {
   return { seed, age, land, layout: v.layout, layoutV: 3, goods: v.goodsAt, belt: null, streets: null, wonderAt: null, museumAt: null }
 }
 
-/** Un chargement, comme `buildWorld` (main.ts). */
 function load(save, ageChanged = false) {
   const r = raiseWorld(save, {
     electric: save.age >= 8, yule: false, rates: { wood: 2, stone: 1 }, ageChanged,
@@ -48,7 +40,6 @@ function load(save, ageChanged = false) {
 }
 
 const KINDS = ['foret', 'carriere', 'prairie', 'roseliere', 'crique', 'affleurement']
-/** `n` parcelles posées à l'ancre par défaut, comme « Pose-la pour moi ». */
 function plots(seed, n) {
   const land = []
   for (let i = 0; i < n; i++) {
@@ -59,9 +50,6 @@ function plots(seed, n) {
   return land
 }
 
-/** Le phare tient sa place : sur la côte (au-delà de la voie) ou contre la
- *  voie côté terre, à CAPE_REACH au plus de l'axe ; jamais sur la voie, la
- *  route, le passage à niveau ni un voisin ; sur la terre. */
 function checkLighthouse(v, label) {
   const p = v.layout.find((q) => q.id === 'lighthouse')
   assert.ok(p, `${label} : phare perdu`)
@@ -84,10 +72,6 @@ function checkLighthouse(v, label) {
 
 test('grand tracé : le phare rejoint la côte, ou la voie côté terre sur le cap ; stable sur trois chargements', () => {
   const seen = { côte: 0, voie: 0 }
-  // Graines où le repli d'avant posait le phare dans le bourg (sauvegardes
-  // 3.62 générées, phare.mjs) et graines ordinaires.
-  // Graine 1 337 042 à douze parcelles : posé sur la côte, le socle touchait
-  // la barrière du passage à niveau.
   const cases = [1_337_042, 42, 2024, 5, 99].flatMap((seed) => [[seed, 7, 0], [seed, 10, 0]]).concat([[1_337_042, 7, 12], [1_337_042, 8, 12]])
   for (const [seed, age, n] of cases) {
     {
@@ -101,15 +85,10 @@ test('grand tracé : le phare rejoint la côte, ou la voie côté terre sur le c
       assert.equal(key(l3), key(l2), `${label} : le phare bouge au 3e chargement`)
     }
   }
-  // Le repli côté terre sert vraiment : sur ces graines, la bande est trop
-  // étroite au moins une fois.
   assert.ok(seen.voie > 0, `aucun phare contre la voie (${JSON.stringify(seen)})`)
 })
 
 test('partie neuve : à l’âge 7, la mer recule et le phare quitte les terres', () => {
-  // Graine 31337 à six parcelles : le phare des terres rendait sa place
-  // avant d'en trouver une autre, le moulin reposé s'y posait, et le phare,
-  // resté là faute de cap, le touchait.
   for (const [seed, n] of [[42, 0], [99, 0], [5, 0], [31337, 6]]) {
     let save = { seed, age: 0, land: plots(seed, n), layout: [], layoutV: 4, goods: null, belt: null, streets: null, wonderAt: null, museumAt: null }
     for (let a = 0; a <= 8; a++) {
@@ -124,7 +103,6 @@ test('partie neuve : à l’âge 7, la mer recule et le phare quitte les terres'
           assert.ok(gap >= Village.ALLEY - 1e-6, `graine ${seed}, âge ${a} : deux bâtiments à ${gap.toFixed(2)} u`)
         }
     }
-    // Rechargé à l'âge 8 : le phare ne bouge plus.
     const again = load(save)
     assert.deepEqual(again.save.layout.find((q) => q.id === 'lighthouse'), save.layout.find((q) => q.id === 'lighthouse'), `graine ${seed}`)
   }

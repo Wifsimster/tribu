@@ -1,25 +1,5 @@
 import { BufferAttribute, BufferGeometry } from 'three'
 
-/** Un maillage venu de Blender, mis au format des pièces du village.
- *
- *  Le village fond tout son bâti en une seule géométrie, et la fusion refuse le
- *  lot entier dès qu'un attribut diverge : il faut donc exactement ce que
- *  sortent les primitives de three passées par `part()` — position, normale,
- *  uv, et une couleur en flottants RGB. Le glTF, lui, livre ses couleurs en
- *  octets RGBA normalisés et pas d'uv. Les couleurs sont déjà linéaires (c'est
- *  la norme glTF), comme celles des `Color` du village : aucune conversion.
- *
- *  `stage` : les Merveilles portent un attribut `_STAGE` (que le chargeur
- *  glTF renomme `_stage`) — le stade de chantier, 0 à 4, à partir duquel
- *  chaque pièce apparaît. Au stade s on garde les triangles dont les trois
- *  sommets ont `_stage <= s` : UN fichier pour les cinq stades, au lieu de
- *  cinq téléchargements. Sans l'attribut, ou sans stade demandé, tout reste.
- *  Les sommets que plus aucun triangle n'utilise sont retirés : la mesure de
- *  hauteur et d'emprise porte sur ce qui se voit vraiment.
- *
- *  Renvoie null si le maillage n'a pas de quoi être dessiné : l'appelant garde
- *  sa primitive. Module sans import d'asset, pour que les tests le chargent en
- *  Node. */
 export function asPart(source: BufferGeometry, stage = Infinity): BufferGeometry | null {
   const pos = source.getAttribute('position')
   const nor = source.getAttribute('normal')
@@ -28,7 +8,6 @@ export function asPart(source: BufferGeometry, stage = Infinity): BufferGeometry
   const st = source.getAttribute('_stage')
   const n = pos.count
 
-  // Les triangles, indexés ou non : un glTF sans index en a quand même.
   const all = source.index ? Array.from(source.index.array) : Array.from({ length: n }, (_, i) => i)
   let tris = all
   if (st && Number.isFinite(stage)) {
@@ -42,7 +21,6 @@ export function asPart(source: BufferGeometry, stage = Infinity): BufferGeometry
   }
   if (tris.length === 0) return null
 
-  // Ne garder que les sommets utilisés, dans leur ordre d'apparition.
   const remap = new Int32Array(n).fill(-1)
   const used: number[] = []
   const index = tris.map((v) => {
@@ -65,8 +43,6 @@ export function asPart(source: BufferGeometry, stage = Infinity): BufferGeometry
     q[k * 3] = nor.getX(i)
     q[k * 3 + 1] = nor.getY(i)
     q[k * 3 + 2] = nor.getZ(i)
-    // getX/Y/Z dénormalisent les octets : on récupère des 0–1. Sans couleur, un
-    // gris clair plutôt qu'un noir qui ferait un trou dans la vitrine.
     rgb[k * 3] = col ? col.getX(i) : 0.8
     rgb[k * 3 + 1] = col ? col.getY(i) : 0.8
     rgb[k * 3 + 2] = col ? col.getZ(i) : 0.8
@@ -74,24 +50,18 @@ export function asPart(source: BufferGeometry, stage = Infinity): BufferGeometry
   const geo = new BufferGeometry()
   geo.setAttribute('position', new BufferAttribute(p, 3))
   geo.setAttribute('normal', new BufferAttribute(q, 3))
-  // Une uv nulle : le matériau toon n'en lit aucune, mais la fusion l'exige.
   geo.setAttribute('uv', new BufferAttribute(new Float32Array(m * 2), 2))
   geo.setAttribute('color', new BufferAttribute(rgb, 3))
-  // Toujours indexé : la fusion du village veut tout indexé ou rien, et les
-  // primitives de part() le sont.
   geo.setIndex(index)
   return geo
 }
 
-/** Hauteur du maillage, base comprise. Les modèles sont livrés base à y = 0. */
 export function heightOf(geo: BufferGeometry): number {
   geo.computeBoundingBox()
   const b = geo.boundingBox
   return b ? b.max.y - b.min.y : 0
 }
 
-/** Demi-côté du carré, centré sur l'axe, qui contient le maillage en plan :
- *  c'est ce qui doit tenir entre les perches d'échafaudage. */
 export function halfSpanOf(geo: BufferGeometry): number {
   geo.computeBoundingBox()
   const b = geo.boundingBox

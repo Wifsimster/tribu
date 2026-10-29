@@ -1,18 +1,3 @@
-# Pont entre le serveur (le dépôt) et le Blender ouvert du poste « PC fixe »,
-# piloté par MCP (blender_execute_blender_code). Blender ne tourne pas sur le
-# serveur, et le transfert de fichiers par OpenClaw (file_fetch/file_write)
-# est refusé vers ce poste : on passe par HTTP sur le réseau privé.
-#
-# Côté serveur, un petit serveur HTTP (hors dépôt, jeton aléatoire) sert les
-# fichiers du dépôt et reçoit les glb :
-#   GET  <BASE>/<nom>  → le fichier demandé (scripts, settler-rig.json, proxy)
-#   PUT  <BASE>/<nom>  → reçu dans un dossier d'arrivée ; la réponse est le
-#                        sha256 de ce qui a été reçu.
-# Côté Blender, on envoie ce fichier tel quel par blender_execute_blender_code,
-# précédé de `BASE = '<url du serveur>/<jeton>/'`. Il rapatrie le dépôt
-# minimal, lance build_settler.run, renvoie les glb et compare les sha256 des
-# deux côtés.
-
 import hashlib
 import json
 import os

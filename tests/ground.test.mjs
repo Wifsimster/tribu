@@ -1,10 +1,3 @@
-// Le cadastre au sol (v3.58.0) : colon, villageois et faune contournent ce qui
-// est posé. L'audit des collisions du 2026-10-13 a vu le colon traverser les
-// bâtiments dans 42 parties sur 48, les poules la Merveille, le cheval entrer
-// dans l'eau. Chaque test mesure contre la GÉOMÉTRIE posée (les triangles des
-// ateliers, de la Merveille, du musée, du campement), indépendamment de la
-// grille du cadastre : une erreur de rastérisation ne passerait pas.
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Vector3 } from 'three'
@@ -56,9 +49,6 @@ function town(seed, age) {
   return { island, village, settler, fauna, villagers, ground }
 }
 
-/** Les triangles du bâti tels qu'ils sont dessinés, projetés en plan : seuls
- *  ceux qui dépassent le genou (0,12 u, le seuil de l'audit). Rangés dans une
- *  grille de 1 u pour interroger vite. */
 function solids(v) {
   const tris = []
   const add = (geo, ox = 0, oz = 0, k = 1, minY = GROUND_Y + 0.12) => {
@@ -107,7 +97,6 @@ test('le colon ne traverse aucun bâtiment ni abri pour aller travailler', () =>
     const w = town(seed, age)
     const inside = solids(w.village)
     seeded(seed)
-    // Des cibles de l'autre côté du bourg : ressources réelles de l'île.
     const spots = []
     for (const m of w.island.pickables)
       for (let i = 0; i < m.count; i += 3) if (!w.island.isFelled(m, i)) spots.push(w.island.instancePosition(m, i))
@@ -185,14 +174,12 @@ test('une emprise posée en cours de partie refait le cadastre et en chasse le c
   const w = town(42, 2)
   const r0 = w.ground.revision
   assert.equal(w.ground.refresh(), false, 'rien de neuf : pas de reconstruction')
-  // Le quai du marchand s'installe : la carte change à l'image suivante.
   w.village.setTools(['etain', 'sel'])
   const g = w.village.goodsAt
   assert.ok(g, 'le quai est posé')
   assert.equal(w.ground.refresh(), true)
   assert.ok(w.ground.revision > r0)
   assert.ok(w.ground.clearAt(g.x, g.z) < 0, 'le centre du quai est plein')
-  // Le colon qui s'y trouvait en sort au premier pas, sans le traverser.
   w.settler.group.position.set(g.x, GROUND_Y, g.z)
   w.settler.sendTo(new Vector3(HEARTH.x + 1.8, 0, HEARTH.z))
   w.settler.update(1 / 60, 1)
@@ -204,7 +191,6 @@ test('un chemin contourne un obstacle au lieu de le traverser', () => {
   const w = town(42, 7)
   const v = w.village
   const pl = v.layout.find((p) => p.id === 'forge') ?? v.layout[0]
-  // De part et d'autre du bâtiment, à 3 u de son centre.
   const a = { x: pl.x - 3, z: pl.z }
   const b = { x: pl.x + 3, z: pl.z }
   const A = w.ground.nearestFree(a.x, a.z, 0.3, 4)
@@ -221,11 +207,6 @@ test('un chemin contourne un obstacle au lieu de le traverser', () => {
 })
 
 test("un villageois dont le chemin devient impossible après une pose ne traverse pas la nouvelle emprise", () => {
-  // Défaut relevé par la QA de la PR #15 : `settle()` ignorait l'échec de
-  // `plan()`, et l'ancien chemin, tracé avant la pose, menait à travers le
-  // nouveau quai (jusqu'à 40 s dedans). Ici, le chemin d'avant la pose passe
-  // par le centre du futur quai, et la replanification qui suit la pose
-  // échoue (cible devenue inaccessible) : il doit lâcher l'ancien chemin.
   const w = town(42, 2)
   w.village.setTools(['etain', 'sel'])
   const g = w.village.goodsAt
@@ -235,7 +216,6 @@ test("un villageois dont le chemin devient impossible après une pose ne travers
   const s = w.villagers.souls[0]
   const a = w.ground.nearestFree(g.x + 3, g.z, 0.25, 3)
   assert.ok(a, 'un départ libre devant le quai')
-  // Une première image sur l'ancienne carte : le cadastre est lu.
   s.home = false
   w.villagers.update(1 / 60, 0, false, false)
   s.x = a.x
@@ -244,7 +224,6 @@ test("un villageois dont le chemin devient impossible après une pose ne travers
   s.tx = g.x - 3
   s.tz = g.z
   s.path = [{ x: g.x, z: g.z }, { x: g.x - 3, z: g.z }]
-  // La pose ; la replanification qui la suit échoue une fois.
   w.village.setTools(['etain', 'sel'])
   assert.equal(w.ground.refresh(), true)
   const plan = w.villagers.plan
@@ -268,7 +247,6 @@ test("un villageois dont le chemin devient impossible après une pose ne travers
   assert.ok(moved > 0.5, 'il repart vers une autre cible')
 })
 
-/** Un nœud libre hors de la composante principale (une poche), ou null. */
 function pocket(ground, r) {
   const main = ground.mainComponent(r)
   for (let z = -20; z <= 20; z += 0.2)
@@ -281,16 +259,11 @@ function pocket(ground, r) {
 }
 
 test('mobiles : nés dans leur composante, sortis d\'une poche, jamais immobiles plus de 10 s', () => {
-  // Défaut relevé par la QA de la PR #15 : un cerf né dans une poche d'un
-  // nœud restait figé 600 s, la cueilleuse 21 à 27 s dans une poche de 91
-  // nœuds près du campement. On place ici exprès un cerf, un cheval et la
-  // cueilleuse dans une poche réelle de la carte.
   let tried = 0
   for (const [seed, age] of [[42, 7], [99, 10], [7, 5], [5, 10], [777, 10]]) {
     const w = town(seed, age)
     const g = w.ground
     const herds = [[w.fauna.deer, 0.3], [w.fauna.sheep, 0.28], [w.fauna.hens, 0.12], [w.fauna.horses, 0.35]]
-    // Une image : la première lecture de la carte range chacun chez lui.
     w.villagers.update(1 / 60, 0, false, false)
     w.fauna.update(1 / 60, 0, new Vector3(1e4, 0, 1e4), false)
     for (const [herd, r] of herds)

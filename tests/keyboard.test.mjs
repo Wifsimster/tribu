@@ -1,6 +1,3 @@
-// L'orbite au clavier (v3.65.0). Demande du joueur : « j'aimerais également
-// pouvoir me déplacer avec les touches de direction autour de l'île ».
-//   corepack pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -9,8 +6,6 @@ const { ORBIT } = await import('../src/render/orbit.ts')
 
 const rig = (zoomMin = ORBIT.minZoom) => ({ azimuth: 1, polar: Math.PI * 0.38, distance: 21, zoomMin })
 
-/** Déplacement attendu après `T` s touche tenue depuis l'arrêt : la vitesse
- *  rejoint V en exp(-t/RAMP), d'où V·(T − RAMP·(1 − e^(−T/RAMP))). */
 const travelled = (V, T) => V * (T - K.RAMP_S * (1 - Math.exp(-T / K.RAMP_S)))
 
 function hold(orbit, seconds, dt) {
@@ -79,7 +74,6 @@ test('+ / - et le pavé numérique zooment dans les bornes 8–58', () => {
   assert.ok(r.distance < 21)
   hold(o, 5, 1 / 60)
   assert.equal(r.distance, ORBIT.minZoom)
-  // Maj lâchée avant la touche : `key` change, `code` non — elle se relâche.
   assert.equal(o.release('=', 'Equal'), true)
   o.press('-', 'NumpadSubtract')
   hold(o, 5, 1 / 60)
@@ -127,7 +121,6 @@ test('les champs de saisie gardent leur clavier', () => {
   assert.equal(K.isEditable(null), false)
 })
 
-// Câblage DOM, simulé : la page reçoit les touches par `window`.
 test('attachKeyboard : rien dans un input, preventDefault seulement si consommé, relâche au blur', async () => {
   const listeners = {}
   const docListeners = {}
@@ -164,7 +157,6 @@ test('attachKeyboard : rien dans un input, preventDefault seulement si consommé
     assert.equal(frames.length, 0, 'aucune image demandée sans touche')
 
     assert.equal(fire('keydown', { key: 'ArrowLeft', code: 'ArrowLeft' }), true)
-    // La répétition de l'OS ne relance pas une deuxième boucle.
     fire('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', repeat: true })
     assert.equal(frames.length, 1)
     run(0.5)
