@@ -1710,67 +1710,7 @@ export class Village implements GroundSource {
 
   private beltway(p: BufferGeometry[]): void {
     if (this.beltTrack.pts.length < 8) return
-    if (this.railKnown) return this.railway(p)
-    const coarse = beltPath(this.beltRadii, 0.8)
-    const path = this.roadKnown || this.age >= 4
-    const pts = coarse.pts
-    const around = (q: { x: number; z: number }): { x: number; z: number } | null => {
-      let x = q.x
-      let z = q.z
-      for (let pass = 0; pass < 3; pass++)
-        for (const l of this.lots) {
-          const need = l.r + 0.45
-          const d = Math.hypot(x - l.x, z - l.z)
-          if (d >= need) continue
-          const k = need / Math.max(d, 1e-3)
-          x = l.x + (x - l.x) * k
-          z = l.z + (z - l.z) * k
-        }
-      if (this.lots.some((l) => Math.hypot(x - l.x, z - l.z) < l.r + 0.3)) return null
-      return this.island.isLand(x, z) ? { x, z } : null
-    }
-    const run: { x: number; z: number }[][] = [[]]
-    for (const q of pts) {
-      const at = around(q)
-      if (!at) {
-        if (run[run.length - 1]!.length > 0) run.push([])
-        continue
-      }
-      run[run.length - 1]!.push(at)
-    }
-    for (const r of run) {
-      if (r.length < 2) continue
-      if (path) this.track(p, r, false)
-      else this.footpath(p, r)
-    }
-    this.island.clearCorridor(pts, path ? 1.9 : 1.5)
-  }
-
-  private footpath(p: BufferGeometry[], pts: { x: number; z: number }[]): void {
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i]!
-      const b = pts[i + 1]!
-      const seg = Math.hypot(b.x - a.x, b.z - a.z)
-      if (seg < 0.05) continue
-      const yaw = Math.atan2(b.x - a.x, b.z - a.z)
-      const mx = (a.x + b.x) / 2
-      const mz = (a.z + b.z) / 2
-      p.push(part(new BoxGeometry(0.55, 0.05, seg * 1.04).rotateY(yaw), tint(C.soil, i * 5, 0.06), mx, GROUND_Y + 0.025, mz))
-      if (i % 3 === 0) {
-        const k = i * 7 + 3
-        const v = Math.sin(k * 91.7) * 43758.5453
-        const j = v - Math.floor(v)
-        p.push(
-          part(
-            new DodecahedronGeometry(0.07 + j * 0.04, 0).scale(1, 0.45, 1),
-            tint(C.stone, k, 0.08),
-            mx + Math.cos(yaw) * (j - 0.5) * 0.7,
-            GROUND_Y + 0.05,
-            mz - Math.sin(yaw) * (j - 0.5) * 0.7,
-          ),
-        )
-      }
-    }
+    if (this.railKnown) this.railway(p)
   }
 
   private railway(p: BufferGeometry[]): void {

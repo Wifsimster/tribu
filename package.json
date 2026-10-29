@@ -1,6 +1,6 @@
 {
   "name": "tribu",
-  "version": "3.72.3",
+  "version": "3.72.4",
   "private": true,
   "type": "module",
   "scripts": {
