@@ -6,6 +6,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.72.4',
+    title: 'Plus de cercle avant le train',
+    items: [
+      "Le sentier puis le chemin de terre qui faisaient un anneau parfait autour de l'île, dès le Paléolithique, ont disparu : une boucle brune n'avait rien à faire là des millénaires avant le premier rail.",
+      "La voie ferrée, elle, est inchangée : elle fait toujours le tour de l'île à l'Ère industrielle, au même endroit. Les bâtiments continuent de lui laisser la place, et rien ne bouge à son arrivée.",
+    ],
+  },
+  {
     version: '3.72.3',
     title: 'Un jeu plus léger à charger',
     items: [
