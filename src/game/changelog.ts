@@ -6,6 +6,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '3.72.5',
+    title: 'Un seul chemin au Néolithique',
+    items: [
+      "Au Paléolithique et au Néolithique, seul le chemin du foyer au port est tracé. Les sentiers vers les côtés du village n'apparaissent qu'à l'âge du bronze.",
+    ],
+  },
+  {
     version: '3.72.4',
     title: 'Plus de cercle avant le train',
     items: [
