@@ -1587,6 +1587,7 @@ export class Village implements GroundSource {
     for (let li = 0; li < this.lanes!.length; li++) {
       const pts: { x: number; z: number }[] = this.lanes![li]!.pts.map((v) => ({ x: v.x, z: v.z }))
       if (pts.length < 2) continue
+      if (li > 0 && this.age < Village.SIDE_LANE_AGE) continue
       pts.unshift({ x: HEARTH.x, z: HEARTH.z })
       if (li === 0 && head) {
         const last = pts[pts.length - 1]!
@@ -2417,6 +2418,7 @@ export class Village implements GroundSource {
     return true
   }
 
+  private static readonly SIDE_LANE_AGE = 2
   private lanes: { pts: Vector3[] }[] | null = null
 
   private buildLanes(): void {
